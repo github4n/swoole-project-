@@ -1,0 +1,79 @@
+<?php
+namespace Site\Websocket\Member\MemberList;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员管理-会员列表-修改会员层级
+ * Member/MemberList/MemberLayerUpdate {"user_id":1,"layer_id":8}
+ * 参数：user_id :
+ *
+ */
+
+class MemberLayerUpdate extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo('StaffId');
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $user_id = isset($data["user_id"]) ? $data['user_id'] : '';
+        $layer_id = isset($data["layer_id"]) ? $data['layer_id'] : '';
+        $memo = isset($data['memo']) ? $data['memo'] : '';
+        $staffGrade = $context->getInfo('StaffGrade');
+        if($staffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限"]);
+            return;
+        }
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("user_layer_update",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        if(!is_numeric($user_id)){
+           $context->reply(["status"=>204,"msg"=>"请选择会员"]);
+           return;
+        }
+        if(!is_numeric($layer_id)){
+            $context->reply(["status"=>205,"msg"=>"请选择层级"]);
+            return;
+        }
+        $sql = "UPDATE user_info SET layer_id=:layer_id,memo=:memo WHERE user_id=:user_id";
+        $param = [":user_id"=>$user_id,":layer_id"=>$layer_id,":memo"=>$memo];
+        try{
+            $mysql->execute($sql,$param);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"修改失败"]);
+            throw new \PDOException($e);
+        }
+        $context->reply(["status"=>200,"msg"=>"修改成功"]);
+        //修改用户累计数据
+        $sql = "SELECT layer_id,layer_name FROM user_info_intact WHERE user_id=:user_id";
+        $param = [":user_id"=>$user_id];
+        $info = [];
+        foreach ($mysql->query($sql,$param) as $rows){
+            $info = $rows;
+        }
+        $sqls = "UPDATE user_cumulate SET layer_id=:layer_id,layer_name=:layer_name WHERE user_id=:user_id";
+        $params = [
+            ":layer_id"=>$info["layer_id"],
+            ":layer_name"=>$info["layer_name"],
+            ":user_id"=>$user_id,
+        ];
+        $report_mysql = $config->data_report;
+        $report_mysql->execute($sqls,$params);
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'user_list_update',
+            ':detail' =>'修改会员'.$user_id."的层级信息",
+        ];
+        $staff_mysql = $config->data_staff;
+        $staff_mysql->execute($sql, $params);
+    }
+}

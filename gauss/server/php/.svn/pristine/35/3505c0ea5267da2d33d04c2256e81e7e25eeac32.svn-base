@@ -1,0 +1,72 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: ayden
+ * Date: 19-3-27
+ * Time: 下午5:14
+ */
+
+namespace App\Websocket\ExternalGame;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+//ExternalGame/GameBalance {"interface_key":"ky"}
+
+class GameBalance extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $param = $context->getData();
+        $interface_key = isset($param['interface_key']) ? $param['interface_key'] : '';
+        $user_id = $context->getInfo('UserId');
+        $user_key = $context->getInfo('UserKey');
+
+        $adapter = new \Lib\Task\Adapter($config->cache_daemon);
+        if($interface_key){
+            switch ($interface_key){
+                case 'my':
+                    //查询账户余额
+                    $mysql = $config->data_user;
+                    $sql = 'SELECT deal_key FROM user_info WHERE user_id=:user_id';
+                    $param = [':user_id' => $user_id];
+                    $dealKey = '';
+                    foreach ($mysql->query($sql, $param) as $row) {
+                        $dealKey = $row['deal_key'];
+                    }
+                    $mysql = $config->__get('data_' . $dealKey);
+                    $sql = 'SELECT money,account_name,layer_id,user_key FROM account WHERE user_id=:user_id';
+                    $param = [':user_id' => $user_id];
+                    $my_balance = '';
+                    foreach ($mysql->query($sql, $param) as $row) {
+                        $my_balance = $row['money'];
+                    }
+                    $params = [
+                        'balance' => $my_balance,
+                        'client_id' => $context->clientId(),
+                        'interface_key' => 'my'
+                    ];
+                    $adapter->plan('ExternalGame/GameBalance',['data' => ['status' => 200, 'data'=>$params]],time(),1);
+
+                    break;
+                case 'ag':
+                    break;
+                case 'lb':
+                    break;
+                case 'ky':
+                    $params = [
+                        'account' => $user_key,
+                        's' => 1,
+                        'action' => 'getScore',
+                        'method' => 'GameBalance',
+                        'client_id' => $context->clientId(),
+                        'interface_key' => 'ky'
+                    ];
+                    $adapter->plan('ExternalGame/GameBalance',['data' => $params],time(),1);
+
+                    break;
+            }
+        }
+    }
+}

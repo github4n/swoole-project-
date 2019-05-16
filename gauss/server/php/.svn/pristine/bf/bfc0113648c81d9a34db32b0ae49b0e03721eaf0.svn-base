@@ -1,0 +1,194 @@
+<?php
+namespace Site\Websocket\Cash\WithdrawSearch;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-出款查询
+ * 参数：Cash/WithdrawSearch/WithdrawList {}
+ * status:审核状态 1已审核同意出款 2 已审核-拒绝出款 3未审核
+ * withdraw_status 出款状态  1等待出款2正在出款3出款完成4出款失败
+ * */
+
+class WithdrawList extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("money_withdraw_select",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $staff_mysql = $config->data_staff;
+        //代理层级列表
+        $cache = $config->cache_site;
+        $layer_list = json_decode($cache->hget("LayerList","allLayer"));
+
+        
+        $staffId = $context->getInfo('StaffId');
+        $data = $context->getData();
+        $user_key = isset($data["user_key"]) ? $data['user_key'] : '';
+        $withdraw_serial = isset($data["withdraw_serial"]) ? $data['withdraw_serial'] : '';
+        $staff_name = isset($data["staff_name"]) ? $data['staff_name'] : '';
+        $status = isset($data["status"]) ? $data['status'] : '';
+        $withdraw_status = isset($data["withdraw_status"]) ? $data['withdraw_status'] : '';
+        $layer_id = isset($data["layer_id"]) ? $data['layer_id'] : '';
+        $withdraw_name = isset($data["withdraw_name"]) ? $data['withdraw_name'] : "";
+        $min_money = isset($data["min_money"]) ? $data['min_money'] : '';
+        $max_money = isset($data["max_money"]) ? $data['max_money'] : '';
+        $start_time = isset($data["start_time"]) ? $data['start_time'] : '';
+        $end_time = isset($data["end_time"]) ? $data['end_time'] : '';
+        $statu = '';
+        $time = '';
+        $money = '';
+        $withdraw_statu = '';
+        if($user_key){
+            $user_key = " AND user_key = '".$user_key."'";
+        }
+        if($withdraw_serial){
+            $withdraw_serial = " AND withdraw_serial = ".$withdraw_serial;
+        }
+        if($staff_name){
+            $staff_name = " AND ( accept_staff_name = '".$staff_name."' OR reject_staff_name = '".$staff_name."')";
+        }
+        if($status){
+            if($status == 1) {
+                $statu = " AND accept_time>0";
+            }
+            if($status == 2){
+                $statu  = " AND reject_time>0";
+            }
+            if($status == 3){
+                $statu = " AND accept_time is null AND reject_time is null";
+            }
+        }
+        if($withdraw_status){
+            if($withdraw_status == 1){
+                $withdraw_statu = " AND accept_time>0 AND finish_time is null";
+            }
+            if($withdraw_status == 2){
+                $withdraw_statu = " AND accept_time>0 AND finish_time is null AND lock_type=0 ";
+            }
+            if($withdraw_status == 3){
+                $withdraw_statu = " AND finish_time>0";
+            }
+            if($withdraw_status == 4){
+                $withdraw_statu = " AND cancel_time>0";
+            }
+        }
+        if($layer_id){
+            $layer_id = " AND layer_id = ".intval($layer_id);
+        }
+        if($withdraw_name){
+            $withdraw_name = " AND ( cancel_staff_name ='".$withdraw_name."' OR finish_staff_name ='".$withdraw_name."')";
+        }
+        if($min_money){
+            if (!is_numeric($min_money)){
+                $context->reply(["status"=>204,"msg"=>"最小金额类型错误"]);
+                return;
+            }
+            $money = " AND withdraw_money >".$min_money;
+        }
+        if($max_money){
+            if(!is_numeric($max_money)){
+                $context->reply(["status"=>205,"msg"=>"最大金额类型错误"]);
+                return;
+            }
+            $money = " AND withdraw_money <".$max_money;
+        }
+        if($min_money && $max_money){
+            $money = " AND withdraw_money BETWEEN ".$min_money." AND ".$max_money;
+        }
+        if($start_time && $end_time){
+            $start = strtotime($start_time. "00:00:00");
+            $end = strtotime($end_time." 23:59:59");
+            $time = " AND launch_time BETWEEN ".$start." AND ".$end;
+        }
+        $limit = " LIMIT 100";
+        $total = 0;
+        $withdraw_list = [];
+        $sql = "SELECT withdraw_serial,user_id,user_key,layer_id,launch_money,deposit_audit,handling_fee,withdraw_money,bank_name,bank_branch,account_number,account_name,launch_time,must_inspect,accept_staff_name,accept_time,reject_staff_name,reject_time,finish_staff_name,finish_time,cancel_staff_name,cancel_time,lock_type,lock_time,lock_staff_name FROM withdraw_intact WHERE 1=1 ".$user_key.$withdraw_serial.$staff_name.$statu.$withdraw_statu.$layer_id.$withdraw_name.$money.$time.$limit;
+        $total_sql = "SELECT withdraw_serial FROM withdraw_intact WHERE 1=1 ".$user_key.$withdraw_serial.$staff_name.$statu.$withdraw_statu.$layer_id.$withdraw_name.$money.$time;
+        foreach ($config->deal_list as $deal){
+            $mysql = $config->__get("data_".$deal);
+            try{
+                $total += $mysql->execute($total_sql);
+                $list = iterator_to_array($mysql->query($sql));
+                if(!empty($list)){
+                    foreach ($list as $key=>$val){
+                        $withdraw["withdraw_serial"] = $val["withdraw_serial"];
+                        $withdraw["user_key"] = $val["user_key"];
+                        $withdraw["user_id"] = $val["user_id"];
+                        $withdraw["layer_name"] = !empty($context->getInfo($val["layer_id"]))? $context->getInfo($val['layer_id']):"该层级被删除".$val["layer_id"];
+                        $withdraw["launch_time"] = date("Y-m-d H:i:s",$val["launch_time"]);
+                        $withdraw["launch_money"] = $val["launch_money"];
+                        $withdraw["deposit_audit"] = $val["deposit_audit"];
+                        $withdraw["handling_fee"] = $val["handling_fee"];
+                        $withdraw["withdraw_money"] = $val["withdraw_money"];
+                        $withdraw["bank_name"] = $val["bank_name"];
+                        $withdraw["bank_branch"] = $val["bank_branch"];
+                        $withdraw["account_number"] = $val["account_number"];
+                        $withdraw["account_name"] = $val["account_name"];
+                        if($val["lock_type"]==1 && $val["lock_time"]>0){
+                            $withdraw["status"] = "正在审核";
+                            $withdraw["review_name"] = "";
+                            $withdraw["staff_name"] = "";
+                        }
+                        if($val["lock_type"]==0 && $val["lock_time"]>0){
+                            $withdraw["status"] = "正在出款";
+                            $withdraw["review_name"] = $val["accept_staff_name"];
+                            $withdraw["staff_name"] = $val["lock_staff_name"];
+                        }
+                        if($val["accept_time"]>0 && empty($val["lock_type"])){
+                            $withdraw["status"] = "同意出款";
+                            $withdraw["review_name"] = $val["accept_staff_name"];
+                            $withdraw["staff_name"] = "";
+                        }
+                        if($val["reject_time"]>0 && empty($val["lock_type"])){
+                            $withdraw["status"] = "拒绝出款";
+                            $withdraw["review_name"] = $val["reject_staff_name"];
+                            $withdraw["staff_name"] = "";
+                        }
+                        if($val["must_inspect"]==1 && $val["launch_time"]>0 && empty($val["accept_time"]) && empty($val["reject_time"]) && empty($val["lock_time"])){
+                            $withdraw["status"] = "等待审核";
+                            $withdraw["review_name"] = "";
+                            $withdraw["staff_name"] = "";
+                        }
+                        if($val["finish_time"]>0){
+                            $withdraw["status"] = "已出款";
+                            $withdraw["review_name"] = $val["accept_staff_name"];
+                            $withdraw["staff_name"] = $val["finish_staff_name"];
+                        }
+                        if($val["cancel_time"]>0){
+                            $withdraw["status"] = "出款失败";
+                            $withdraw["review_name"] = $val["reject_staff_name"];
+                            $withdraw["staff_name"] = $val["cancel_staff_name"];
+                        }
+                        $withdraw["deal_key"] = $deal;
+                        $withdraw_list[] =  $withdraw;
+                    }
+                }
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"获取失败"]);
+                throw new \PDOException($e);
+            }
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip=:client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'money_withdraw_select',
+            ':detail' =>'查看了现金系统的出款查询',
+        ];
+
+        $staff_mysql->execute($sql,$params);
+        $context->reply(["status"=>200,"msg"=>"获取成功","total"=>$total,"list"=>$withdraw_list,'layer_list'=>$layer_list]);
+    }
+}

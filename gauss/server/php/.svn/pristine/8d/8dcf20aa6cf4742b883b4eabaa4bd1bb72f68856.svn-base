@@ -1,0 +1,324 @@
+<?php
+
+namespace Site\Websocket\ReportQuery;
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 报表查询-经营统计报表
+ * ReportQuery/OperatingReport {"start_time":2019-02-10,"stop_time":2019-02-18}
+ * 搜索参数：start_time:开始时间，stop_time:结束时间
+ * */
+
+class OperatingReport extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo('StaffId');
+        $staffGrade = $context->getInfo('StaffGrade');
+
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("report_money",$auth) || $staffGrade==3) {
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        //接收参数
+        $data = $context->getData();
+        $time = null;
+        $today = date('Ymd',strtotime('today'));
+        $start_time = empty($data['start_time'])?date('Ymd',strtotime('-10 day')):date('Ymd',strtotime($data['start_time']));
+        $stop_time = empty($data['stop_time'])?$today:date('Ymd',strtotime($data['stop_time']));
+
+        $time = ' AND daily BETWEEN '.$start_time.' AND '.$stop_time;
+
+        //分层级查看
+        $report_mysql = $config->data_report;
+        $name = NULL;
+        $id = NULL;
+        $list1 = [];
+        $list2 = [];
+        $list3 = [];
+        $total_list = [];
+        $lottery_list = [];
+        $video_list = [];
+        $game_list = [];
+        $sports_list = [];
+        $cards_list = [];
+        $totally_sql = null;
+        $lottery_sql = null;
+        $external_sql = null;
+        switch ($staffGrade)
+        {
+            //站长
+            case 0:
+                $totally_sql = 'SELECT major_name AS staff_name,SUM(user_all) AS user_all,SUM(bet_user) AS bet_user,SUM(bet_count) AS bet_count,SUM(bet_amount) AS bet_amount,SUM(wager_amount) AS bet,SUM(bonus_amount) AS bonus_amount,SUM(coupon_amount) AS coupon_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(brokerage_amount) AS brokerage_amount,SUM(profit_amount) AS profit_amount FROM daily_staff WHERE 1'.$time.' GROUP BY major_name';
+                $lottery_sql = 'SELECT major_name AS staff_name,SUM(bet_user) AS bet_user,SUM(bet_count) AS bet_count,SUM(bet_amount) AS bet_amount,SUM(wager_amount) AS bet,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(profit_amount) AS profit_amount FROM daily_staff_lottery WHERE 1 '.$time.' GROUP BY major_name';
+                $external_sql = 'SELECT major_name AS staff_name,category_key,SUM(bet_user) AS bet_user,SUM(bet_count) AS bet_count,SUM(bet_amount) AS bet_amount,SUM(wager_amount) AS bet,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(profit_amount) AS profit_amount FROM daily_staff_external WHERE 1 '.$time.' GROUP BY major_name,category_key';
+                break;
+            //大股东名下
+            case 1:
+                $id = ' AND major_id='.$staffId.' ';
+                $totally_sql = 'SELECT minor_name AS staff_name,SUM(user_all) AS user_all,SUM(bet_user) AS bet_user,SUM(bet_count) AS bet_count,SUM(bet_amount) AS bet_amount,SUM(wager_amount) AS bet,SUM(bonus_amount) AS bonus_amount,SUM(coupon_amount) AS coupon_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(brokerage_amount) AS brokerage_amount,SUM(profit_amount) AS profit_amount FROM daily_staff WHERE 1'.$time.$id.' GROUP BY minor_name';
+                $lottery_sql = 'SELECT minor_name AS staff_name,SUM(bet_user) AS bet_user,SUM(bet_count) AS bet_count,SUM(bet_amount) AS bet_amount,SUM(wager_amount) AS bet,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(profit_amount) AS profit_amount FROM daily_staff_lottery WHERE 1 '.$time.$id.' GROUP BY minor_name';
+                $external_sql = 'SELECT minor_name AS staff_name,category_key,SUM(bet_user) AS bet_user,SUM(bet_count) AS bet_count,SUM(bet_amount) AS bet_amount,SUM(wager_amount) AS bet,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(profit_amount) AS profit_amount FROM daily_staff_external WHERE 1 '.$time.$id.' GROUP BY minor_name,category_key';
+                break;
+            //股东名下
+            case 2:
+                $id = ' AND minor_id='.$staffId.' ';
+                $totally_sql = 'SELECT agent_name AS staff_name,SUM(user_all) AS user_all,SUM(bet_user) AS bet_user,SUM(bet_count) AS bet_count,SUM(bet_amount) AS bet_amount,SUM(wager_amount) AS bet,SUM(bonus_amount) AS bonus_amount,SUM(coupon_amount) AS coupon_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(brokerage_amount) AS brokerage_amount,SUM(profit_amount) AS profit_amount FROM daily_staff WHERE 1'.$time.$id.' GROUP BY agent_name';
+                $lottery_sql = 'SELECT agent_name AS staff_name,SUM(bet_user) AS bet_user,SUM(bet_count) AS bet_count,SUM(bet_amount) AS bet_amount,SUM(wager_amount) AS bet,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(profit_amount) AS profit_amount FROM daily_staff_lottery WHERE 1 '.$time.$id.' GROUP BY agent_name';
+                $external_sql = 'SELECT agent_name AS staff_name,category_key,SUM(bet_user) AS bet_user,SUM(bet_count) AS bet_count,SUM(bet_amount) AS bet_amount,SUM(wager_amount) AS bet,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(profit_amount) AS profit_amount FROM daily_staff_external WHERE 1 '.$time.$id.' GROUP BY agent_name,category_key';
+                break;
+           /* //总代理名下
+            case 3:
+                $id = ' AND agent_id='.$staffId.' ';
+                break;*/
+        }
+
+        foreach ($report_mysql->query($totally_sql) as $row)
+        {
+            $list1[] = $row;
+        }
+        foreach ($report_mysql->query($lottery_sql) as $item)
+        {
+            $list2[] = $item;
+        }
+        foreach ($report_mysql->query($external_sql) as $value)
+        {
+            $list3[] = $value;
+        }
+        if(!empty($list1))
+        {
+            foreach ($list1 as $k => $v)
+            {
+                $total_list[$k]['staff_name'] = $v['staff_name'];
+                $total_list[$k]['user_all'] = $v['user_all'];
+                $lottery_list[$k]['user_all'] = $v['user_all'];
+                $video_list[$k]['user_all'] = $v['user_all'];
+                $game_list[$k]['user_all'] = $v['user_all'];
+                $sports_list[$k]['user_all'] = $v['user_all'];
+                $cards_list[$k]['user_all'] = $v['user_all'];
+                $total_list[$k]['bet_user'] = $v['bet_user'];
+                $total_list[$k]['bet_count'] = $v['bet_count'];
+                $total_list[$k]['bet_amount'] = $v['bet_amount'];
+                $total_list[$k]['bet'] = $v['bet'];
+                $total_list[$k]['bonus_amount'] = $v['bonus_amount'];
+                $total_list[$k]['coupon_amount'] = $v['coupon_amount'];
+                $lottery_list[$k]['coupon_amount'] = $v['coupon_amount'];
+                $video_list[$k]['coupon_amount'] = $v['coupon_amount'];
+                $game_list[$k]['coupon_amount'] = $v['coupon_amount'];
+                $sports_list[$k]['coupon_amount'] = $v['coupon_amount'];
+                $cards_list[$k]['coupon_amount'] = $v['coupon_amount'];
+                $total_list[$k]['subsidy_amount'] = $v['subsidy_amount'];
+                $total_list[$k]['brokerage_amount'] = $v['brokerage_amount'];
+                $lottery_list[$k]['brokerage_amount'] = $v['brokerage_amount'];
+                $video_list[$k]['brokerage_amount'] = $v['brokerage_amount'];
+                $game_list[$k]['brokerage_amount'] = $v['brokerage_amount'];
+                $sports_list[$k]['brokerage_amount'] = $v['brokerage_amount'];
+                $cards_list[$k]['brokerage_amount'] = $v['brokerage_amount'];
+                $total_list[$k]['profit_amount'] = $v['profit_amount'];
+            }
+        }else
+        {
+            $total_list[0]['staff_name'] = 0;
+            $total_list[0]['user_all'] = 0;
+            $lottery_list[0]['user_all'] = 0;
+            $video_list[0]['user_all'] = 0;
+            $game_list[0]['user_all'] = 0;
+            $sports_list[0]['user_all'] = 0;
+            $cards_list[0]['user_all'] = 0;
+            $total_list[0]['bet_user'] = 0;
+            $total_list[0]['bet_count'] = 0;
+            $total_list[0]['bet_amount'] = 0;
+            $total_list[0]['bet'] = 0;
+            $total_list[0]['bonus_amount'] = 0;
+            $total_list[0]['coupon_amount'] = 0;
+            $lottery_list[0]['coupon_amount'] = 0;
+            $video_list[0]['coupon_amount'] = 0;
+            $game_list[0]['coupon_amount'] = 0;
+            $sports_list[0]['coupon_amount'] = 0;
+            $cards_list[0]['coupon_amount'] = 0;
+            $total_list[0]['subsidy_amount'] = 0;
+            $total_list[0]['brokerage_amount'] = 0;
+            $lottery_list[0]['brokerage_amount'] = 0;
+            $video_list[0]['brokerage_amount'] = 0;
+            $game_list[0]['brokerage_amount'] = 0;
+            $sports_list[0]['brokerage_amount'] = 0;
+            $cards_list[0]['brokerage_amount'] = 0;
+            $total_list[0]['profit_amount'] = 0;
+        }
+        $total_data = [
+            'start_time' => date('Y--m-d',strtotime($start_time)),
+            'stop_time' => date('Y--m-d',strtotime($stop_time)),
+            'list_key' => 'total',
+            'list_name' => '全站',
+            'list_data' =>$total_list
+        ];
+        if (!empty($list2))
+        {
+            foreach ($list2 as $key => $value)
+            {
+                $lottery_list[$key]['staff_name'] = $value['staff_name'];
+                $lottery_list[$key]['bet_user'] = $value['bet_user'];
+                $lottery_list[$key]['bet_count'] = $value['bet_count'];
+                $lottery_list[$key]['bet_amount'] = $value['bet_amount'];
+                $lottery_list[$key]['bet'] = $value['bet'];
+                $lottery_list[$key]['bonus_amount'] = $value['bonus_amount'];
+                $lottery_list[$key]['subsidy_amount'] = $value['subsidy_amount'];
+                $lottery_list[$key]['profit_amount'] = $value['profit_amount'];
+            }
+        }else
+        {
+            $lottery_list[0]['staff_name'] = 0;
+            $lottery_list[0]['bet_user'] = 0;
+            $lottery_list[0]['bet_count'] = 0;
+            $lottery_list[0]['bet_amount'] = 0;
+            $lottery_list[0]['bet'] = 0;
+            $lottery_list[0]['bonus_amount'] = 0;
+            $lottery_list[0]['subsidy_amount'] = 0;
+            $lottery_list[0]['profit_amount'] = 0;
+        }
+        $lottery_data = [
+            'start_time' => date('Y--m-d',strtotime($start_time)),
+            'stop_time' => date('Y--m-d',strtotime($stop_time)),
+            'list_key' => 'lottery',
+            'list_name' => '共赢彩票',
+            'list_data' =>$lottery_list
+        ];
+        if (!empty($list3))
+        {
+            foreach ($list3 as $k => $value)
+            {
+               switch ($value['category_key'])
+               {
+                   case 'video':
+                       $video_list[$key]['staff_name'] = $value['staff_name'];
+                       $video_list[$key]['bet_user'] = $value['bet_user'];
+                       $video_list[$key]['bet_count'] = $value['bet_count'];
+                       $video_list[$key]['bet_amount'] = $value['bet_amount'];
+                       $video_list[$key]['bet'] = $value['bet'];
+                       $video_list[$key]['bonus_amount'] = $value['bonus_amount'];
+                       $video_list[$key]['subsidy_amount'] = $value['subsidy_amount'];
+                       $video_list[$key]['profit_amount'] = $value['profit_amount'];
+                       break;
+                   case 'game':
+                       $game_list[$key]['staff_name'] = $value['staff_name'];
+                       $game_list[$key]['bet_user'] = $value['bet_user'];
+                       $game_list[$key]['bet_count'] = $value['bet_count'];
+                       $game_list[$key]['bet_amount'] = $value['bet_amount'];
+                       $game_list[$key]['bet'] = $value['bet'];
+                       $game_list[$key]['bonus_amount'] = $value['bonus_amount'];
+                       $game_list[$key]['subsidy_amount'] = $value['subsidy_amount'];
+                       $game_list[$key]['profit_amount'] = $value['profit_amount'];
+                       break;
+                   case 'sports':
+                       $sports_list[$key]['staff_name'] = $value['staff_name'];
+                       $sports_list[$key]['bet_user'] = $value['bet_user'];
+                       $sports_list[$key]['bet_count'] = $value['bet_count'];
+                       $sports_list[$key]['bet_amount'] = $value['bet_amount'];
+                       $sports_list[$key]['bet'] = $value['bet'];
+                       $sports_list[$key]['bonus_amount'] = $value['bonus_amount'];
+                       $sports_list[$key]['subsidy_amount'] = $value['subsidy_amount'];
+                       $sports_list[$key]['profit_amount'] = $value['profit_amount'];
+                       break;
+                   case 'cards':
+                       $cards_list[$key]['staff_name'] = $value['staff_name'];
+                       $cards_list[$key]['bet_user'] = $value['bet_user'];
+                       $cards_list[$key]['bet_count'] = $value['bet_count'];
+                       $cards_list[$key]['bet_amount'] = $value['bet_amount'];
+                       $cards_list[$key]['bet'] = $value['bet'];
+                       $cards_list[$key]['bonus_amount'] = $value['bonus_amount'];
+                       $cards_list[$key]['subsidy_amount'] = $value['subsidy_amount'];
+                       $cards_list[$key]['profit_amount'] = $value['profit_amount'];
+                       break;
+
+               }
+            }
+        }else
+        {
+            $video_list[0]['staff_name'] = 0;
+            $video_list[0]['bet_user'] = 0;
+            $video_list[0]['bet_count'] = 0;
+            $video_list[0]['bet_amount'] = 0;
+            $video_list[0]['bet'] = 0;
+            $video_list[0]['bonus_amount'] = 0;
+            $video_list[0]['subsidy_amount'] = 0;
+            $video_list[0]['coupon_amount'] = 0;
+            $video_list[0]['brokerage_amount'] = 0;
+            $video_list[0]['profit_amount'] = 0;
+
+            $game_list[0]['staff_name'] = 0;
+            $game_list[0]['bet_user'] = 0;
+            $game_list[0]['bet_count'] = 0;
+            $game_list[0]['bet_amount'] = 0;
+            $game_list[0]['bet'] = 0;
+            $game_list[0]['bonus_amount'] = 0;
+            $game_list[0]['subsidy_amount'] = 0;
+            $game_list[0]['coupon_amount'] = 0;
+            $game_list[0]['brokerage_amount'] = 0;
+            $game_list[0]['profit_amount'] = 0;
+
+            $sports_list[0]['staff_name'] = 0;
+            $sports_list[0]['bet_user'] = 0;
+            $sports_list[0]['bet_count'] = 0;
+            $sports_list[0]['bet_amount'] = 0;
+            $sports_list[0]['bet'] = 0;
+            $sports_list[0]['bonus_amount'] = 0;
+            $sports_list[0]['subsidy_amount'] = 0;
+            $sports_list[0]['coupon_amount'] = 0;
+            $sports_list[0]['brokerage_amount'] = 0;
+            $sports_list[0]['profit_amount'] = 0;
+
+            $cards_list[0]['staff_name'] = 0;
+            $cards_list[0]['bet_user'] = 0;
+            $cards_list[0]['bet_count'] = 0;
+            $cards_list[0]['bet_amount'] = 0;
+            $cards_list[0]['bet'] = 0;
+            $cards_list[0]['bonus_amount'] = 0;
+            $cards_list[0]['subsidy_amount'] = 0;
+            $cards_list[0]['coupon_amount'] = 0;
+            $cards_list[0]['brokerage_amount'] = 0;
+            $cards_list[0]['profit_amount'] = 0;
+
+        }
+
+        $video_data = [
+            'start_time' => date('Y-m-d',strtotime($start_time)),
+            'stop_time' => date('Y-m-d',strtotime($stop_time)),
+            'list_key' => 'video',
+            'list_name' => '真人视讯',
+            'list_data' =>$video_list
+        ];
+        $game_data = [
+            'start_time' => date('Y-m-d',strtotime($start_time)),
+            'stop_time' => date('Y-m-d',strtotime($stop_time)),
+            'list_key' => 'game',
+            'list_name' => '电子游戏',
+            'list_data' =>$game_list
+        ];
+        $sports_data = [
+            'start_time' => date('Y-m-d',strtotime($start_time)),
+            'stop_time' => date('Y-m-d',strtotime($stop_time)),
+            'list_key' => 'sports',
+            'list_name' => '体育',
+            'list_data' =>$sports_list
+        ];
+        $cards_data = [
+            'start_time' => date('Y-m-d',strtotime($start_time)),
+            'stop_time' => date('Y-m-d',strtotime($stop_time)),
+            'list_key' => 'cards',
+            'list_name' => '棋牌',
+            'list_data' =>$cards_list
+        ];
+
+        //返回数据
+        $context->reply([
+            'status' => 200,
+            'msg' => '获取成功',
+            'list' => [$total_data,$lottery_data,$video_data,$game_data,$sports_data,$cards_data],
+
+        ]);
+    }
+}

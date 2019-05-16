@@ -1,0 +1,101 @@
+<?php
+namespace Site\Websocket\Account\Staff;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 负责人---leo
+ * 负责开始时间--2019-04-08
+ * */
+
+/*
+ * 员工添加
+ *  Account/Staff/StaffAdd
+ * 主账号不受限制，可以管理体系范围内的所有层级
+ * */
+
+class StaffAdd extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("slave_list_insert",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $mysql = $config->data_staff;
+        $user_mysql = $config->data_user;
+        $cache = $config->cache_site;
+        $operate_list = array();
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo("MasterId");
+        if(!empty($MasterId)){
+            //当前账号管理会员的信息
+            $sql = "SELECT layer_id FROM staff_layer WHERE staff_id=:staff_id";
+            $param = [":staff_id"=>$staffId];
+            foreach ($mysql->query($sql,$param) as $rows){
+                $layer_list[] = $rows;
+            }
+            $user_layer = array();
+            $agent_layer = array();
+            if(!empty($layer_list)){
+                foreach ($layer_list as $key=>$val){
+                	//数据库layer_id = 7的数据异常
+                	if ($val["layer_id"] != 7) {
+						$sql = "SELECT layer_id,layer_name,layer_type FROM layer_info WHERE layer_id=:layer_id";
+						$param = [":layer_id"=>$val["layer_id"]];
+						$user = [];
+						foreach ($user_mysql->query($sql,$param) as $row){
+							$user = $row;
+						}
+						if (!empty($user)) {
+							if($user["layer_type"]<3){
+								$user_layer[$key]["layer_name"] = $user["layer_name"];
+								$user_layer[$key]["layer_id"] = $user["layer_id"];
+							}
+							if($user["layer_type"]>100){
+								$agent_layer[$key]["layer_name"] = $user["layer_name"];
+								$agent_layer[$key]["layer_id"] = $user["layer_id"];
+							}
+						}
+					}
+                }
+            }
+            sort($agent_layer,1);
+            sort($user_layer,1);
+        } else{
+            //会员层级
+            $user_layer = json_decode($cache->hget("LayerList","userLayer"));
+            //代理层级
+            $agent_layer = json_decode($cache->hget("LayerList","agentLayer"));
+        }
+       //权限分配
+        $sql = "SELECT * FROM staff_permit WHERE staff_id = :staff_id";
+        $param = [":staff_id" => $staffId];
+        $operate = [];
+        foreach ($mysql->query($sql,$param) as $row){
+            $operate[] = $row;
+        }
+        if(!empty($operate)){
+            foreach ($operate as $k=>$v){
+                $sql = "SELECT operate_name,operate_key FROM operate WHERE operate_key=:operate_key ";
+                $param = [":operate_key"=>$v["operate_key"]];
+                foreach ($mysql->query($sql,$param) as $rows){
+                    $operates = $rows;
+                }
+                $operate_list[$k]["operate_key"] = $operates["operate_key"];
+                $operate_list[$k]["operate_name"] = $operates["operate_name"];
+            }
+        }
+        $context->reply([
+            "status"=>200,
+            "level"=>"获取成功",
+            "user_layer" => $user_layer,
+            "agent_layer" => $agent_layer,
+            "operate_list" => $operate_list,
+        ]);
+
+    }
+}

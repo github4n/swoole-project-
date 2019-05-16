@@ -1,0 +1,133 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\Result;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 参数：type:类型（'type=1官方彩开奖结果,type=2自开彩开奖结果)默认为1，page：当前页 默认为1,num:每页显示的条数 默认10 go_num:跳转的页数搜索带参数：彩票名称game_key , 期号period, 开奖时间（start_time,end_time）
+ * 状态码
+ * 200：获取成功
+ * 201：没有操作权限
+ * 202：type类型不正确
+ * 203：当前页数的类型不正确
+ * 204：每页显示的数量类型不正确
+ * 205：跳转的页数类型不正确
+ * 400：获取失败
+ *
+ * */
+
+class ResultList extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("ticket_result_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        //获取彩种
+
+        $game_list = json_decode($context->getInfo("GameList"));
+        if(empty($game_list)){
+            $game_list = $this->getAllGame($context,$config);
+        }
+        $data = $context->getData();
+        $page = $data["page"];
+        $num = $data["num"];
+        $go_num = $data["go_num"];
+        $list = array();
+        if(empty($data)){
+            $context->reply(["status"=>202,"msg"=>"查看的相关参数不能为空"]);
+            return;
+        }
+        if(!is_numeric($page) && $page>0){
+            $context->reply(["status"=>203,"msg"=>"当前显示页数类型不正确"]);
+            return;
+        }
+        if(!is_numeric($num)){
+            $context->reply(["status"=>204,"msg"=>"每页显示的条数类型不正确"]);
+            return;
+        }
+        $limit = ' LIMIT '.($page-1)*$num.','.$num;
+        if(!empty($go_num)){
+            if(!is_numeric($go_num) && $go_num>0){
+                $context->reply(["status"=>205,"msg"=>"跳转的页数类型不正确"]);
+                return;
+            }
+            $limit = ' LIMIT '.($go_num-1)*$num.','.$num;
+        }
+        $game_key = $data["game_key"]?:"";
+        $period = $data["period"]?:"";
+        $end_time = $data["end_time"]?:"";
+        $start_time = $data["start_time"]?:"";
+        $time = '';
+        if(!empty($game_key)){
+            $game_key = " AND game_key = '".$game_key."'";
+        }
+        if(!empty($period)) {
+            $period = " AND period =" . $period;
+        }
+        if(!empty($start_time)){
+            if(strtotime($start_time)>time()){
+                 $context->reply(["status"=>206,"msg"=>"开始时间不能大于当前时间"]);
+                 return;
+            }
+            if(!empty($end_time))
+                $time = " AND start_time BETWEEN ".strtotime($start_time)." AND ".strtotime($end_time);
+            else
+                $time = "AND start_time BETWEEN '".strtotime($start_time)."AND".time();
+        }
+        if(!empty($end_time) && empty($start_time)){
+            $time = " AND start_time <= ".strtotime($end_time);
+        }
+        $mysql = $config->data_public;
+        $lists = array();
+        if($data["type"] == 1){
+             //官方彩开奖结果 
+            $sql = "SELECT *  FROM lottery_number_intact WHERE official=1".$game_key.$time.$period." ORDER BY period DESC ".$limit;
+            $total_sql = "SELECT game_key FROM lottery_number_intact WHERE official=1".$game_key.$time.$period;
+        }else if($data["type"] == 2){
+            //自开彩开奖结果
+            $sql = "SELECT *  FROM lottery_number_intact WHERE official=0".$game_key.$time.$period." ORDER BY period DESC ".$limit;
+            $total_sql = "SELECT game_key FROM lottery_number_intact WHERE official=0".$game_key.$time.$period;
+        } else{
+            $context->reply(["status"=>206,"msg"=>"开彩结果类型不正确"]);
+            return;
+        }
+        try{
+            foreach ($mysql->query($sql) as $rows){
+                $lists[] = $rows;
+            }
+            $total = $mysql->execute($total_sql);
+            if(!empty($lists)){
+                foreach ($lists as $key=>$val){
+                    $list[$key]["game_name"] = $val["game_name"];
+                    $list[$key]["period"] = $val["period"];
+                    $list[$key]["start_time"] = date("Y-m-d H:i:s",$val["start_time"]);
+                    $list[$key]["stop_time"] = date("Y-m-d H:i:s",$val["stop_time"]);
+                    $list[$key]["plan_time"] = date("Y-m-d H:i:s",$val["plan_time"]);
+                    $normal = '';
+                    for($i=1;$i<=12;$i++){
+                        if($val['normal'.$i] != -1){
+                            $normal .= $val['normal'.$i].',';
+                        }
+                    }
+                    $list[$key]["num"] = $normal;
+                }
+            }
+            $context->reply([
+                'status'=>200,
+                'msg'=>'获取成功',
+                'total'=>$total,
+                'total_page'=>ceil($total/$num),
+                'game_list'=>$game_list,
+                'list'=>$list
+            ]);
+        }   catch(\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取列表失败"]);
+            throw new \PDOException('sql run error'.$e);
+        }
+
+    }
+}

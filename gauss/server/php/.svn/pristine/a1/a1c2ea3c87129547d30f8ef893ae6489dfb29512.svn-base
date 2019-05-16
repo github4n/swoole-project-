@@ -1,0 +1,60 @@
+<?php
+namespace Plat\Websocket\Website\Site;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+
+ *  Website/Site/Site
+ * */
+
+class Site extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("site_status_select", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysqlAdmin = $config->data_admin;
+        $site_name = isset($data["site_name"]) ? $data["site_name"] : "";
+        $status = isset($data["status"]) ? $data["status"] : "";
+        if(!empty($site_name)){
+            $site_name = " and site_name='".$site_name."'";
+        }
+
+        if(is_numeric($status)){
+            if($status >=4 || $status < 0){
+                $context->reply(["status"=>300,"msg"=>"站点状态不正确"]);
+                return;
+            }
+            $status = " and status = ".$status;
+        }
+
+
+        $sql = "select site_key,site_name,status,create_time from site where 1=1".$site_name.$status;
+        $site_list = iterator_to_array($mysqlAdmin->query($sql));
+        $siteList = [];
+        if(!empty($site_list)){
+            foreach ($site_list as $key=>$val){
+                $sql = "select count(user_id) as onlineusers from user_session where lose_time=0";
+                $siteMysqlUser = $config->__get("data_".$val["site_key"]."_user");
+                $user_num =  iterator_to_array($siteMysqlUser ->query($sql));
+                $siteList[$key]["site_key"] = $val["site_key"];
+                $siteList[$key]["site_name"] = $val["site_name"];
+                $siteList[$key]["user_num"] = $user_num[0]['onlineusers'];
+                $siteList[$key]["status"] = $val["status"];
+                $siteList[$key]["time"] = floor((time()-$val["create_time"])/86400);
+
+            }
+        }
+        $context->reply([
+            'status'=>200,
+            'msg'=>'获取成功',
+            'list'=> $siteList
+        ]);
+    }
+}

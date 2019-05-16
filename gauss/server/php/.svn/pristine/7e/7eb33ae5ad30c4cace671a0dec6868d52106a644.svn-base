@@ -1,0 +1,120 @@
+<?php
+namespace Site\Websocket\Member\Deposits;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * Member/Deposits/MemberWithdrawal
+ * 会员出入款查询-会员出款
+ * 参数：page：当前页数,num:每页显示数量,go_num:跳转页数  status(1.审核中,2.已出款,3.拒绝出款)
+ * 搜索参数：user_name:会员名,user_level:会员层级,rel_name:真实姓名,status；状态,start_time:提交时间开始值,end_time:提交时间结束值
+ *
+ */
+
+class MemberWithdrawal extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //会员层级列表
+        $layer_list = json_decode($context->getInfo("LayerList"));
+        if(empty($layer_list)){
+            $layer_list = $this->layerList($context,$config);
+        }
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $user_name = isset($data["user_name"]) ? $data['user_name'] : '';
+        $user_level = isset($data["user_level"]) ? $data['user_level'] : '';
+        $rel_name = isset($data["rel_name"]) ? $data['rel_name'] : '';
+        $status = isset($data["status"]) ? $data['status'] : '';
+        $start_time = isset($data["start_time"]) ? $data['start_time'] : '';
+        $end_time = isset($data["end_time"]) ? $data['end_time'] : '';
+        $time = "";
+        if($user_name){
+            $sql = "SELECT user_id FROM user_info_intact WHERE user_key=:user_key";
+            $param = [":user_key"=>$user_name];
+            foreach ($mysql->query($sql,$param) as $row){
+                $user_id = $row["user_id"];
+            }
+            if(!empty($user_id)) {
+                $user_name = " AND user_id = '".$user_id."'";
+            }
+
+        }
+        if($user_level){
+            $user_level = " AND layer_id = ".$user_level;
+        }
+        if($rel_name){
+            $rel_name = " AND account_name = '".$rel_name."'";
+        }
+        if(!empty($status)){
+            if($status == 1){
+                $status = " AND  finish_time is null AND reject_time is null ";
+            }elseif ($status == 2){
+                $status = " AND finish_time is not null";
+            }elseif($status == 3){
+                $status = " AND reject_time is not null";
+            }
+        }
+        if(!empty($start_time) && !empty($end_time)){
+            $start = strtotime($start_time);
+            $end = strtotime($end_time);
+            $time = " AND launch_time BETWEEN '$start' AND '$end'";
+        }
+        $list = array();
+        $sql = "SELECT DISTINCT deal_key FROM user_info_intact ";
+        foreach ($mysql->query($sql) as $row){
+            $list[] = $row;
+        }
+        $withdrawal_list = array();
+        $total = 0;
+        $lists = array();
+        if(!empty($list)){
+            foreach ($list as $key=>$val){
+                $data1 = "data_".$val["deal_key"];
+                $mysqls = $config->{$data1};
+                $data_sql = "SELECT user_id,user_key,layer_id,withdraw_money,account_name,launch_time,accept_time,reject_time,".
+                    "finish_time,cancel_time FROM withdraw_intact WHERE 1=1 ".$user_name.$user_level.$rel_name.$status.$time;
+
+                $total_sql = "SELECT user_id FROM withdraw_intact WHERE 1=1 ".$user_name.$user_level.$rel_name.$status.$time;
+                foreach ($mysqls->query($data_sql) as $rows){
+                    $lists[] = $rows;
+                }
+                $total += $mysqls->execute($total_sql);
+                if(!empty($lists)){
+                    foreach ($lists as $k=>$v){
+                        $res = '等待中';
+                        if($v["reject_time"]){
+                            $res = "拒绝出款";
+                        }
+                        if($v["cancel_time"]){
+                            $res = "取消出款";
+                        }
+                        if($v["finish_time"]){
+                            $res = "已出款";
+                        }
+
+                        $withdrawal = [
+                            'user_key' =>  $v['user_key'],
+                            'layer_name' => $context->getInfo($v["layer_id"]),
+                            'account_name' => $v['account_name'],
+                            'withdraw_money' => $v["withdraw_money"],
+                            'launch_time' => !empty($v["launch_time"]) ? date("Y-m-d H:i:s",$v["launch_time"]) : '',
+                            'status' => $res,
+                        ];
+
+                        $withdrawal_list[] = $withdrawal;
+                    }
+                }
+            }
+        }
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "level_list"=>$layer_list,//会员层级列表信息
+            "total"=>$total,//总记录数
+            "list"=>$withdrawal_list
+        ]);
+    }
+}

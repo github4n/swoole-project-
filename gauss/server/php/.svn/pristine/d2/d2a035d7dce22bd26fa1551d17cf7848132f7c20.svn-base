@@ -1,0 +1,182 @@
+<?php
+
+namespace Site\Websocket\System\SystemReport;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 负责人---leo
+ * 负责开始时间--2019-04-08
+ * */
+
+/*
+ * 体系分红报表-大股东
+ * 参数：staff_name:用户名,start_time:开始时间,end_time:结束时间,distribute:派发(1为已派发，2为待派发),page:当前显示的页数,num:每页显示的数量,gonum:跳转的页数
+ * System/SystemReport/MajorShareholder {"user_name":"name","start_time":"2018-10-24","end_time":"2018-10-29","distribute":1,"page":1,"num":10,"gonum":0}
+ * */
+
+class MajorShareholder extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        $staffId = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if ($StaffGrade > 0) {
+            $context->reply(["status" => 208, "msg" => "当前登录账号没有访问的权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("staff_report_major", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $mysqlReport = $config->data_report;
+        $cache = $config->cache_site;
+        $page = !empty($data["page"]) ? $data["page"] : 1;
+        $num = !empty($data["num"]) ? $data["num"] : 10;
+        $go_num = !empty($data["go_num"]) ? $data["go_num"] : 1;
+        $staff_name = isset($data["staff_name"]) ? $data["staff_name"] : '';
+        $start_time = isset($data["start_time"]) ? $data["start_time"] : '';
+        $end_time = isset($data["end_time"]) ? $data["end_time"] : '';
+
+        $isSettle = isset($data["is_settle"]) ? $data["is_settle"] : '';
+        $time = "";
+        if (!is_numeric($page) && $page <= 0) {
+            $context->reply(["status" => 202, "msg" => "当前页数不正确"]);
+            return;
+        }
+        if (!is_numeric($num)) {
+            $context->reply(["status" => 203, "msg" => "每页显示的数量不正确"]);
+            return;
+        }
+        $limit = " LIMIT " . ($page - 1) * $num . "," . $num;
+        if (!empty($go_num) && !is_numeric($go_num)) {
+            if ($go_num <= 0) {
+                $context->reply(["status" => 204, "msg" => "跳转的页数不正确"]);
+                return;
+            }
+            $limit = " LIMIT " . ($go_num - 1) * $num . "," . $num;
+        }
+
+        if (empty($isSettle)) {
+            $isSettle = 0; //未结算
+        } else {
+            if (!is_numeric($isSettle)) {
+                $context->reply(["status" => 300, "msg" => "请选择结算状态"]);
+                return;
+            } else {
+                $isSettle = 1;
+            }
+        }
+        if (!empty($staff_name)) {
+            $staff_name = " AND major_name ='" . $staff_name . "'";
+        }
+        $major_list = [];
+        if ($isSettle == 0) { //未结算
+            $sql = "select major_id as staff_id,major_name from staff_struct_major WHERE 1=1" . $staff_name . $limit;
+            $total_sql = "SELECT major_id FROM staff_struct_major WHERE 1=1" . $staff_name;
+            $majorList = iterator_to_array($mysql->query($sql));
+            $total = $mysql->execute($total_sql);
+            foreach ($majorList as $key => $val) {
+				//判断是否是已结算的数据
+				$sql = "SELECT staff_key FROM dividend_settle_major WHERE major_id=:major_id";
+				$param = [
+					":major_id" => $val["staff_id"]
+				];
+				$staff_key_info = '';
+				foreach ($mysql->query($sql,$param) as $row) {
+					$staff_key_info = $row['staff_key'];
+				}
+				//如果未结算
+				if (!$staff_key_info) {
+					//获取大股东
+					$rate = json_decode($cache->hget("SystemSetting", $val["staff_id"]), true);
+					if (empty($rate)) {
+						$rate = json_decode($cache->hget("SystemSetting", 1), true);
+					}
+					//计算投注额
+					$sql = "select sum(wager_amount) as bet_all from monthly_staff where major_id=:major_id and monthly=:monthly";
+					foreach ($mysqlReport->query($sql,[":major_id"=>$val["staff_id"],":monthly"=>intval(date("Ym",strtotime("today")))]) as $row) {
+						$bet_all = $row["bet_all"];
+					}
+					if (empty($bet_all)) {
+						$bet_all = 0;
+					}
+					$major = [
+						"staff_name" => $val["major_name"],
+						"staff_id" => $val["staff_id"],
+						"major_grade" => "大股东",
+						"bet_amount" => $bet_all,
+						"bet_rate" => $rate["grade1_bet_rate"],
+						"profit_amount" => "0",
+						"profit_rate" => $rate["grade1_profit_rate"],
+						"fee_rate" => $rate["grade1_fee_rate"],
+						"tax_rate" => $rate["grade1_tax_rate"],
+						"dividend" => "0",
+						"settle_time" => "",
+						"is_settle" => 0,
+					];
+					$major_list[] = $major;
+				}
+            }
+        }
+        if ($isSettle == 1) {//已结算
+            $time = '';
+            if (!empty($start_time) && !empty($end_time)) {
+                $start_time = strtotime($start_time . " 00:00:00");
+                $end_time = strtotime($end_time . " 23:59:59");
+                $time = " AND settle_time > " . $start_time . " AND	settle_time < " . $end_time;
+            }
+            $order = ' ORDER BY settle_time DESC ';
+            $sql = "SELECT * FROM dividend_settle_major WHERE 1=1" . $staff_name . $time . $order. $limit;
+            $total_sql = "SELECT staff_key FROM dividend_settle_major WHERE 1=1" . $staff_name . $time;
+            $lists = array();
+            try {
+                foreach ($mysql->query($sql) as $rows) {
+                    $lists[] = $rows;
+                }
+                $total = $mysql->execute($total_sql);
+            } catch (\PDOException $e) {
+                $context->reply(["status" => 400, "msg" => "获取失败"]);
+                throw new \PDOException($e);
+            }
+            if (!empty($lists)) {
+                foreach ($lists as $key => $val) {
+                    $major_list[$key]["staff_name"] = $val['major_name'];
+                    $major_list[$key]["staff_id"] = $val['staff_id'];
+                    $major_list[$key]["major_grade"] = "大股东";
+                    $major_list[$key]["bet_amount"] = $val["bet_amount"];
+                    $major_list[$key]["bet_rate"] = $val["bet_rate"];
+                    $major_list[$key]["profit_amount"] = $val["profit_amount"];
+                    $major_list[$key]["profit_rate"] = $val["profit_rate"];
+                    $major_list[$key]["fee_rate"] = $val["fee_rate"];
+                    $major_list[$key]["tax_rate"] = $val["tax_rate"];
+                    $major_list[$key]["dividend"] = $val["dividend_result"];
+                    $major_list[$key]["settle_time"] = date("Y-m-d H:i:s", $val["settle_time"]);
+                    $major_list[$key]["is_settle"] = 1;
+                }
+            }
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'staff_report_major',
+            ':detail' => '查看大股东分红',
+        ];
+        $mysql->execute($sql, $params);
+
+        $context->reply([
+            "status" => 200,
+            "msg" => "获取成功",
+            "total" => $total,
+            "total_page" => ceil($total / $num),
+            "list" => $major_list
+        ]);
+    }
+
+}

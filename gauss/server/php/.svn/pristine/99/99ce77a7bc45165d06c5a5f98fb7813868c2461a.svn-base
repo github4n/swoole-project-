@@ -1,0 +1,46 @@
+<?php
+
+namespace App\Websocket\User\Recharge\Transaction;
+
+/*
+ * 云安付支付
+ *
+ * */
+
+class YunAnPay {
+
+    public function YunAnPays($passage_gate_data, $deposit_serial, $lunch_money, $way_key,$pay_callbackurl) {
+        $apiurl = "https://pay.antopay.com/AntoPay.html";
+        $partner = $passage_gate_data[0]['account_number'];
+        $key = $passage_gate_data[0]['signature_key'];
+        $ordernumber = $deposit_serial;
+        $banktype = '';
+        switch ($way_key) {
+            case 'alipay':
+                $banktype = 'ALIPAY';
+                break;
+            case 'weixin' :
+                $banktype = 'WEIXINPAY';
+                break;
+            default:
+                break;
+        }
+
+        $attach = '测试云安付支付';
+        $paymoney = $lunch_money;
+        $callbackurl = 'http://127.0.0.1:8080/2/AsynchronousCallback/YunAnPayCallback';
+        $hrefbackurl = $pay_callbackurl;
+        $signSource = sprintf("partner=%s&banktype=%s&paymoney=%s&ordernumber=%s&callbackurl=%s%s", $partner, $banktype, $paymoney, $ordernumber, $callbackurl, $key);
+        $sign = md5($signSource);
+        $postUrl = $apiurl . "?banktype=" . $banktype;
+        $postUrl .= "&partner=" . $partner;
+        $postUrl .= "&paymoney=" . $paymoney;
+        $postUrl .= "&ordernumber=" . $ordernumber;
+        $postUrl .= "&callbackurl=" . $callbackurl;
+        $postUrl .= "&hrefbackurl=" . $hrefbackurl;
+        $postUrl .= "&attach=" . $attach;
+        $postUrl .= "&sign=" . $sign;
+        return $postUrl;
+    }
+
+}

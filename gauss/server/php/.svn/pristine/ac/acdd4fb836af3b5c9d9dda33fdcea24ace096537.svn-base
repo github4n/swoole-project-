@@ -1,0 +1,107 @@
+<?php
+namespace Site\Websocket\System\SystemSetting;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/** 
+ * @description: 体系分红设置-大股东分红比例设置列表
+ * @author： leo
+ * @date：   2019-04-08   
+ * @link：   System/SystemSetting/MajorShareholder
+ * @modifyAuthor: 交接负责人：暂无
+ * @modifyTime: 交接时间：暂无
+ * @returnData: json;
+ */
+
+class MajorShareholder extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if ($StaffGrade != 0) {
+            $context->reply(["status" => 203, "msg" => "当前账号没有查看权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("staff_dividend_select", $auth)) {
+            $context->reply(["status" => 203, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $cache = $config->cache_site;
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo("MasterId");
+        $scope_staff_id =  $MasterId == 0 ? $staffId : $MasterId;
+        $param = [];
+        $mysql = $config->data_staff;
+        $order = " ORDER BY major_id DESC ";
+        $sql = "SELECT major_id,major_name FROM staff_struct_major" . $order;
+        $major_list = array();
+        try {
+            foreach ($mysql->query($sql) as $rows) {
+                $major_list[] = $rows;
+            }
+        } catch (\PDOException $e) {
+            $context->reply(["status" => 400, "msg" => "获取失败"]);
+            throw new \PDOException($e);
+        }
+        $majors_list = array();
+        if (!empty($major_list)) {
+            foreach ($major_list as $key => $val) {
+                $order = " ORDER BY scope_staff_id DESC ";
+                $sql = "SELECT * FROM dividend_setting WHERE scope_staff_id=:scope_staff_id" . $order;
+                $param[":scope_staff_id"] = $val["major_id"];
+                $params = [":scope_staff_id" => $val["major_id"]];
+                $dividend = [];
+                try {
+                    foreach ($mysql->query($sql, $param) as $row) {
+                        $dividend = $row;
+                    }
+                } catch (\PDOException $e) {
+                    $context->reply(["status" => 400, "msg" => "获取失败"]);
+                    throw new \PDOException($e);
+                }
+
+                if (!empty($dividend)) {
+                    $sql = "SELECT staff_key FROM staff_info_intact WHERE staff_id=:staff_id";
+                    foreach ($mysql->query($sql, [":staff_id" => $val["major_id"]]) as $row) {
+                        $majors_list[$key]["major_key"] = $row["staff_key"];
+                    }
+                    $majors_list[$key]["major_id"] = $val["major_id"];
+                    $majors_list[$key]["major_name"] = $val["major_name"];
+                    //如果下级的比例未被设置则显示为全站的比例
+                    $info = json_decode($cache->hget("SystemSetting", 1), true);
+                    $majors_list[$key]["self_bet"] = (!empty($dividend["grade1_bet_rate"]) ? $this->intercept_num($dividend["grade1_bet_rate"]) : $this->intercept_num($info['grade1_bet_rate'])) . "%";
+                    $majors_list[$key]["self_profit"] = (!empty($dividend["grade1_profit_rate"]) ? $this->intercept_num($dividend["grade1_profit_rate"]) : $this->intercept_num($info['grade1_profit_rate'])) . "%";
+                    $majors_list[$key]["self_fee"] = (!empty($dividend["grade1_fee_rate"]) ? $this->intercept_num($dividend["grade1_fee_rate"]) : $this->intercept_num($info['grade1_fee_rate'])) . "%";
+                    $majors_list[$key]["self_tax"] = (!empty($dividend["grade1_tax_rate"]) ? $this->intercept_num($dividend["grade1_tax_rate"]) : $this->intercept_num($info['grade1_tax_rate'])) . "%";
+                    $majors_list[$key]["minor_bet"] = (!empty($dividend["grade2_bet_rate"]) ? $this->intercept_num($dividend["grade2_bet_rate"]) : $this->intercept_num($info['grade2_bet_rate'])) . "%";
+                    $majors_list[$key]["minor_profit"] = (!empty($dividend["grade2_profit_rate"]) ? $this->intercept_num($dividend["grade2_profit_rate"]) : $this->intercept_num($info['grade2_profit_rate'])) . "%";
+                    $majors_list[$key]["minor_fee"] = (!empty($dividend["grade2_fee_rate"]) ? $this->intercept_num($dividend["grade2_fee_rate"]) : $this->intercept_num($info['grade2_fee_rate'])) . "%";
+                    $majors_list[$key]["minor_tax"] = (!empty($dividend["grade2_tax_rate"]) ? $this->intercept_num($dividend["grade2_tax_rate"]) : $this->intercept_num($info['grade2_tax_rate'])) . "%";
+                    $majors_list[$key]["agent_bet"] = (!empty($dividend["grade3_bet_rate"]) ? $this->intercept_num($dividend["grade3_bet_rate"]) : $this->intercept_num($info['grade3_bet_rate'])) . "%";
+                    $majors_list[$key]["agent_profit"] = (!empty($dividend["grade3_profit_rate"]) ? $this->intercept_num($dividend["grade3_profit_rate"]) : $this->intercept_num($info['grade3_profit_rate'])) . "%";
+                    $majors_list[$key]["agent_fee"] = (!empty($dividend["grade3_fee_rate"]) ? $this->intercept_num($dividend["grade3_fee_rate"]) : $this->intercept_num($info['grade3_fee_rate'])) . "%";
+                    $majors_list[$key]["agent_tax"] = (!empty($dividend["grade3_tax_rate"]) ? $this->intercept_num($dividend["grade3_tax_rate"]) : $this->intercept_num($info['grade3_tax_rate'])) . "%";
+                }
+            }
+        }
+        sort($majors_list, 1);
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'staff_dividend_select',
+            ':detail' => '查看大股东分红设置',
+        ];
+        $mysql->execute($sql, $params);
+        $context->reply([
+            "status" => 200,
+            "msg" => "获取成功",
+            "list" => $majors_list
+        ]);
+    }
+}

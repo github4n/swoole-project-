@@ -1,0 +1,122 @@
+<?php
+
+namespace Site\Websocket\ReportQuery;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 报表查询-层级报表
+ * ReportQuery/LayerReport
+ * */
+
+class LayerReport extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        $data = $context->getData();
+        $mysql = $config->data_report;
+
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $staffId = $context->getInfo('StaffId');
+        $cache = $config->cache_site;
+        $MasterId = $context->getInfo("MasterId");
+        $master_id = $MasterId == 0 ? $staffId : $MasterId;
+
+        $start_time = isset($data["start_time"]) ? $data["start_time"] : '';
+        $end_time = isset($data["end_time"]) ? $data["end_time"] : '';
+        $time = '';
+        if (!empty($start_time) && !empty($end_time)) {
+            $start_time = intval(date("Ymd", strtotime($data["start_time"])));
+            $end_time = intval(date("Ymd", strtotime($data["end_time"])));
+            $time = " and daily between $start_time and $end_time";
+        }
+        if (!empty($start_time) && empty($end_time)) {
+            $start_time = intval(date("Ymd", strtotime($data["start_time"])));
+            $time = " and daily > $start_time ";
+        }
+        if (empty($start_time) && !empty($end_time)) {
+            $end_time = intval(date("Ymd", strtotime($data["end_time"])));
+            $time = " and daily < $end_time ";
+        }
+        $listTranslation = [];
+        $layers = json_decode($cache->hget("LayerList", 'userLayer'));
+        foreach ($layers as $value) {
+            $listTranslation[$value->layer_id]["layer_id"] = $value->layer_id;
+            $listTranslation[$value->layer_id]["layer_name"] = $value->layer_name;
+            $listTranslation[$value->layer_id]["user_all"] = 0;
+            $listTranslation[$value->layer_id]["deposit_num"] = 0;
+            $listTranslation[$value->layer_id]["deposit_amount"] = 0;
+            $listTranslation[$value->layer_id]["deposit_count"] = 0;
+            $listTranslation[$value->layer_id]["withdraw_amount"] = 0;
+            $listTranslation[$value->layer_id]["withdraw_count"] = 0;
+            $listTranslation[$value->layer_id]["bet_amount"] = 0;
+            $listTranslation[$value->layer_id]["bet_count"] = 0;
+            $listTranslation[$value->layer_id]["bonus_amount"] = 0;
+            $listTranslation[$value->layer_id]["bonus_count"] = 0;
+            $listTranslation[$value->layer_id]["coupon_amount"] = 0;
+            $listTranslation[$value->layer_id]["rebate_amount"] = 0;
+            $listTranslation[$value->layer_id]["profit_amount"] = 0;
+        }
+        if ($StaffGrade == 0) { //站长
+            $sql = "select layer_id,count(user_id) as user_id, sum(deposit_amount>0) as deposit_num,sum(deposit_amount) as deposit_amount," .
+                    "sum(deposit_count) as deposit_count,sum(withdraw_amount) as withdraw_amount,sum(withdraw_count) as withdraw_count," .
+                    "sum(bet_amount) as bet_amount,sum(bet_count) as bet_count,sum(bonus_amount) as bonus_amount,sum(bonus_count) as bonus_count," .
+                    "sum(coupon_amount) as coupon_amount,sum(rebate_amount) as rebate_amount,sum(profit_amount) as profit_amount from daily_user " .
+                    "where 1=1 " . $time . " group by layer_id";
+        }
+        if ($StaffGrade == 1) {
+            $sql = "select layer_id,count(user_id) as user_id, sum(deposit_amount>0) as deposit_num,sum(deposit_amount) as deposit_amount," .
+                    "sum(deposit_count) as deposit_count,sum(withdraw_amount) as withdraw_amount,sum(withdraw_count) as withdraw_count," .
+                    "sum(bet_amount) as bet_amount,sum(bet_count) as bet_count,sum(bonus_amount) as bonus_amount,sum(bonus_count) as bonus_count," .
+                    "sum(coupon_amount) as coupon_amount,sum(rebate_amount) as rebate_amount,sum(profit_amount) as profit_amount from daily_user " .
+                    " where major_id = $master_id " . $time . " group by layer_id";
+        }
+        if ($StaffGrade == 2) {
+            $sql = "select layer_id,count(user_id) as user_id, sum(deposit_amount>0) as deposit_num,sum(deposit_amount) as deposit_amount," .
+                    "sum(deposit_count) as deposit_count,sum(withdraw_amount) as withdraw_amount,sum(withdraw_count) as withdraw_count," .
+                    "sum(bet_amount) as bet_amount,sum(bet_count) as bet_count,sum(bonus_amount) as bonus_amount,sum(bonus_count) as bonus_count," .
+                    "sum(coupon_amount) as coupon_amount,sum(rebate_amount) as rebate_amount,sum(profit_amount) as profit_amount from daily_user " .
+                    " where minor_id = $master_id " . $time . " group by layer_id";
+        }
+        if ($StaffGrade == 3) {
+            $sql = "select layer_id,count(user_id) as user_id, sum(deposit_amount>0) as deposit_num,sum(deposit_amount) as deposit_amount," .
+                    "sum(deposit_count) as deposit_count,sum(withdraw_amount) as withdraw_amount,sum(withdraw_count) as withdraw_count," .
+                    "sum(bet_amount) as bet_amount,sum(bet_count) as bet_count,sum(bonus_amount) as bonus_amount,sum(bonus_count) as bonus_count," .
+                    "sum(coupon_amount) as coupon_amount,sum(rebate_amount) as rebate_amount,sum(profit_amount) as profit_amount from daily_user " .
+                    " where agent_id = $master_id " . $time . " group by layer_id";
+        }
+
+        $list = iterator_to_array($mysql->query($sql));
+        $layer_list = [];
+        if (!empty($list)) {
+            foreach ($list as  $val) {
+                $listTranslation[$val["layer_id"]]["layer_id"] = $val["layer_id"];
+                $listTranslation[$val["layer_id"]]["layer_name"] = $context->getInfo($val["layer_id"]);
+                $listTranslation[$val["layer_id"]]["user_all"] = $val["user_id"];
+                $listTranslation[$val["layer_id"]]["deposit_num"] = $val["deposit_num"];
+                $listTranslation[$val["layer_id"]]["deposit_amount"] = $val["deposit_amount"];
+                $listTranslation[$val["layer_id"]]["deposit_count"] = $val["deposit_count"];
+                $listTranslation[$val["layer_id"]]["withdraw_amount"] = $val["withdraw_amount"];
+                $listTranslation[$val["layer_id"]]["withdraw_count"] = $val["withdraw_count"];
+                $listTranslation[$val["layer_id"]]["bet_amount"] = $val["bet_amount"];
+                $listTranslation[$val["layer_id"]]["bet_count"] = $val["bet_count"];
+                $listTranslation[$val["layer_id"]]["bonus_amount"] = $val["bonus_amount"];
+                $listTranslation[$val["layer_id"]]["bonus_count"] = $val["bonus_count"];
+                $listTranslation[$val["layer_id"]]["coupon_amount"] = $val["coupon_amount"];
+                $listTranslation[$val["layer_id"]]["rebate_amount"] = $val["rebate_amount"];
+                $listTranslation[$val["layer_id"]]["profit_amount"] = $val["profit_amount"];
+            }
+        }
+
+        foreach ($listTranslation as $value) {
+            $layer_list[] = $value;
+        }
+        $context->reply([
+            "status" => 200,
+            "msg" => "获取成功",
+            "list" => $layer_list
+        ]);
+    }
+
+}

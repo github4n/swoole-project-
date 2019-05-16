@@ -1,0 +1,67 @@
+<?php
+
+namespace Plat\Websocket\Website\SiteLottery;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * Website/SiteLottery/SiteLotterySave   {"site":["site1","site2"],"gameSettings":{"dice":[{"dice_ah":"1"},{"dice_fast":"1"},{"dice_js":"1"},{"dice_three":"1"}],"eleven":[{"eleven_fast":"1"},{"eleven_gd":"1"},{"eleven_three":"1"}],"ladder":[{"ladder_fast":"1"},{"ladder_five":"1"},{"ladder_three":"1"}],"lucky":[{"lucky_cq":"1"},{"lucky_fast":"1"},{"lucky_gd":"1"},{"lucky_three":"1"}],"racer":[{"racer_bj":"1"},{"racer_fast":"1"},{"racer_malta":"1"},{"racer_three":"1"}],"six":[{"six_fast":"1"},{"six_hk":"1"},{"six_ten":"1"},{"six_three":"1"}],"tiktok":[{"tiktok_cq":"1"},{"tiktok_fast":"1"},{"tiktok_three":"1"}]}}
+ *
+ * */
+
+class SiteLotterySave extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("site_lottery_update", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $public_mysql = $config->data_public;
+        $admin_mysql = $config->data_admin;
+        $analysis_mysql = $config->data_analysis;
+        $site = !empty($data['site']) ? $data['site'] : '';
+        $gameSettings = !empty($data['gameSettings']) ? $data['gameSettings'] : '';
+        if (empty($site)) {
+            $context->reply(["status" => 203, "msg" => "站点参数不可为空"]);
+            return;
+        }
+        if (empty($gameSettings)) {
+            $context->reply(["status" => 203, "msg" => "彩票设置参数不可为空"]);
+            return;
+        }
+        foreach ($site as $site_detail) {
+            foreach ($gameSettings as $model_key => $game_detail) {
+                foreach ($game_detail as $acceptablDetail) {
+                    foreach ($acceptablDetail as $game_key => $acceptable) {
+                        if (!in_array($acceptable, [0, 1])) {
+                            $context->reply(["status" => 203, "msg" => "开关参数错误"]);
+                            return;
+                        }
+                        $edit_sql = "update site_game set acceptable='$acceptable' where site_key='$site_detail' and model_key='$model_key' and game_key ='$game_key' ";
+                        try {
+                            $admin_mysql->execute($edit_sql);
+                        } catch (\PDOException $e) {
+                            $context->reply(["status" => 400, "msg" => "修改站点" . ':' . $site_detail . "彩种" . $model_key . ':' . "玩法" . $game_key . "的开关失败"]);
+                            throw new \PDOException($e);
+                        }
+                    }
+                }
+            }
+        }
+        $mysqls = $config->data_admin;
+        $sqlss = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+        $param = [
+            ':admin_id' => $context->getInfo('adminId'),
+            ':operate_key' => "site_lottery_update",
+            ':detail' => "修改了站点彩票开关"
+        ];
+        $mysqls->execute($sqlss, $param);
+        $context->reply(["status" => 200, "msg" => "修改成功"]);
+    }
+
+}

@@ -1,0 +1,63 @@
+<?php
+namespace Site\Task\Cash;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+/*
+ * 佣金派发
+ *
+ * */
+
+class Brokerage implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ["layer_id"=>$layer_id,"start_time"=>$start_time,"staff_id"=>$staff_id,'staff_name'=>$staff_name,'daily'=>$daily,'auto_deliver'=>$auto_deliver] = $context->getData();
+
+        $mysqlReport = $config->data_report;
+        $mysqlUser = $config->data_user;
+
+        $deal_list = [];
+        $sql = "select daily,user_id,user_key,layer_id,brokerage "." from daily_user_brokerage where daily=:daily";
+        $brokerage_list = iterator_to_array($mysqlReport->query($sql,[":daily"=>$daily]));
+
+        if(empty($brokerage_list)){
+            return;
+        }else{
+            foreach ($brokerage_list as $key=>$val){
+                $sqls = "select deal_key,account_name from user_info_intact where user_id=:user_id";
+                $param = [":user_id"=>$val['user_id']];
+                foreach ($mysqlUser->query($sqls,$param) as $row){
+                    $deal_list[] = ["user_id"=>$val['user_id'],"user_key"=>$val['user_key'],"account_name"=>$row["account_name"],"layer_id"=>$val['layer_id'],"daily"=>$daily,"brokerage"=>$val['brokerage'],"deal_key"=>$row["deal_key"]];
+                }
+            }
+        }
+
+        if(!empty($deal_list)){
+            foreach ($deal_list as $k=>$v){
+                $list = [];
+                $mysql = $config->__get('data_'.$v['deal_key']);
+                $list[] = ["user_id"=>$v['user_id'],"user_key"=>$v['user_key'],"account_name"=>empty($v["account_name"])? "": $v["account_name"],"layer_id"=>$v['layer_id'],"daily"=>$daily,"brokerage"=>$v['brokerage']];
+                $mysql->brokerage_deliver->load($list,[],'ignore');
+                //更新派发时间
+                $sqls = "update daily_user_brokerage "."set deliver_time=:deliver_time where user_id=:user_id and daily=:daily";
+                $mysqlReport->execute($sqls,[":deliver_time"=>time(),":user_id"=>$v['user_id'],":daily"=>$daily]) ;
+                $end_time = time();
+                $layer_sql = 'update daily_layer_brokerage set auto_deliver = :auto_deliver,deliver_staff_id = :deliver_staff_id,deliver_staff_name = :deliver_staff_name,deliver_launch_time = :deliver_launch_time,deliver_finish_time = :deliver_finish_time where daily = :daily and layer_id = :layer_id';
+                $params = [
+                    'auto_deliver' => $auto_deliver,
+                    'deliver_staff_id' => $staff_id,
+                    'deliver_staff_name' => $staff_name,
+                    'deliver_launch_time' => $start_time,
+                    'deliver_finish_time' => $end_time,
+                    'daily' => $daily,
+                    'layer_id' => $layer_id
+                ];
+                $mysqlReport->execute($layer_sql,$params);
+            }
+        }
+
+    }
+   
+}

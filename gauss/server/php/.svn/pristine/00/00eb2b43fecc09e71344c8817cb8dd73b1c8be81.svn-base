@@ -1,0 +1,99 @@
+<?php
+namespace Plat\Websocket\Website\GameCommission;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 接收修改游戏提成比例的修改的信息
+ * 参数：site_key:站点,type:game_list:游戏数据数组,game_key:游戏名称,bet_rate:有效投注比例 profit_rate：损益比例
+ * 示例：Website/GameCommission/CommissionSave {"site_key":"site1","category":"lottery","game_list":[{"range_max":600000,"tax_rate":15},{"range_max":1200000,"tax_rate":12},{"range_max":1800000,"tax_rate":10},{"range_max":2400000,"tax_rate":9.5},{"range_max":6000000,"tax_rate":5.5},{"range_max":12000000,"tax_rate":1}]}
+ */
+
+class CommissionSave extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("website_tax_update",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $adminId = $context->getInfo('adminId');
+        $data = $context->getData();
+        $site_key = $data['site_key'] ;
+        $game_list = $data['game_list'];
+        $category = $data['category'];
+        if(empty($site_key)) {
+            $context->reply(["status"=>202,"msg"=>"站点不能为空"]);
+            return;
+        }
+        if(empty($category)){
+            $context->reply(["status"=>203,"msg"=>"彩种类型不能为空"]);
+            return;
+        }
+        if(empty($game_list)){
+            $context->reply(["status"=>204,"msg"=>"游戏提成比例不能为空"]);
+            return;
+        }
+        foreach ($game_list as $item) {
+            $range_max = $item['range_max'];
+            $tax_rate = $item['tax_rate'];
+            if (empty($range_max)) {
+                $context->reply(["status" => 205, "msg" => "损益额度上线不能为空"]);
+                return;
+            }
+            if (!is_numeric($range_max)) {
+                $context->reply(["status" => 206, "msg" => "损益额度上线数据类型不正确"]);
+                return;
+            }
+            if (empty($tax_rate)) {
+                $context->reply(["status" => 207, "msg" => "提成比例不能为空"]);
+                return;
+            }
+            if (!is_numeric($tax_rate)) {
+                $context->reply(["status" => 207, "msg" => "提成比例数据类型错误"]);
+                return;
+            }
+        }
+        //删除之前的游戏比例数据
+        $sql = "DELETE FROM site_tax_config WHERE site_key=:site_key AND category=:category";
+        $param = [":site_key"=>$site_key,":category"=>$category];
+        $mysql = $config->data_admin;
+        try{
+            $mysql->execute($sql,$param);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"修改失败"]);
+            throw new \PDOException($e);
+        }
+        foreach ($game_list as $item){
+            $range_max = $item['range_max'];
+            $tax_rate = $item['tax_rate'];
+            $sql = "INSERT INTO site_tax_config SET site_key=:site_key, category=:category, range_max=:range_max, tax_rate=:tax_rate";
+            $param = [
+                ":site_key"=> $site_key,
+                ":category"=> $category,
+                ":range_max"=> $range_max,
+                ":tax_rate"=> $tax_rate,
+            ];
+            try{
+                $mysql->execute($sql,$param);
+            } catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                throw new \PDOException('insert site_tax_config'.$e);
+            }
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+        $params = [
+            ':admin_id' => $adminId,
+            ':operate_key' => 'website_tax_update',
+            ':detail' => '修改游戏提成比例设置',
+        ];
+        $mysql->execute($sql, $params);
+        $context->reply(['status' => 200, 'msg' => '修改成功']);
+
+    }
+}

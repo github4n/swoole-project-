@@ -1,0 +1,174 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-2-14
+ * Time: 上午10:14
+ */
+
+namespace Site\Websocket\Member\Analyze;
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员查询 Member/Analyze/MemberSearch  user_key layer_id start_time end_time broker_1_key broker_2_key broker_3_key
+ */
+
+class MemberSearch extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("user_analysis", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        //代理层级列表
+        $layer_list = json_decode($context->getInfo("LayerList"));
+        if(empty($layer_list)){
+            $layer_list = $this->layerList($context,$config);
+        }
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $staffId = $context->getInfo('StaffId');
+        $params = $context->getData();
+        $user_key = isset($params['user_key']) ? $params['user_key'] : '';
+        $layer_id = isset($params['layer_id']) ? $params['layer_id'] : '';
+        $start_time = isset($params['start_time']) ? $params['start_time'] : '';
+        $end_time = isset($params['end_time']) ? $params['end_time'] : '';
+        $broker_1_key = isset($params['broker_1_key']) ? $params['broker_1_key'] : '';
+        $broker_2_key = isset($params['broker_2_key']) ? $params['broker_2_key'] : '';
+        $broker_3_key = isset($params['broker_3_key']) ? $params['broker_3_key'] : '';
+        $time = '';
+        if ($user_key) {
+            $user_key = " AND user_key = '$user_key'";
+        }
+
+        if ($layer_id) {
+            $layer_id = " AND layer_id = '$layer_id'";
+        }
+        if ($start_time && $end_time) {
+            $start_time = strtotime($start_time);
+            $end_time = strtotime($end_time);
+            $time = " AND daily BETWEEN '$start_time' AND '$end_time'";
+        }
+        if ($broker_1_key) {
+            $broker_1_key = " AND broker_1_key = '$broker_1_key' ";
+        }
+        if ($broker_2_key) {
+            $broker_2_key = " AND broker_2_key = '$broker_2_key' ";
+        }
+        if ($broker_3_key) {
+            $broker_3_key = " AND broker_3_key = '$broker_3_key' ";
+        }
+
+        //求账号下及会员
+        $agentMysql = $config->data_staff;
+        $agent_id = [];
+        switch ($StaffGrade)
+        {
+            case 1:
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE major_id='$staffId'";
+                foreach($agentMysql->query($sql) as $row ) {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 2:
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE minor_id='$staffId'";
+                foreach($agentMysql->query($sql) as $row ) {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 3:
+                $agent_id[] = $staffId;
+                break;
+        }
+
+        //根据总代理id查询下属的所有账号id以及所属的数据库
+        $userMysql = $config->data_user;
+        $user_id = '';
+        foreach ($agent_id as $row) {
+            $sql = "SELECT user_id,deal_key FROM user_info WHERE agent_id='$row'";
+            foreach ($userMysql->query($sql) as $item) {
+                $user_id .= $item['user_id'].',';
+                $deal_key[] = $item['deal_key'];
+            }
+        }
+
+        //去除重复的数据，拼接id字段作为in的查询条件
+        $ids = rtrim($user_id,',');
+        if (empty($ids)) {
+            $ids = 0;
+        }
+        $mysqlReport = $config->data_report;
+        $sql = "select user_id,user_key,broker_1_key,broker_2_key,broker_3_key,user_name,sum(deposit_count) as deposit_count,sum(deposit_amount) as deposit_amount,max(deposit_max) as deposit_max,sum(withdraw_count) as withdraw_count,sum(withdraw_amount) as withdraw_amount,max(withdraw_max) as withdraw_max from daily_user where user_id in ($ids) " . $user_key . $layer_id . $time . $broker_1_key . $broker_2_key . $broker_3_key . "group by user_id,user_key,broker_1_key,broker_2_key,broker_3_key,user_name";
+        if ($StaffGrade == 0) {
+            $sql = "select user_id,user_key,broker_1_key,broker_2_key,broker_3_key,user_name,sum(deposit_count) as deposit_count,sum(deposit_amount) as deposit_amount,max(deposit_max) as deposit_max,sum(withdraw_count) as withdraw_count,sum(withdraw_amount) as withdraw_amount,max(withdraw_max) as withdraw_max from daily_user where 1=1 " . $user_key . $layer_id . $time . $broker_1_key . $broker_2_key . $broker_3_key . "group by user_id,user_key,broker_1_key,broker_2_key,broker_3_key,user_name";
+        }
+        $user_data = [];
+        try {
+            foreach ($mysqlReport->query($sql) as $row) {
+                $user_key = $row['user_key'];
+                $user_id = $row['user_id'];
+                $user_sql = "select register_time,register_ip,login_time,login_ip,money from user_cumulate where user_key = '$user_key'";
+                $register_time = '';
+                $register_ip = '';
+                $login_ip = '';
+                $login_time = '';
+                $login_count = 0;
+                $money = '';
+                $register_country = '';
+                $register_region = '';
+                $register_city = '';
+                $login_country = '';
+                $login_region = '';
+                $login_city = '';
+                foreach ($mysqlReport->query($user_sql) as $v) {
+                    $login_count_sql = "select coun(user_id) as login_count from user_id_history where user_id = '$user_id'" . $time;
+                    foreach ($userMysql->query($login_count_sql) as $val) {
+                        $login_count = $val['login_count'];
+                    }
+                    $mysqlPublic = $config->data_public;
+                    $register_time = $v['register_time'];
+                    $register_ip = $v['register_ip'];
+                    $ip1 = ip2long(long2ip($register_ip))>>8;
+                    foreach ($mysqlPublic->query("select country,region,city from ip_address where ip_net = '$ip1'") as $rip) {
+                            $register_country = $rip['country'];
+                            $register_region = $rip['region'];
+                            $register_city = $rip['city'];
+                    }
+                    $login_time = $v['login_time'];
+                    $login_ip = $v['login_ip'];
+                    $ip2 = ip2long(long2ip($login_ip))>>8;
+                    foreach ($mysqlPublic->query("select country,region,city from ip_address where ip_net = '$ip2'") as $lip) {
+                        $login_country = $lip['country'];
+                        $login_region = $lip['region'];
+                        $login_city = $lip['city'];
+                    }
+                    $money = $v['money'];
+                }
+                $row['login_count'] = $login_count;
+                $row['register_time'] = !empty($register_time) ? date('Y-m-d H:i:s',$register_time) : '';
+                $row['register_ip'] = !empty($register_ip) ? long2ip($register_ip) : '';
+                $row['register_country'] = $register_country;
+                $row['register_region'] = $register_region;
+                $row['register_city'] = $register_city;
+                $row['login_time'] = !empty($login_time) ? date('Y-m-d H:i:s',$login_time) : '';
+                $row['login_ip'] = !empty($login_ip) ? long2ip($login_ip) : '';
+                $row['login_country'] = $login_country;
+                $row['login_region'] = $login_region;
+                $row['login_city'] = $login_city;
+                $row['money'] = $money;
+                $row['res'] = $row['deposit_amount'] - $row['withdraw_amount'];
+                $user_data[] = $row;
+            }
+            $total = count($user_data);
+            $context->reply(['status' => 200,'msg' => '成功','total' => $total,'data' => $user_data,'layer_list' => $layer_list]);
+        }catch (\PDOException $e) {
+            $context->reply(["status"=>400,"msg"=>"获取列表失败"]);
+            throw new \PDOException($e);
+        }
+
+    }
+}

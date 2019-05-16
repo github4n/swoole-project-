@@ -1,0 +1,66 @@
+<?php
+namespace Plat\Task\Analysis;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class SiteLottery implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['site_key' => $site_key, 'game_key' => $game_key, 'time' => $time] = $context->getData();
+        $adapter = $context->getAdapter();
+
+        $mysql = $config->data_admin;
+        $sql = 'select site_name from site where site_key=:site_key';
+        foreach ($mysql->query($sql, ['site_key' => $site_key]) as $row) {
+            $site_name = $row['site_name'];
+        }
+        $mysql = $config->data_public;
+        $sql = 'select game_name from lottery_game where game_key=:game_key';
+        foreach ($mysql->query($sql, ['game_key' => $game_key]) as $row) {
+            $game_name = $row['game_name'];
+        }
+        $siteReport = $config->__get('data_' . $site_key . '_report');
+        // todo: read from site report
+
+        $analysis = $config->data_analysis;
+        // todo: write to plat analysis
+
+        $daily = intval(date('Ymd', $time));
+        $sql = 'select bet_count,bet_amount,bonus_amount,profit_amount ' .
+            'from daily_staff_lottery where daily=:daily and game_key=:game_key';
+        $generator = $siteReport->query($sql, [':daily' => $daily,":game_key"=>$game_key]);
+        if (!empty($generator)) {
+            $analysis->daily_site_lottery->import($generator, [
+                'daily' => $daily, 'site_key' => $site_key, 'site_name' => $site_name,'game_key'=>$game_key,'game_name'=>$game_name
+            ], 'replace');
+        }
+        
+        $weekly = intval(date('oW', $time));
+        $sql = 'select bet_count,bet_amount,bonus_amount,profit_amount ' .
+            'from weekly_staff_lottery where weekly=:weekly and game_key=:game_key';
+        $generator = $siteReport->query($sql, ['weekly' => $weekly,":game_key"=>$game_key]);
+        if (!empty($generator)) {
+            $analysis->weekly_site_lottery->import($generator, [
+                'weekly' => $weekly, 'site_key' => $site_key, 'site_name' => $site_name, 'game_key'=>$game_key,'game_name'=>$game_name
+            ], 'replace');
+        }
+        
+        $monthly = intval(date('Ym', $time));
+        $sql = 'select bet_count,bet_amount,bonus_amount,profit_amount ' .
+            'from monthly_staff_lottery where monthly=:monthly and game_key=:game_key';
+        $generator = $siteReport->query($sql, ['monthly' => $monthly,":game_key"=>$game_key]);
+        if (!empty($generator)) {
+            $analysis->monthly_site_lottery->import($generator, [
+                'monthly' => $monthly, 'site_key' => $site_key, 'site_name' => $site_name, 'game_key'=>$game_key,'game_name'=>$game_name
+            ], 'replace');
+        }
+        $monthStart = strtotime('midnight first day of this month', $time);
+        $monthEnd = strtotime('midnight first day of next month', $time);
+        if (time() > $monthEnd + 3600) {
+            $adapter->plan('Analysis/Tax', ['site_key' => $site_key, 'time' => $monthStart], time(), 9);
+        }
+    }
+}

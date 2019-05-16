@@ -1,0 +1,64 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-3-9
+ * Time: 上午9:44
+ */
+namespace App\Websocket\ExternalGame;
+use Lib\Websocket\Context;
+use Lib\Config;
+use App\Websocket\CheckLogin;
+
+/*
+ *创建玩家
+ * ExternalGame/CreateGamePlayer  {"interface_key":"fg"}
+ */
+class CreateGamePlayer extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $params = $context->getData();
+        $interface_key = isset($params['interface_key']) ? $params['interface_key'] : '';
+        $user_id = $context->getInfo('UserId');
+        $user_key = $context->getInfo('UserKey');
+        $adapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $client_id = $context->clientId();
+        $mysqlUser = $config->data_user;
+        switch ($interface_key) {
+            case 'fg':
+                $sql = "select fg_openid,fg_member_code from user_fungaming where user_id = '$user_id'";
+                $fg_openid = '';
+                $fg_member_code = '';
+                foreach ($mysqlUser->query($sql) as $val) {
+                    $fg_openid = $val['fg_openid'];
+                    $fg_member_code = $val['fg_member_code'];
+                }
+                if ($fg_openid && $fg_member_code) {
+                    $context->reply(['status' => 200 ,'msg' => '成功']);
+                    $context->setInfo('fg_openid',$fg_openid);
+                    $context->setInfo('fg_member_code',$fg_member_code);
+                    return;
+                }
+                $param['interface_key'] = $interface_key;
+                $param['user_id'] = $user_id;
+                $param['user_key'] = $user_key;
+                $param['interface_key'] = $interface_key;
+                $param['client_id'] = $client_id;
+                $param['action'] = 'create_new_player';
+                $param['method'] = 'CreatePlayer';
+                $adapter->plan('ExternalGame/' . ucfirst($interface_key) . '/' . $param['method'],['data'=>$param],time(),1);
+                break;
+            case 'ag' :
+
+                break;
+
+            default :
+                    $context->reply(['status' => 400 ,'msg' => '玩家账户创建失败,无效的三方平台Key']);
+                    return;
+                break;
+        }
+
+    }
+
+}

@@ -1,0 +1,160 @@
+<?php
+namespace Site\Websocket\AgentRebate\Brokerage;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 佣金查询
+ * AgentRebate/Brokerage/BrokerageSearch
+ *
+ * */
+
+class BrokerageSearch extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {   
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("broker_select",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo("MasterId");
+        $master_id = $MasterId == 0 ? $staffId : $MasterId;
+        $data = $context->getData();
+        $user_key = $data["user_key"];
+        $layer_id = $data["layer_id"];
+        $status = $data["status"];
+        $min_money = $data["min_money"];
+        $max_money = $data["max_money"];
+        $start_time = $data["start_time"];
+        $end_time = $data["end_time"];
+        $time = "";
+        $money = "";
+        if(!empty($user_key)){
+            $user_key = " AND user_key='".$user_key."'";
+        }
+        if(!empty($layer_id)){
+            $layer_id = " AND layer_id=".$layer_id;
+        }
+        if(!empty($status)){
+            if($status == 0){
+                $statu = " AND deliver_time is null";
+            }elseif($status == 1){
+                $statu = " AND deliver_time >0";
+            }else{
+                $statu = "";
+            }
+        }
+        if(!empty($min_money) && !empty($max_money)){
+            if(!is_numeric($min_money) && !is_numeric($max_money)){
+                $context->reply(["status"=>204,"msg"=>"搜索参数错误"]);
+                return;
+            }
+            $money = " AND brokerage BETWEEN ".$min_money." AND ".$max_money." OR cumulate_brokerage BETWEEN  ".$min_money." AND ".$max_money;
+        }
+        if(!empty($min_money) && empty($max_money)){
+            if(!is_numeric($min_money)){
+                $context->reply(["status"=>205,"msg"=>"搜索参数错误"]);
+                return;
+            }
+            $money = " AND brokerage >=".$min_money." OR cumulate_brokerage>=".$min_money;
+        }
+        if(empty($min_money) && !empty($max_money)){
+            if(!is_numeric($max_money)){
+                $context->reply(["status"=>206,"msg"=>"搜索参数错误"]);
+                return;
+            }
+            $money = " AND brokerage <=".$max_money." OR cumulate_brokerage<=".$max_money;
+        }
+        if(!empty($start_time) && !empty($end_time)){
+            $start = strtotime($start_time);
+            $end = strtotime($end_time);
+            $time = " AND deliver_time BETWEEN ".$start." AND ".$end;
+        }
+        $staff_mysql = $config->data_staff;
+        $user_mysql = $config->data_user;
+        $report_mysql = $config->data_report;
+        if($StaffGrade == 0){ //站长
+            $user_id = "SELECT group_concat(user_id) as user_list FROM user_info_intact WHERE invite_code is not null".$user_key.$layer_id;
+            $user_list = iterator_to_array($user_mysql->query($user_id));
+            $sql = "SELECT * FROM daily_user_brokerage WHERE user_id in (:user_list) ORDER BY daily DESC".$statu.$money.$time;
+            $param = [":user_list"=>$user_list[0]["user_list"]];
+            $list = iterator_to_array($report_mysql->query($sql,$param));
+            $total = $report_mysql->execute($sql,$param);
+        }
+        if($StaffGrade == 1){ //大股东
+            $agent_sql = "SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent WHERE major_id=:major_id";
+            $param = [":major_id"=>$master_id];
+            $agent_list = iterator_to_array($staff_mysql->query($agent_sql,$param));
+            $user_sql = "SELECT group_concat(user_id) as user_list FROM user_info_intact WHERE invite_code is not null AND agent_id in (:agent_list)".$user_key.$layer_id;
+            $user_param = [":agent_list"=>$agent_list[0]["agent_list"]];
+            $user_list = iterator_to_array($user_mysql->query($user_sql,$user_param));
+            $sql = "SELECT * FROM daily_user_brokerage WHERE user_id in (:user_list) ORDER BY daily DESC".$statu.$money.$time;
+            $param = [":user_list"=>$user_list[0]["user_list"]];
+            $list = iterator_to_array($report_mysql->query($sql,$param));
+            $total = $report_mysql->execute($sql,$param);
+        }
+        if ($StaffGrade == 2){  //股东
+            $agent_sql = "SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent WHERE minor_id=:minor_id";
+            $param = [":minor_id"=>$master_id];
+            $agent_list = iterator_to_array($staff_mysql->query($agent_sql,$param));
+            $user_sql = "SELECT group_concat(user_id) as user_list FROM user_info_intact WHERE invite_code is not null AND agent_id in (:agent_list)".$user_key.$layer_id;
+            $user_param = [":agent_list"=>$agent_list[0]["agent_list"]];
+            $user_list = iterator_to_array($user_mysql->query($user_sql,$user_param));
+            $sql = "SELECT * FROM daily_user_brokerage WHERE user_id in (:user_list) ORDER BY daily DESC".$statu.$money.$time;
+            $param = [":user_list"=>$user_list[0]["user_list"]];
+            $list = iterator_to_array($report_mysql->query($sql,$param));
+            $total = $report_mysql->execute($sql,$param);
+        }
+        if($StaffGrade == 3){ //总代理
+            $user_sql = "SELECT group_concat(user_id) as user_list FROM user_info_intact WHERE invite_code is not null AND agent_id = :agent_id".$user_key.$layer_id;
+            $user_param = [":agent_id"=>$master_id];
+            $user_list = iterator_to_array($user_mysql->query($user_sql,$user_param));
+            $sql = "SELECT * FROM daily_user_brokerage WHERE user_id in (:user_list) ORDER BY daily DESC".$statu.$money.$time;
+            $param = [":user_list"=>$user_list[0]["user_list"]];
+            $list = iterator_to_array($report_mysql->query($sql,$param));
+            $total = $report_mysql->execute($sql,$param);
+        }
+
+        $broker_list = [];
+        if(!empty($list)){
+            foreach ($list as $key=>$val){
+                $broker_list[$key]["daily"] = $val["daily"];
+                $broker_list[$key]["user_id"] = $val["user_id"];
+                $broker_list[$key]["user_key"] = $val["user_key"];
+                $broker_list[$key]["layer_name"] = empty($context->getInfo($val["layer_id"])) ? "层级被删除":$context->getInfo($val["layer_id"]);
+                $broker_list[$key]["broker_1_bet"] = $val["broker_1_bet"];
+                $broker_list[$key]["broker_1_user"] = $val["broker_1_user"];
+                $broker_list[$key]["broker_1_rate"] = $val["broker_1_rate"];
+                $broker_list[$key]["brokerage_1"] = $val["brokerage_1"];
+                $broker_list[$key]["broker_2_bet"] = $val["broker_2_bet"];
+                $broker_list[$key]["broker_2_user"] = $val["broker_2_user"];
+                $broker_list[$key]["broker_2_rate"] = $val["broker_2_rate"];
+                $broker_list[$key]["brokerage_2"] = $val["brokerage_2"];
+                $broker_list[$key]["broker_3_bet"] = $val["broker_3_bet"];
+                $broker_list[$key]["broker_3_user"] = $val["broker_3_user"];
+                $broker_list[$key]["broker_3_rate"] = $val["broker_3_rate"];
+                $broker_list[$key]["brokerage_3"] = $val["brokerage_3"];
+                $broker_list[$key]["brokerage"] = $val["brokerage"];
+                $broker_list[$key]["cumulate_brokerage"] = $val["cumulate_brokerage"];
+                $broker_list[$key]["deliver_time"] = empty($val["deliver_time"])?0:date("Y-m-d H:i:s",$val["deliver_time"]);
+                $broker_list[$key]["is_deliver"] = empty($val["deliver_time"])?"否":"是";
+            }
+        }
+        $context->reply(["status"=>200,"msg"=>"获取成功","total"=>$total,"list"=>$broker_list]);
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'broker_select',
+            ':detail' =>'查看佣金信息',
+        ];
+        $mysql = $config->data_staff;
+        $mysql->execute($sql, $params);
+    }
+}

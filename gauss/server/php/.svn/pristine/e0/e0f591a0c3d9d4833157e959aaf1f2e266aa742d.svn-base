@@ -1,0 +1,35 @@
+<?php
+namespace Site\Task\Site;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Status implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        $mysqlStaff = $config->data_staff;
+        $sql = "select int_value from site_setting  where setting_key='site_status'";
+        $status = [];
+        foreach ($mysqlStaff->query($sql) as $row){
+            $status = $row;
+        }
+        if(!empty($status)){
+            if($status["int_value"]==0){
+                $context->getAdapter()->plan('NotifyApp', ['path' => 'Site/Status', 'data' => ["data"=>["status" => 501,"msg"=>"正常运行"]]]);
+                $context->getAdapter()->plan('NotifyClient', ['path' => 'Website/Status', 'data' => ["status" => 501,"msg"=>"正常运行"]]);
+            }
+           if($status["int_value"]==1){
+               $context->getAdapter()->plan('NotifyApp', ['path' => 'Site/Status', 'data' => ["data"=>["status" => 502,"msg"=>"网站停止交易"]]]);
+           }
+            if($status["int_value"]==2){
+                $context->getAdapter()->plan('NotifyApp', ['path' => 'Site/Status', 'data' => ["data"=>["status" => 500,"msg"=>"APP维护中"]]]);
+            }
+            if($status["int_value"]==3){
+                $context->getAdapter()->plan('NotifyApp', ['path' => 'Site/Status', 'data' => ["data"=>["status" => 500,"msg"=>"维护中"]]]);
+                $context->getAdapter()->plan('NotifyClient', ['path' => 'Website/Status', 'data' => ["status" => 500,"msg"=>"维护中"]]);
+            }
+        }
+    }
+}

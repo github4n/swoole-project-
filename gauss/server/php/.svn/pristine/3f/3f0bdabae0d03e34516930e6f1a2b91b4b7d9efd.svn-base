@@ -1,0 +1,89 @@
+<?php
+namespace Site\Websocket;
+
+use Lib\Websocket\IHandler;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+abstract class CheckLogin implements IHandler{
+    abstract function onReceiveLogined(Context $context,Config $config);
+
+    public function onReceive(Context $context, Config $config){
+        // check login
+        if(empty($context->getInfo('StaffId'))) {
+            $context->reply(["status"=>201,'msg' => '你还没有登录请登录']);
+            return;
+        }
+        $this->onReceiveLogined($context,$config);
+    }
+    //获取所有层级
+    public function layerList(Context $context, Config $config){
+        $mysql = $config->data_user;
+        $sql = "SELECT layer_id,layer_name FROM layer_info";
+        foreach ($mysql->query($sql) as $rows){
+            $layer_list[]= $rows;
+        }
+        $context->setInfo('LayerList', json_encode($layer_list));
+        return $layer_list;
+    }
+    //三方入款方式
+    public function depositWay(Context $context, Config $config){
+        $mysql = $config->data_public;
+        $sql = "SELECT * FROM deposit_way";
+        foreach ($mysql->query($sql) as $row){
+            $way_list[] = $row;
+        }
+        $context->setInfo('WayList', json_encode($way_list));
+        return $way_list;
+    }
+    //三方支付平台列表
+    public function depositGate(Context $context, Config $config){
+        $mysql = $config->data_public;
+        $sql = "SELECT * FROM deposit_gate";
+        foreach ($mysql->query($sql) as $row){
+            $gate_list[] = $row;
+        }
+        $context->setInfo('GateList', json_encode($gate_list));
+        return $gate_list;
+    }
+    //获取会员层级
+    public function userList(Context $context, Config $config){
+        $mysql = $config->data_user;
+        $sql = "SELECT layer_id,layer_name FROM layer_info WHERE layer_type <100";
+        foreach ($mysql->query($sql) as $rows){
+            $user_layer[]= $rows;
+        }
+        $context->setInfo('UserLayer', json_encode($user_layer));
+        return $user_layer;
+    }
+    //获取代理层级
+    public function agentList(Context $context, Config $config){
+        $mysql = $config->data_user;
+        $sql = "SELECT layer_id,layer_name FROM layer_info WHERE layer_type > 100";
+        foreach ($mysql->query($sql) as $rows){
+            $agent_list[]= $rows;
+        }
+        $context->setInfo('AgentLayer', json_encode($agent_list));
+        return $agent_list;
+    }
+    //当前登录用户管理的权限
+    public function LayerManage(Context $context, Config $config){
+        if($context->getInfo("MasterId") == 0){
+            $mysql = $config->data_user;
+            $sql= "SELECT layer_id,layer_name FROM layer_info";
+            $layer_list = iterator_to_array($mysql->query($sql));
+        }else{
+            $mysql = $config->data_staff;
+            $sql = "SELECT layer_id FROM staff_layer WHERE staff_id=:staff_id";
+            $param = [":staff_id"=>$context->getInfo("StaffId")];
+            $layer_list = [];
+            foreach ($mysql->query($sql,$param) as $row){
+                $layer = [];
+                $layer["layer_id"] = $row["layer_id"] ;
+                $layer["layer_name"] = $context->getInfo($row["layer_id"]);
+                $layer_list[] =  $layer;
+            }
+        }
+        return  $layer_list;
+    }
+}

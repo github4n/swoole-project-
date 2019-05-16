@@ -1,0 +1,47 @@
+<?php
+namespace Site\Websocket\Lottery\OutPort;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*  保存外界口管理
+ *    Lottery/OutPort/PortSave
+ * */
+
+class PortSave extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $game_list = $data["game_list"];
+        if(!is_array($game_list)){
+            $context->reply(["status"=>205,"msg"=>"参数类型错误"]);
+            return;
+        }
+        foreach ($game_list as $item){
+            $game_key = $item["game_key"];
+            $acceptable = $item["switch"];
+            if($acceptable === "on"){
+                $acceptable = 1;
+            }elseif ($acceptable === "off"){
+                $acceptable = 0;
+            }else{
+                $context->reply(["status"=>206,"msg"=>"开关参数类型错误"]);
+                return;
+            }
+            $sql = "UPDATE external_game SET acceptable = :acceptable WHERE game_key=:game_key";
+            $param = [
+                "acceptable"=>$acceptable,
+                "game_key"=>$game_key
+                ];
+            try{
+                $mysql->execute($sql,$param);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                throw new \PDOException($e);
+            }
+        }
+        //记录日志
+        $context->reply(["status"=>200,"msg"=>"修改成功"]);
+    }
+}

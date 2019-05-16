@@ -1,0 +1,39 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-1-14
+ * Time: 上午10:31
+ * 步长
+ */
+
+namespace Site\Task\Lottery;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Step implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        //存Step
+        $cache = $config->cache_site;
+        $mysqlStaff = $config->data_staff;
+        $mysqlPublic = $config->data_staff;
+        $sql = 'SELECT play_key,game_key'.
+            ' FROM lottery_game_play WHERE	acceptable=1';
+        foreach ($mysqlStaff->query($sql) as $row) {
+            $sql1 = 'SELECT win_rate,decimal_place,win_key FROM lottery_win WHERE play_key=:play_key';
+            $param1 = [':play_key' => $row['play_key']];
+            foreach ($mysqlPublic->query($sql1, $param1) as $item) {
+                //,
+                $decimal = $item['decimal_place'];
+                $len = intval(str_pad(1, $decimal + 2, 0));
+                $tmp = ceil(($item['win_rate'] / 1000) * $len);
+                $pushData['step'] = $tmp / $len;
+                $cache->hset('Step', $row['game_key'].'-'.$item['win_key'], $pushData['step']);
+            }
+        }
+    }
+}

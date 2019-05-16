@@ -1,0 +1,64 @@
+<?php
+namespace Plat\Websocket\Website\SiteLottery;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 彩票站点彩票设置-彩票开关列表
+ * 参数：site_key:站点,
+ * Website/SiteLottery/SiteLotteryList {"site_key":"site1","model_key":"dice"}
+ * */
+
+class SiteLotteryList extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("website_lottery_select", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $sitelist = json_decode($context->getInfo("SiteList"));
+        if(empty($sitelist)){
+            $sitelist = $this->getallsite( $context, $config) ;
+        }
+        //彩票类型
+        $model_list = json_decode($context->getInfo("ModelList"));
+        $mysql = $config->data_admin;
+        $data = $context->getData();
+        $site_key = $data['site_key']?:'site1';
+        $model_key = $data["model_key"]?:"dice";
+        //彩种及开关
+        $gamelist = array();
+
+        $gamesql = "SELECT game_key,acceptable FROM site_game WHERE site_key=:site_key AND model_key=:model_key";
+        $param = [":model_key"=>$model_key,":site_key"=>$site_key];
+        foreach ($mysql->query($gamesql,$param) as $rows){
+            $gamelist[]= $rows;
+        }
+        foreach ($gamelist as $key=>$val){
+            $gamelist[$key]["game_name"] = $context->getInfo($val["game_key"]);
+        }
+        //玩法和开关
+        $switchsql = "SELECT game_key,play_key,acceptable FROM site_play WHERE model_key=:model_key AND site_key=:site_key";
+        $params=[":model_key"=>$model_key,":site_key"=>$site_key];
+        foreach ($mysql->query($switchsql,$params) as $switchrow){
+            $switchlist = [];
+            $switchlist["play_name"] = $context->getInfo($switchrow["play_key"]);
+            $switchlist["game_key"] = $switchrow["game_key"];
+            $switchlist["play_key"] = $switchrow["play_key"];
+            $switchlist["acceptable"] = $switchrow["acceptable"];
+            $play_list[] = $switchlist;
+        }
+
+        $context->reply([
+            'status'=>200,
+            'msg'=>'获取成功',
+            "sitelist"=>$sitelist,
+            "model_list"=> $model_list,
+            "game_list"=> $gamelist,
+            'play_list'=>$play_list
+        ]);
+    }
+}

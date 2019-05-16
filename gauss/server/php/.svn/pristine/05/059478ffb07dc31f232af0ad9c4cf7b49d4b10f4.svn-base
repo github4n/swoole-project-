@@ -1,0 +1,80 @@
+<?php
+namespace Site\Websocket\System\SystemSetting;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 负责人---leo
+ * 负责开始时间--2019-04-08
+ * */
+
+/*
+ * 体系分红设置-编辑大股东分红比例
+ * 参数
+ * System/SystemSetting/DividendMajorEdit  
+ * */
+
+class DividendMajorEdit extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if ($StaffGrade != 0){
+            $context->reply(["status" => 203,"当前账号没有修改权限"]);
+            return;
+        }
+		//验证是否有操作权限
+		$auth = json_decode($context->getInfo('StaffAuth'));
+		if (!in_array("staff_dividend_update",$auth)){
+			$context->reply(["status" => 203,"msg" => "你还没有操作权限"]);
+			return;
+		}
+        $staffId = $context->getInfo('StaffId');
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $staff_id = $data["major_id"];
+        if (!is_numeric($staff_id)){
+            $context->reply(["status" => 202,"msg" => "新增的股东编号类型不正确"]);
+            return;
+        }
+        $sql = "SELECT staff_name FROM staff_info_intact WHERE staff_id=:staff_id AND staff_grade = :staff_grade AND master_id = :master_id" ;
+        $param = [
+            ":staff_id" => $staff_id,
+            ":staff_grade" => 1,
+            ":master_id" => 0
+        ];
+        $info = array();
+        foreach ($mysql->query($sql,$param) as $row){
+            $info = $row;
+        }
+        if (empty($info)){
+            $context->reply(["status" => 204,"msg" => "当前提交的编号不是大股东"]);
+            return;
+        }
+        $sql = "SELECT * FROM dividend_setting WHERE scope_staff_id=:scope_staff_id";
+        $param = [":scope_staff_id" => $staff_id];
+        $infos = array();
+        $list = array();
+        foreach ($mysql->query($sql,$param) as $rows){
+            $infos = $rows;
+        }
+        if (!empty($infos)){
+            $list["staff_key"] = $info["staff_key"];
+            $list["staff_name"] = $info["staff_name"];
+            $list["major_bet"] = $infos["grade1_bet_rate"]."%";
+            $list["major_profit"] = $infos["grade1_profit_rate"]."%";
+            $list["major_fee"] = $infos["grade1_fee_rate"]."%";
+            $list["major_tax"] = $infos["grade1_tax_rate"]."%";
+            $list["minor_bet"] = $infos["grade2_bet_rate"]."%";
+            $list["minor_profit"] = $infos["grade2_profit_rate"]."%";
+            $list["minor_fee"] = $infos["grade2_fee_rate"]."%";
+            $list["minor_tax"] = $infos["grade2_tax_rate"]."%";
+            $list["agent_bet"] = $infos["grade3_bet_rate"]."%";
+            $list["agent_profit"] = $infos["grade3_profit_rate"]."%";
+            $list["agent_fee"] = $infos["grade3_fee_rate"]."%";
+            $list["agent_tax"] = $infos["grade3_tax_rate"]."%";
+        }
+        $context->reply(["status" => 200,"msg" => "获取成功","info" => $list]);
+    }
+}

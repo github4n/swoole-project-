@@ -1,0 +1,278 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: parker
+ * Date: 18-12-26
+ * Time: 下午4:16
+ */
+
+namespace Site\Websocket\Lottery\BureauData;
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 报表查询-局数据查询
+ * Lottery/BureauData/BureauData {"game_key":"tiktok_cq","period":"20181226066"}
+ * 参数：page:当前页数,num:每页显示的数量,go_num:跳转的页数
+ * 根据stafffrade查找名下的user 然后查找数据
+ * */
+
+class BureauData extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo('StaffId');
+        $staffGrade = $context->getInfo('StaffGrade');
+        $data = $context->getData();
+
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("game_period_report",$auth)) {
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        //接收数据
+        $game_key = empty($data['game_key'])?null:$data['game_key'];
+        $period = empty($data['period'])?null:$data['period'];
+        $page = empty($data["page"])?1:$data["page"];
+        $num = empty($data["num"])?10:$data["num"];
+        $go_num = empty($data["go_num"])?null:$data["go_num"];
+
+
+        //查询彩票列表
+        $public_mysql = $config->data_public;
+        $lottery_list = [];
+        $game_list = [];
+        $model_list = json_decode($context->getInfo('ModelList'),true);
+        $game_sql = 'SELECT game_key FROM lottery_game WHERE acceptable=1 AND model_key=:model_key';
+        foreach ($model_list as $k => $v)
+        {
+            $game_list[$k]['model_name'] = $v['model_name'];
+            $game_param = [':model_key' => $v['model_key']];
+            foreach ($public_mysql->query($game_sql,$game_param) as  $value)
+            {
+                $lottery_list[] = [
+                    "game_key" => $value['game_key'],
+                    'game_name' => $context->getInfo($value['game_key'])
+                ];
+            }
+            $game_list[$k]['game_list'] = $lottery_list;
+            unset($lottery_list);
+        }
+
+        //搜索条件
+        $period_search = NULL;
+        $game_key_search = NULL;
+        if (!empty($game_key))
+        {
+            if (empty($context->getInfo($game_key)))
+            {
+                $context->reply(['status' => 202, 'msg' => '彩票名称错误', 'data' => $game_key]);
+                return;
+            }
+            $game_key_search = ' AND game_key='."'$game_key'".' ';
+        }
+
+        if (!empty($period))
+        {
+            $period_search = ' AND period='."'$period'".' ';
+        }
+
+        if(!is_numeric($page)){
+            $context->reply(["status"=>202,"msg"=>"当前页数不正确"]);
+            return;
+        }
+        if(!is_numeric($num)){
+            $context->reply(["status"=>203,"msg"=>"每页显示数量不正确"]);
+            return;
+        }
+        $limit = ' LIMIT '.($page-1)*$num.','.$num;
+        //跳转的页数
+        if(!empty($go_num) && is_numeric($go_num)){
+            $limit =  ' LIMIT '.($go_num-1)*$num.','.$num;
+        }
+        $totalData = [];
+       if ($staffGrade == 0)
+       {
+           $mysql = $config->data_report;
+           $sql = 'SELECT game_key,period,open_time,user_count,bet_count,wager_count,bet_amount,rebate_amount,wager_amount,bonus_amount,profit_amount FROM lottery_period WHERE 1 '.$game_key_search.$period_search.' ORDER BY open_time DESC '.$limit;
+           $list = [];
+           foreach ($mysql->query($sql) as $row )
+           {
+               $list[] = $row;
+           }
+
+           //总数据条数
+           $item_sql = 'SELECT COUNT(period) AS item FROM lottery_period';
+           foreach ($mysql->query($item_sql) as $item)
+           {
+               $totalData['total_item'] = $item['item'];
+           }
+
+           //统计数据
+
+           //彩票种类
+           $sql = 'SELECT COUNT(DISTINCT game_key) AS lottery_num FROM lottery_period ';
+           foreach ($mysql->query($sql) as $num)
+           {
+               $totalData['lottery_num'] = $num['lottery_num'];
+           }
+
+
+           //投注人数等数据
+           $sql = 'SELECT SUM(user_count) AS user_count,SUM(bet_count) AS bet_launch_count,SUM(bet_amount) AS bet_launch_amount,SUM(wager_count) AS bet_count,SUM(wager_amount) AS bet_amount,SUM(rebate_amount) AS rebate_amount,SUM(bonus_amount) AS bonus_amount,SUM(profit_amount) AS profit_amount FROM lottery_period';
+           foreach ($mysql->query($sql) as $total)
+           {
+               $totalData['user_count'] = $total['user_count'];
+               $totalData['bet_launch_count'] = $total['bet_launch_count'];
+               $totalData['bet_launch_amount'] = $total['bet_launch_amount'];
+               $totalData['bet_count'] = $total['bet_count'];
+               $totalData['bet_amount'] = $total['bet_amount'];
+               $totalData['rebate_amount'] = substr(sprintf("%.3f", $total['rebate_amount']),0,-1);
+               $totalData['bonus_amount'] = substr(sprintf("%.3f", $total['bonus_amount']),0,-1);
+               $totalData['profit_amount'] = substr(sprintf("%.3f", $total['profit_amount']),0,-1);
+           }
+           $context->reply(['status' => 200, 'msg' => '获取成功','game_list'=>$game_list,
+               'list' => $list,
+               'total_data' => $totalData
+           ]);
+       }else
+       {
+           //查询所有的总代理id
+           $agentMysql = $config->data_staff;
+           $agent_id = [];
+           switch ($staffGrade)
+           {
+               case 1:
+                   $sql = 'SELECT agent_id FROM staff_struct_agent WHERE major_id=:major_id';
+                   $param = [':major_id' => $staffId];
+                   foreach($agentMysql->query($sql,$param) as $row )
+                   {
+                       $agent_id[] = $row['agent_id'];
+                   }
+                   break;
+               case 2:
+                   $sql = 'SELECT agent_id FROM staff_struct_agent WHERE minor_id=:minor_id';
+                   $param = [':minor_id' => $staffId];
+                   foreach($agentMysql->query($sql,$param) as $row )
+                   {
+                       $agent_id[] = $row['agent_id'];
+                   }
+                   break;
+               case 3:
+                   $agent_id[] = $staffId;
+                   break;
+           }
+           //$context->reply($agent_id);
+
+           //根据总代理id查询下属的所有账号id以及所属的数据库
+           $userMysql = $config->data_user;
+           $sql = 'SELECT user_id,deal_key FROM user_info WHERE agent_id=:agent_id';
+           $user_id = '';
+           $deal_key = [];
+           foreach ($agent_id as $row)
+           {
+               $param = [':agent_id' => $row];
+               foreach ($userMysql->query($sql,$param) as $item)
+               {
+                   $user_id .= $item['user_id'].',';
+                   $deal_key[] = $item['deal_key'];
+               }
+           }
+
+           //去除重复的数据，拼接id字段作为in的查询条件
+           $deal_key = array_unique($deal_key);
+           $ids = rtrim($user_id,',');
+           $total_item = 0;
+           $lists = array();
+           $list = array();
+           $totalData = [
+               'user_count' => 0,
+               'bet_launch_count' => 0,
+               'bet_count' => 0,
+               'bet_launch_amount' => 0,
+               'rebate_amount' => 0,
+               'bet_amount' => 0,
+               'bonus_amount' => 0,
+               'profit_amount' => 0
+           ];
+           //查询局数据
+           $sql = 'SELECT game_key,period,settle_time,COUNT(DISTINCT user_id) AS user_count,COUNT(DISTINCT bet_serial) AS bet_launch_count,SUM(bet_launch) AS bet_launch_amount,SUM(bet) AS bet_amount ,SUM(rebate) AS rebate_amount,SUM(bonus) AS bonus_amount,(SUM(bonus)+SUM(rebate)-SUM(bet_launch)) AS profit_amount FROM `bet_unit_intact` WHERE user_id IN ('.$ids.') '.$game_key_search.$period_search.'GROUP BY game_key,period,settle_time '.'ORDER BY settle_time DESC'.$limit;
+
+           //查询有效注单笔数
+           $bet_sql = 'SELECT COUNT(DISTINCT bet_serial) AS bet_count FROM bet_unit_intact WHERE bet>0 AND  game_key=:game_key AND period=:period';
+
+           //彩票种类
+           $game_num = 'SELECT COUNT(DISTINCT game_key) AS game_num FROM bet_unit_intact ';
+
+           //总数据条数
+           $item_sql = 'SELECT COUNT(bet_serial) AS item FROM bet_form';
+
+           foreach ($deal_key as $row)
+           {
+               $dealMysql = $config->__get('data_'.$row);
+
+               foreach ($dealMysql->query($item_sql) as $row)
+               {
+                    $total_item +=$row['item'];
+               }
+               $totalData['total_item'] = $total_item;
+               foreach ($dealMysql->query($sql) as $item)
+               {
+                   $lists[] = $item;
+               }
+               foreach ($dealMysql->query($game_num) as $num)
+               {
+                   $totalData['lottery_num'] = $num['game_num'];
+               }
+               $tmp_rebate = 0;
+               $tmp_bonus = 0;
+               $tmp_profit = 0;
+               foreach ($lists as $k => $v)
+               {
+                   $list[$k]['game_key'] = $v['game_key'];
+                   $list[$k]['period'] = $v['period'];
+                   $list[$k]['settle_time'] = $v['settle_time'];
+                   $list[$k]['user_count'] = $v['user_count'];
+                   $list[$k]['bet_launch_count'] = $v['bet_launch_count'];
+                   $bet_param = [
+                       ':game_key' => $v['game_key'],
+                       ':period' => $v['period']
+                   ];
+                   foreach ($dealMysql->query($bet_sql,$bet_param) as $count)
+                   {
+                       $list[$k]['bet_count'] = $count['bet_count'];
+                   }
+                   $list[$k]['bet_launch_amount'] = $v['bet_launch_amount'];
+                   $list[$k]['rebate_amount'] = $v['rebate_amount'];
+                   $list[$k]['bet_amount'] = $v['bet_amount'];
+                   $list[$k]['bonus_amount'] = $v['bonus_amount'];
+                   $list[$k]['profit_amount'] = $v['profit_amount'];
+
+                   //统计数据
+                   $totalData['user_count'] += $v['user_count'];
+                   $totalData['bet_launch_count'] += $v['bet_launch_count'];
+                   $totalData['bet_count'] += $list[$k]['bet_count'];
+                   $totalData['bet_launch_amount'] += $v['bet_launch_amount'];
+                   $tmp_rebate += $v['rebate_amount'];
+                   $totalData['rebate_amount'] = substr(sprintf("%.3f", $tmp_rebate),0,-1);
+                   $totalData['bet_amount'] += $v['bet_amount'];
+                   $tmp_bonus += $v['bonus_amount'];
+                   $totalData['bonus_amount'] = substr(sprintf("%.3f", $tmp_bonus),0,-1);
+                   $tmp_profit += $v['profit_amount'];
+                   $totalData['profit_amount'] = substr(sprintf("%.3f", $tmp_profit),0,-1);
+               }
+
+           }
+
+           //统计数据
+           $context->reply(['status' => 200, 'msg' => '获取成功','game_list'=>$game_list,
+               'list' => $list,
+               'total_data' => $totalData
+           ]);
+
+       }
+
+    }
+}

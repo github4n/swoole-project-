@@ -1,0 +1,29 @@
+<?php
+namespace Site\Task\User;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Notice implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['data' => $msg] = $context->getData();
+        $websocketAdapter = new \Lib\Websocket\Adapter($config->cache_site);
+        $mysqlStaff = $config->data_staff;
+        $sql = "select staff_id from staff_info_intact where staff_grade=0";
+        $staff_list = iterator_to_array($mysqlStaff->query($sql));
+        if(!empty($staff_list)){
+            foreach ($staff_list as $key=>$val){
+                $sql = "select client_id from staff_session where staff_id=:staff_id";
+                $param = [":staff_id"=>$val["staff_id"]];
+                foreach ($mysqlStaff->query($sql,$param) as $row){
+                    $websocketAdapter->send($row["client_id"], "User/Notice", ["msg"=>$msg]);
+                }
+            }
+
+        }
+
+    }
+}

@@ -1,0 +1,66 @@
+<?php
+namespace Plat\Websocket\Website\ExternalGame;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ *Website\ExternalGame\SiteLottery {"site_key":"site1"}
+ * */
+
+class SiteLottery extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("site_external_select", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $site_key = $data['site_key'];
+        $mysql = $config->data_admin;
+        $sitesql = "select category_key,game_key,acceptable from site_external_game where site_key = :site_key";
+        $param = [":site_key" => $site_key];
+        foreach ($mysql->query($sitesql, $param) as $rows) {
+            $list[] = $rows;
+        }
+        $videos = array();
+        $sports = array();
+        $games = array();
+        $cards = array();
+        if(!empty($list)){
+            foreach ($list as $k => $v){
+                if ($v['category_key'] == "game"){
+                    $game['game_key'] = $v['game_key'];
+                    $game['acceptable'] = $v['acceptable'];
+                    array_push($games,$game);
+                }
+                if ($v['category_key'] == "video"){
+                    $video['game_key'] = $v['game_key'];
+                    $video['acceptable'] = $v['acceptable'];
+                    array_push($videos,$video);
+                }
+                if ($v['category_key'] == "sports"){
+                    $sport['game_key'] = $v['game_key'];
+                    $sport['acceptable'] = $v['acceptable'];
+                     array_push($sports,$sport);
+                }
+                if ($v['category_key'] == "cards"){
+                    $card['game_key'] = $v['game_key'];
+                    $card['acceptable'] = $v['acceptable'];
+                    array_push($cards,$card);
+                }
+            }
+        }
+
+        $context->reply([
+            'status'=>200,
+            'msg'=>'获取成功',
+            "video"=>$videos,
+            "sports"=>$sports,
+            "game"=>$games,
+            "cards"=>$cards
+        ]);
+    }
+}

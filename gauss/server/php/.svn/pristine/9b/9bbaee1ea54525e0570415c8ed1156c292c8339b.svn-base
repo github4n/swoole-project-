@@ -1,0 +1,97 @@
+<?php
+namespace Site\Websocket\AgentRebate\BrokerageSetting;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * AgentRebate/BrokerageSetting/BrokerageList {"layer_id":0}
+ *
+ * */
+
+class BrokerageList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("broker_setting",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $layer_id = isset($data["layer_id"]) ? $data["layer_id"] : 0;
+        if(!empty($layer_id)){
+            if(!is_numeric($layer_id)){
+                $context->reply(["status"=>230,"msg"=>"选择的层级类型不正确"]);
+                return;
+            }
+        }
+        if(empty($layer_id)){
+            $all_list = [];
+            $sql = "SELECT * FROM brokerage_setting";
+            $lists = iterator_to_array($mysql->query($sql));
+            if(!empty($lists)){
+                foreach ($lists as $key=>$val){
+                    $list = [];
+                    $sql = "SELECT * FROM brokerage_rate WHERE layer_id=:layer_id";
+                    $param = [":layer_id"=>$val["layer_id"]];
+                    $rate_list = iterator_to_array($mysql->query($sql,$param));
+                    if(!empty($rate_list)){
+                        foreach ($rate_list as $k=>$v){
+                            $list[$k]["min_bet_amount"] = $val["min_bet_amount"];
+                            $list[$k]["min_deposit"] = $val["min_deposit"];
+                            $list[$k]["layer_id"] = $val["layer_id"];
+                            $list[$k]["layer_name"] = $context->getInfo($val["layer_id"]);
+                            $list[$k]["auto_deliver"] = $val['auto_deliver'];
+                            $list[$k]["deliver_time"] = empty($val['deliver_time'])?"":date("H:i",strtotime(date("Ymd ".$val['deliver_time']."00",strtotime("today"))));
+                            $list[$k]["vigor_count"] = $v["vigor_count"];
+                            $list[$k]["broker_1_rate"] = $v["broker_1_rate"];
+                            $list[$k]["broker_2_rate"] = $v["broker_2_rate"];
+                            $list[$k]["broker_3_rate"] = $v["broker_3_rate"];
+                        }
+                    }
+                    $all_list[] =  $list;
+                }
+            }
+        }else{
+            $all_list = [];
+            $sql = "SELECT * FROM brokerage_setting where layer_id = :layer_id";
+            $lists = iterator_to_array($mysql->query($sql,[":layer_id"=>$layer_id]));
+            if(!empty($lists)){
+                foreach ($lists as $key=>$val){
+                    $list = [];
+                    $sql = "SELECT * FROM brokerage_rate WHERE layer_id=:layer_id";
+                    $param = [":layer_id"=>$layer_id];
+                    $rate_list = iterator_to_array($mysql->query($sql,$param));
+                    if(!empty($rate_list)){
+                        foreach ($rate_list as $k=>$v){
+                            $list[$k]["min_bet_amount"] = $val["min_bet_amount"];
+                            $list[$k]["min_deposit"] = $val["min_deposit"];
+                            $list[$k]["layer_id"] = $val["layer_id"];
+                            $list[$k]["layer_name"] = $context->getInfo($val["layer_id"]);
+                            $list[$k]["auto_deliver"] = $val['auto_deliver'];
+                            $list[$k]["deliver_time"] = empty($val['deliver_time'])?"":date("H:i",strtotime(date("Ymd ".$val['deliver_time']."00",strtotime("today"))));
+                            $list[$k]["vigor_count"] = $v["vigor_count"];
+                            $list[$k]["broker_1_rate"] = $v["broker_1_rate"];
+                            $list[$k]["broker_2_rate"] = $v["broker_2_rate"];
+                            $list[$k]["broker_3_rate"] = $v["broker_3_rate"];
+                        }
+                    }
+                    $all_list[] =  $list;
+                }
+            }
+        }
+
+        //获取代理层级
+        $cache = $config->cache_site;
+        $layer_list = json_decode($cache->hget("LayerList","agentLayer"));
+        $context->reply(["status"=>200,"msg"=>"获取成功","list"=>$all_list,"layer_list"=>$layer_list]);
+    }
+}

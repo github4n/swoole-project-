@@ -1,0 +1,92 @@
+<?php
+namespace Site\Task\Cash;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+/*
+ *
+ * */
+
+class Deposit implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $mysql_user = $config->data_user;
+        $mysqlReport = $config->data_report;
+        $staff_name = $data['staff_name'];
+        $staff_deposit_id = $data['staff_deposit_id'];
+        $sql = "SELECT * FROM staff_deposit WHERE staff_deposit_id=:staff_deposit_id";
+        $param = [":staff_deposit_id"=>$staff_deposit_id];
+        $info = [];
+        foreach ($mysql->query($sql,$param) as $row){
+            $info = $row;
+        }
+        $money_map = json_decode($info["user_money_map"],true);
+        $finish_money = 0;
+        $finish_count = 0;
+        foreach ($money_map as $item){
+            ['money' => $money,'user_id' => $user_id] = $item;
+            $sql = "SELECT deal_key,user_key,account_name,layer_id FROM user_info_intact WHERE user_id=:user_id";
+            $params = [":user_id"=>$user_id];
+            foreach ($mysql_user->query($sql,$params) as $row){
+                $user_info = $row;
+            }
+
+            $deal = "data_".$user_info["deal_key"];
+            $deal_mysql = $config->{$deal};
+            $sql = "INSERT INTO staff_deposit SET staff_id=:staff_id,staff_name=:staff_name,staff_deposit_id=:staff_deposit_id, deposit_type=:deposit_type,user_id=:user_id,user_key=:user_key,account_name=:account_name,layer_id=:layer_id,money=:money,deposit_audit=:deposit_audit,coupon_audit=:coupon_audit,memo=:memo";
+            $params_sql = [
+                ":staff_id"=>$info["staff_id"],
+                ":staff_name"=>$staff_name,
+                ":staff_deposit_id"=>$staff_deposit_id,
+                ":deposit_type"=>$info["deposit_type"],
+                ":user_id"=>$user_id,
+                ":user_key"=>$user_info['user_key'],
+                ":account_name"=>!empty($user_info['account_name'])?$user_info['account_name']:"0",
+                ":layer_id"=>$user_info['layer_id'],
+                ":money"=>$money,
+                ":deposit_audit"=>$info["deposit_audit_multiple"]==1?$money:0,
+                ":coupon_audit"=>$info["coupon_audit_multiple"]*$money,
+                ":memo"=>empty($info["memo"])? 0 :$info["memo"],
+            ];
+
+            try{
+                $deal_mysql->execute($sql,$params_sql);
+                $finish_money += $money;
+                $finish_count ++;
+            }catch (\PDOException $e){
+                throw new \PDOException($e);
+            }
+            //更新用户的累计数据
+            $cumulateSql = "UPDATE user_cumulate SET money = money+:money,deposit_count = deposit_count+1,deposit_amount =  deposit_amount+:deposit_amount WHERE user_id=:user_id";
+            $param = [
+                ":money"=>$finish_money,
+                ":deposit_amount"=>$finish_money,
+                ":user_id"=>$user_id
+            ];
+            $mysqlReport->execute($cumulateSql,$param);
+            //更新用户事件
+            $eventSql = "UPDATE user_event SET last_deposit_time=unix_timestamp() WHERE user_id=:user_id";
+            $mysqlReport->execute($eventSql,$params);
+        }
+        $sql = "UPDATE staff_deposit SET finish_count=:finish_count,finish_money=:finish_money,finish_time=:finish_time WHERE staff_deposit_id=:staff_deposit_id";
+        $param = [
+            ":finish_count"=>$finish_count,
+            ":finish_money"=>$finish_money,
+            ":finish_time"=>time(),
+            ":staff_deposit_id"=>$staff_deposit_id,
+            ];
+        $mysql->execute($sql,$param);
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $user_mysql = $config->data_user;
+        $sql = "SELECT client_id FROM user_session WHERE user_id=:user_id";
+        $param = ['user_id' => $user_id];
+        foreach ($user_mysql->query($sql,$param) as $row){
+            $id =  $row['client_id'] ;
+            $taskAdapter->plan('NotifyApp', ['path'=>'User/Balance','data' =>['user_id'=>$user_id,"id"=>$id,"deal_key"=>$user_info["deal_key"]]]);
+        }
+    }
+}

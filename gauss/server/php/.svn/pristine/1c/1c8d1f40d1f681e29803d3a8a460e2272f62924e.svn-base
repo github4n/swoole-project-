@@ -1,0 +1,53 @@
+<?php
+
+namespace Site\Task\Lottery;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+class GamePlay implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['game_key' => $game_key] = $context->getData();
+        $adapter = $context->getAdapter();
+        $mysql = $config->data_staff;
+        $publicMysql = $config->data_public;
+        $sql = "select game_key from lottery_game where game_key=:game_key and acceptable = 1";
+        $game_list = iterator_to_array($mysql->query($sql,[":game_key"=>$game_key]));
+        if(!empty($game_list)){
+            $sql = "SELECT play_key,bet_min,bet_max FROM lottery_game_play WHERE game_key=:game_key AND	acceptable=1 ";
+            $name_sql = 'SELECT play_name FROM lottery_game_play_intact WHERE game_key=:game_key AND play_key=:play_key';
+            $param = [':game_key' => $game_key];
+            $list = array();
+            $pushData = [];
+            foreach($mysql->query($sql,$param) as $row)
+            {
+                $list['play_key'] = $row['play_key'];
+                $name_param = [
+                    ':game_key' => $game_key,
+                    ':play_key' => $row['play_key']
+                ];
+                foreach ($publicMysql->query($name_sql,$name_param) as $item)
+                {
+                    $list['play_name'] = $item['play_name'];
+                }
+                $list['bet_min'] = $row['bet_min'];
+                $list['bet_max'] = $row['bet_max'];
+                $name_param = [
+                    ':game_key' => $game_key,
+                    ':play_key' => $row['play_key']
+                ];
+                foreach ($publicMysql->query($name_sql,$name_param) as $item)
+                {
+                    $list['play_name'] =$item['play_name'];
+                }
+                $pushData[] = $list;
+            }
+        }else{
+            $pushData = [];
+        }
+
+        $adapter->plan('NotifyApp', ['path' => 'Lottery/GamePlay', 'data' => ['game_key' => $game_key, 'pushData' => $pushData]]);
+    }
+}

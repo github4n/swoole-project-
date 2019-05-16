@@ -1,0 +1,32 @@
+<?php
+namespace Site\Task\Report;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Status implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['time' => $time] = $context->getData();
+        $mysqlReport = $config->data_report;
+        $date = intval(date("Ymd",$time));
+        $today = intval(date("Ymd",strtotime("today")));
+        $yesterday = intval(date("Ymd",strtotime("yesterday")));
+        $daily = [];
+        if($date == $today){
+            $dailys = [
+                "daily"=>$yesterday,
+                "frozen"=>1,
+            ];
+            $daily[] = $dailys;
+        }
+        $rows = [
+            "daily"=>$today,
+            "frozen"=>0
+        ];
+        $daily[] = $rows;
+        $mysqlReport->daily_status->load($daily,[],"replace");
+    }
+}

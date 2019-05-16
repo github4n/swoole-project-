@@ -1,0 +1,21 @@
+<?php
+namespace Site\Task;
+
+use Lib\Config;
+use Lib\Task\Adapter;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class NotifyApp implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['path' => $path, 'data' => $data] = $context->getData();
+
+        foreach ($config->app_list as $app) {
+            $cacheKey = 'cache_' . $app;
+            $adapter = new Adapter($config->$cacheKey);
+            $adapter->plan($path, $data);
+        }
+    }
+}

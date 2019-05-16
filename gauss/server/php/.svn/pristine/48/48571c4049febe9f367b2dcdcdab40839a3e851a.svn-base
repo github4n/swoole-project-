@@ -1,0 +1,18 @@
+<?php
+namespace Site\Task\Guest;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Balance implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        //更新用户金额
+        ['money' => $money] = $context->getData();
+        $mysql = $config->data_guest;
+        $sql = 'UPDATE account SET money=:money';
+        $mysql->execute($sql,[":money"=>2000]);
+    }
+}

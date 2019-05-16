@@ -1,0 +1,117 @@
+<?php
+namespace Site\Websocket\Lottery\LotteryResult;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+* Lottery/LotteryResult/ResultList {"game_key":"tiktok_cq","period":"20181226066"}
+ * */
+
+class ResultList extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("game_number",$auth)) {
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        $data = $context->getData();
+        $page = empty($data["page"])?1:$data["page"];
+        $num = empty($data["num"])?10:$data["num"];
+        $go_num = empty($data["go_num"])?null:$data["go_num"];
+        $list = array();
+        if(!is_numeric($page) && $page>0){
+            $context->reply(["status"=>203,"msg"=>"当前显示页数类型不正确"]);
+            return;
+        }
+        if(!is_numeric($num)){
+            $context->reply(["status"=>204,"msg"=>"每页显示的条数类型不正确"]);
+            return;
+        }
+        $limit = ' LIMIT '.($page-1)*$num.','.$num;
+        if(!empty($go_num)){
+            if(!is_numeric($go_num) && $go_num>0){
+                $context->reply(["status"=>205,"msg"=>"跳转的页数类型不正确"]);
+                return;
+            }
+            $limit = ' LIMIT '.($go_num-1)*$num.','.$num;
+        }
+        $game_key = $data["game_key"]?:"";
+        $period = $data["period"]?:"";
+
+        if(!empty($game_key)){
+            if (empty($context->getInfo($game_key)))
+            {
+                $context->reply(['status' => 202, 'msg' => '彩票名称错误', 'data' => $game_key]);
+                return;
+            }
+            $game_key = " AND game_key = '".$game_key."'";
+        }
+        if(!empty($period)) {
+            $period = " AND period =" . $period;
+        }
+
+        //查询彩票列表
+        $public_mysql = $config->data_public;
+        $lottery_list = [];
+        $game_list = [];
+        $model_list = json_decode($context->getInfo('ModelList'),true);
+        $game_sql = 'SELECT game_key FROM lottery_game WHERE  model_key=:model_key';
+        foreach ($model_list as $k => $v)
+        {
+            $game_list[$k]['model_name'] = $v['model_name'];
+            $game_param = [':model_key' => $v['model_key']];
+            foreach ($public_mysql->query($game_sql,$game_param) as  $value)
+            {
+                $lottery_list[] = [
+                    "game_key" => $value['game_key'],
+                    'game_name' => $context->getInfo($value['game_key'])
+                ];
+            }
+            $game_list[$k]['game_list'] = $lottery_list;
+            unset($lottery_list);
+        }
+
+
+        $lists = array();
+        $sql = "SELECT *  FROM lottery_number_intact WHERE 1".$game_key.$period.' ORDER BY open_time DESC'.$limit;
+        $total_sql = "SELECT game_key FROM lottery_number_intact WHERE 1".$game_key.$period;
+        try{
+            foreach ($public_mysql->query($sql) as $rows){
+                $lists[] = $rows;
+            }
+            $total = $public_mysql->execute($total_sql);
+            if(!empty($lists)){
+                foreach ($lists as $key=>$val){
+                    $list[$key]["game_name"] = $val["game_name"];
+                    $list[$key]["period"] = $val["period"];
+                    $list[$key]["start_time"] = date("Y-m-d H:i:s",$val["start_time"]);
+                    $list[$key]["stop_time"] = date("Y-m-d H:i:s",$val["stop_time"]);
+                    $list[$key]["open_time"] = date("Y-m-d H:i:s",$val["open_time"]);
+                    $normal = '';
+                    for($i=1;$i<=12;$i++){
+                        if($val['normal'.$i] != -1){
+                            $normal .= $val['normal'.$i].',';
+                        }
+                    }
+                    $list[$key]["num"] = $normal;
+                }
+            }
+            $context->reply([
+                'status'=>200,
+                'msg'=>'获取成功',
+                'total'=>$total,
+                'total_page'=>ceil($total/$num),
+                'game_list'=>$game_list,
+                'list'=>$list
+            ]);
+        }   catch(\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取列表失败"]);
+            throw new \PDOException('sql run error'.$e);
+        }
+
+    }
+}

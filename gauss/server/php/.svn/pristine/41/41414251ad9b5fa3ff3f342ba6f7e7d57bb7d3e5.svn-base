@@ -1,0 +1,352 @@
+<?php
+namespace Plat\Task\Lottery;
+
+use Lib\Calender;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Period implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['game_key' => $game_key, 'start' => $start, 'stop' => $stop] = $context->getData();
+        $adapter = $context->getAdapter();
+        $mysql = $config->data_public;
+        if (!method_exists($this, $game_key)) {
+            return;
+        }
+
+        $generator = $this->$game_key($start, $stop);
+        if (!empty($generator)) {
+            $mysql->lottery_period->import($generator, ['game_key' => $game_key], 'ignore');
+        }
+        $adapter->plan('NotifySite', ['path' => 'Lottery/Period', 'data' => ['game_key' => $game_key]]);
+
+        $adapter->plan('Lottery/Period', [
+            'game_key' => $game_key, 'start' => $stop, 'stop' => $stop + 86400,
+        ], time() + 86400);
+        $adapter->plan('Lottery/Number', ['game_key' => $game_key, 'period' => 0]);
+    }
+    // 官方彩
+    private function tiktok_cq(int $start, int $stop)
+    {
+        for ($day = strtotime(date('Y-m-d', $start)) + 600; $day <= $stop; $day += 86400) {
+            if (Calender::isSpringHoliday($day)) {
+                continue;
+            }
+
+            $format = date('Ymd', $day) . '%03d';
+
+            for ($p = 1; $p <= 9; $p++) {
+                $t = $day + $p * 1200;
+                yield [
+                    'period' => sprintf($format, $p),
+                    'start_time' => $t - 1200,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+            for ($p = 10; $p <= 48; $p++) {
+                $t = $day + ($p - 9) * 1200 + 7 * 3600;
+                yield [
+                    'period' => sprintf($format, $p),
+                    'start_time' => $t - 1200,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+        }
+    }
+    private function dice_js(int $start, int $stop)
+    {
+        //20分钟一期
+        for ($day = strtotime(date('Y-m-d', $start)) + 30600; $day <= $stop; $day += 86400) {
+            if (Calender::isSpringHoliday($day)) {
+                continue;
+            }
+
+            $format = date('Ymd', $day) . '%03d';
+            for ($p = 1; $p <= 41; $p++) {
+                $t = $day + $p * 1200;
+                yield [
+                    'period' => sprintf($format, $p),
+                    'start_time' => $t - 1200,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+
+        }
+    }
+    private function dice_ah(int $start, int $stop)
+    {
+        //20分钟一期
+        for ($day = strtotime(date('Y-m-d', $start)) + 31200; $day <= $stop; $day += 86400) {
+            if (Calender::isSpringHoliday($day)) {
+                continue;
+            }
+            $format = date('Ymd', $day) . '%03d';
+            for ($p = 1; $p <= 40; $p++) {
+                $t = $day + $p * 1200;
+                yield [
+                    'period' => sprintf($format, $p),
+                    'start_time' => $t - 1200,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+        }
+    }
+    private function lucky_cq(int $start, int $stop)
+    {
+        //20分钟一期
+        for ($day = strtotime(date('Y-m-d', $start)) + 60; $day <= $stop; $day += 86400) {
+            if (Calender::isSpringHoliday($day)) {
+                continue;
+            }
+            $format = date('Ymd', $day) . '%03d';
+            for ($p = 1; $p <= 8; $p++) {
+                $t = $day + $p * 1200;
+                yield [
+                    'period' => sprintf($format, $p),
+                    'start_time' => $t - 1200,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+            for ($p = 9; $p <= 59; $p++) {
+                $t = $day + ($p - 8) * 1200 + 7 * 3600;
+                yield [
+                    'period' => sprintf($format, $p),
+                    'start_time' => $t - 1200,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+
+        }
+
+    }
+    private function lucky_gd(int $start, int $stop)
+    {
+        //20分钟一期
+        for ($day = strtotime(date('Y-m-d', $start)) + 32460; $day <= $stop; $day += 86400) {
+            if (Calender::isSpringHoliday($day)) {
+                continue;
+            }
+            $format = date('Ymd', $day) . '%03d';
+            for ($p = 1; $p <= 42; $p++) {
+                $t = $day + $p * 1200;
+                yield [
+                    'period' => sprintf($format, $p),
+                    'start_time' => $t - 1200,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+        }
+    }
+    private function racer_bj(int $start, int $stop)
+    {
+        // 5分钟一期,9:00--24:00 179期
+        $startplantime = strtotime("2019-02-12");
+        $startperiod = 729436;
+        for ($day = strtotime(date('Y-m-d', $start)) + 34200; $day <= $stop; $day += 86400) {
+            if (Calender::isSpringHoliday($day)) {
+                continue;
+            }
+            $speriod = ($day - $startplantime - 34200) / 86400 * 44;
+//            $format = date('Ymd', $day) . '%03d';
+            $format = $startperiod + $speriod;
+            for ($p = 1; $p <= 44; $p++) {
+                $t = $day + $p * 1200;
+                yield [
+                    'period' => $format + $p,
+                    'start_time' => $t - 1200,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+        }
+    }
+    private function racer_malta(int $start, int $stop)
+    {
+        //5分钟一期, 13：05--04:05 180期
+        for ($day = strtotime(date('Y-m-d', $start)) + 47100; $day <= $stop; $day += 86400) {
+            if (Calender::isSpringHoliday($day)) {
+                continue;
+            }
+            $format = date('Ymd', $day) . '%03d';
+            for ($p = 1; $p <= 180; $p++) {
+                $t = $day + $p * 300;
+                yield [
+                    'period' => sprintf($format, $p),
+                    'start_time' => $t - 300,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+        }
+    }
+    private function eleven_gd(int $start, int $stop)
+    {
+        //10分钟一期9:00--23:00 84期
+        for ($day = strtotime(date('Y-m-d', $start)) + 33000; $day <= $stop; $day += 86400) {
+            if (Calender::isSpringHoliday($day)) {
+                continue;
+            }
+            $format = date('Ymd', $day) . '%02d';
+            for ($p = 1; $p <= 42; $p++) {
+                $t = $day + $p * 1200;
+                yield [
+                    'period' => sprintf($format, $p),
+                    'start_time' => $t - 1200,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+        }
+    }
+    private function six_hk(int $start, int $stop)
+    {
+        //香港六合彩数据采集
+        $url = "https://is.hkjc.com/jcbw/marksix/fixturesC.xml";
+        $xmls = file_get_contents($url); //获取页面内容
+        if (!empty($xmls)) {
+            $xml = simplexml_load_string($xmls);
+            $p = 73;
+            $Start_time = strtotime('2018-06-30') + 79200;
+            foreach ($xml->children() as $sons) {
+                if (!empty($sons["year"])) {
+
+                    $format = $sons["year"] . '%03d';
+                    foreach ($sons->children() as $month) {
+                        if (!empty($month['month'])) {
+                            if (1 == $month['month']) {
+                                $p = 1;
+                            }
+                            foreach ($month->children() as $date) {
+                                if (!empty($date['date'])) {
+                                    $ymd = $sons['year'] . '-' . $month['month'] . '-' . $date['date'];
+                                    $t = strtotime($ymd);
+                                    yield [
+                                        'period' => sprintf($format, $p),
+                                        'start_time' => $Start_time,
+                                        'stop_time' => $t + 77385,
+                                        'plan_time' => $t + 77400,
+                                    ];
+                                    ++$p;
+                                    $Start_time = $t + 79200;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // 自开彩
+    private function generate(int $start, int $stop, int $step, int $offset)
+    {
+        $specifier = '%0' . strlen(intval(86400 / $step)) . 'd';
+        for ($day = strtotime(date('Y-m-d', $start)); $day <= $stop; $day += 86400) {
+            $format = date('Ymd', $day) . $specifier;
+            for ($p = 1, $s = 0; $s < 86400; $p++, $s += $step) {
+                $t = $day + $offset + $s;
+                yield [
+                    'period' => sprintf($format, $p),
+                    'start_time' => $t - $step,
+                    'stop_time' => $t - 15,
+                    'plan_time' => $t,
+                ];
+            }
+        }
+    }
+    private function tiktok_fast(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 90, 15);
+    }
+    private function dice_fast(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 90, 25);
+    }
+    private function lucky_fast(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 90, 35);
+    }
+    private function racer_fast(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 90, 45);
+    }
+    private function eleven_fast(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 90, 55);
+    }
+    private function ladder_fast(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 90, 65);
+    }
+    private function six_fast(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 90, 75);
+    }
+    // 三分
+    private function tiktok_three(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 180, 10);
+    }
+    private function dice_three(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 180, 20);
+    }
+    private function lucky_three(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 180, 40);
+    }
+    private function racer_three(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 180, 50);
+    }
+    private function eleven_three(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 180, 70);
+    }
+    private function ladder_three(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 180, 80);
+    }
+    private function six_three(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 180, 100);
+    }
+    // 五分
+    private function tiktok_five(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 300, 30);
+    }
+    private function dice_five(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 300, 60);
+    }
+    private function lucky_five(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 300, 90);
+    }
+    private function racer_five(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 300, 120);
+    }
+    private function eleven_five(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 300, 150);
+    }
+    private function ladder_five(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 300, 180);
+    }
+    private function six_five(int $start, int $stop)
+    {
+        return $this->generate($start, $stop, 300, 210);
+    }
+}

@@ -1,0 +1,68 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: lucy
+ * Date: 19-3-8
+ * Time: 上午8:45
+ */
+
+namespace Plat\Http\Fg;
+
+use Lib\Config;
+use Lib\Http\Context;
+use Lib\Http\Handler;
+use Plat\Http\Fg\Common;
+
+class Balance extends Handler
+{
+    public function onRequest(Context $context, Config $config)
+    {
+        $get_data= $context->requestPost();
+        $query=[];
+        parse_str($get_data,$query);
+
+        $flg=true;
+        if(!isset($query['partnerId']) || empty($query['partnerId'])){
+           $flg=false;
+        }
+        if(!isset($query['username']) || empty($query['username'])){
+            $flg=false;
+        }
+        if(!isset($query['nonce_str']) || empty($query['nonce_str'])){
+            $flg=false;
+        }
+       
+        if(!isset($query['sign']) || empty($query['sign'])){
+            $flg=false;
+        }
+
+        $Common=new Common();
+
+        if(!$flg){
+            $arr=$Common->return_data(2,'参数错误');
+            $this->responseJson($context, $arr);
+            return;
+        }
+        $partnerId=$query['partnerId'];
+        $username=$query['username'];
+        $nonce_str=$query['nonce_str'];
+       
+        $sign=$query['sign'];
+        $param=array('username'=>$username,'partnerId'=>$partnerId,'nonce_str'=>$nonce_str);
+        $new_sign=$Common->MakeSign($param);
+
+        if(strcmp($new_sign,$sign)!==0){
+            $arr=$Common->return_data(108,'签名错误');
+            $this->responseJson($context, $arr);
+            return;
+        }
+
+        $site_key=explode('fg',$username)[0];
+
+        $param['clientId']=$context->clientId();
+        $param['site_key']=$site_key;
+        $adapter = new \Lib\Task\Adapter($config->cache_plat);
+        $adapter->plan('NotifySite',['path' => 'Fg/GetBalance','data'=>$param]);
+
+    }
+}

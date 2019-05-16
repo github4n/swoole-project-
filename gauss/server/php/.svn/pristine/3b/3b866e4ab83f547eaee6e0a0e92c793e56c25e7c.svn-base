@@ -1,0 +1,106 @@
+<?php
+/**
+ * Layer_brokerage.php.
+ *
+ * @description   代理会员返佣派发任务
+ * @Author  nathan
+ * @date  2019-04-07
+ * @links  Initialize.php
+ * @modifyAuthor   Luis
+ * @modifyTime  2019-04-23
+ */
+
+namespace Site\Task\Report;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Layer_brokerage implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['time' => $time] = $context->getData();
+        $adapter = $context->getAdapter();
+        try {
+            $daily = intval(date('Ymd', $time));
+            $mysqlReport = $config->data_report;
+            $mysql = $config->data_user;
+            //检测数据是否锁定
+            $dailyInfo = [];
+            $sql = 'select daily from daily_status where daily=:daily and frozen=1';
+            foreach ($mysqlReport->query($sql, [':daily' => $daily]) as $row) {
+                $dailyInfo = $row;
+            }
+            if (!empty($dailyInfo)) {
+                return;
+            }
+
+            $sql = 'select daily,layer_id,count(user_id) as user_count,sum(brokerage) as brokerage_amount from daily_user_brokerage where daily = :daily group by daily,layer_id';
+            $data = [];
+            foreach ($mysqlReport->query($sql, [':daily' => $daily]) as $k => $v) {
+                $layer_name_sql = 'select layer_name from layer_info where layer_id = :layer_id';
+                $layer_name = '';
+                foreach ($mysql->query($layer_name_sql, [':layer_id' => $v['layer_id']]) as $val) {
+                    $layer_name = $val['layer_name'];
+                }
+                if (empty($layer_name)) {
+                    continue;
+                }
+                $brokerage_count = 0;
+                $brokerageSql = 'select count(user_id) as brokerage_count from daily_user_brokerage where brokerage>0 and deliver_time and daily=:daily and layer_id = :layer_id';
+                foreach ($mysqlReport->query($brokerageSql, [':layer_id' => $v['layer_id'], ':daily' => $daily]) as $row) {
+                    $brokerage_count = $row['brokerage_count'];
+                }
+                $autosql = 'select auto_deliver,deliver_time from brokerage_setting where layer_id = :layer_id';
+                $autodata = iterator_to_array($mysql->query($autosql, [':layer_id' => $v['layer_id']]));
+                if (!empty($autodata)) {
+                    $auto = $autodata[0]['auto_deliver'];
+                    $deliver_time = $autodata[0]['deliver_time'];
+                }
+                $param = [
+                    'layer_name' => $layer_name,
+                    'auto_deliver' => $auto,
+                    'deliver_staff_id' => 0,
+                    'deliver_staff_name' => '',
+                    'deliver_launch_time' => $deliver_time,
+                    'deliver_finish_time' => 0,
+                    'brokerage_count' => $brokerage_count,
+                ];
+                $tag = array_merge($v, $param);
+                $data[] = $tag;
+            }
+            //查询旧层级(升级后旧层级数据清空)
+            $oldLayer_sql = 'select layer_id,layer_name,auto_deliver,deliver_staff_id,deliver_staff_name,deliver_launch_time,deliver_finish_time from daily_layer_brokerage where daily = :daily';
+            $oldLayer = [];
+            foreach ($mysqlReport->query($oldLayer_sql, [':daily' => $daily]) as $layer) {
+                $oldLayer[] = $layer;
+            }
+            $nowLayer = array_column($data, 'layer_id');
+            if (!empty($oldLayer)) {
+                foreach ($oldLayer as $v) {
+                    if (!in_array($v['layer_id'], $nowLayer)) {
+                        $data[] = [
+                                'daily' => $daily,
+                                'layer_id' => $v['layer_id'],
+                                'layer_name' => $v['layer_name'],
+                                'user_count' => 0,
+                                'brokerage_count' => 0,
+                                'brokerage_amount' => 0,
+                                'auto_deliver' => $v['auto_deliver'],
+                                'deliver_staff_id' => $v['deliver_staff_id'],
+                                'deliver_staff_name' => $v['deliver_staff_name'],
+                                'deliver_launch_time' => $v['deliver_launch_time'],
+                                'deliver_finish_time' => $v['deliver_finish_time'],
+                            ];
+                    }
+                }
+            }
+            $mysqlReport->daily_layer_brokerage->load($data, [], 'replace');
+        } catch (\PDOException $e) {
+            throw new \PDOException($e);
+        } finally {
+            $adapter->plan('Report/User', ['time' => $time], time(), 9);
+        }
+    }
+}

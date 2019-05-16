@@ -1,0 +1,58 @@
+<?php
+
+namespace Plat\Websocket\LotteryTicket\LotteryRebateSetting;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 返点设置列表
+ * LotteryTicket/LotteryRebateSetting/LotteryRebateSetting {"site_key":"site1"}
+ * */
+
+class LotteryRebateSetting extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("lottery_rebate_update", $auth))
+        {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+
+        //接受数据
+        $data = $context->getData();
+        $site_key = $data['site_key'];
+
+        if (empty($site_key))
+        {
+            $context->reply(['status' => 202,'msg' => '站点key为空']);
+            return;
+        }
+
+        //连接数据库
+        $admin_mysql = $config->data_admin;
+
+        //查询数据
+        $sql = 'SELECT site_key,game_key,rebate_max FROM site_game WHERE site_key=:site_key';
+        $param = [':site_key' => $site_key];
+        $items = iterator_to_array($admin_mysql->query($sql, $param));
+        $list = [];
+        foreach ($items as $k => $v)
+        {
+            $list[$k]['site_key'] = $v['site_key'];
+            $list[$k]['game_key'] = $v['game_key'];
+            $list[$k]['game_name'] = $context->getInfo($v['game_key']);
+            $list[$k]['rebate_max'] = $v['rebate_max'];
+        }
+
+        $context->reply([
+            "status" => 200,
+            "msg" => "获取成功",
+            "list" => $list,
+        ]);
+    }
+}

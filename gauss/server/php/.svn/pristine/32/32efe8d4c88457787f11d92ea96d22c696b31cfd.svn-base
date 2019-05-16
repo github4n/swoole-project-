@@ -1,0 +1,158 @@
+<?php
+namespace Site\Websocket\System\SystemPersonnel;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 负责人---leo
+ * 负责开始时间--2019-04-08
+ * */
+
+/*
+ * 体系人员-大股东
+ * 参数：staff_name:用户名,page:当前页数 num：每页显示的数量 go_num：跳转的页数
+ * {"staff_name":"张三","major":"admin123","page":1,"num":20,"gonum":0}
+ * System/SystemPersonnel/MajorShareHolder {"page":1,"num":10,"go_num":"","staff_name":""}
+ * */
+
+class MajorShareHolder extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //判断当前登录账号的权限
+        $staffGrade = $context->getInfo("StaffGrade");
+        if($staffGrade != 0){
+            $context->reply(["status"=>204,"msg"=>"没有查看权限"]);
+            return;
+        }
+		//验证是否有操作权限
+		$auth = json_decode($context->getInfo('StaffAuth'));
+		if(!in_array("staff_list_major_select",$auth)){
+			$context->reply(["status"=>204,"msg"=>"你还没有操作权限"]);
+			return;
+		}
+        $masterId = $context->getInfo("MasterId");
+        $staffId = $context->getInfo('StaffId');
+        $data = $context->getData();
+		$page = isset($data["page"]) ? $data["page"] : 1;
+		$num = isset($data["num"]) ? $data["num"] : 10;
+		$go_num = isset($data["go_num"]) ? $data["go_num"] : 1;
+        $staff_name = isset($data["staff_name"]) ? $data['staff_name'] : '';
+        $major_list = array();
+        $cache = $config->cache_site;
+        $list = array();
+        if(!is_numeric($page) && $page <= 0){
+            $context->reply(["status"=>202,"msg"=>"当前页数不正确"]);
+            return;
+        }
+        if(!is_numeric($num)){
+            $context->reply(["status"=>203,"msg"=>"每页显示的数量不正确"]);
+            return;
+        }
+        $limit = " LIMIT ".($page-1)*$num.",".$num;
+        if($go_num && !is_numeric($go_num)){
+            if($go_num <= 0){
+                $context->reply(["status"=>204,"msg"=>"跳转的页数不正确"]);
+                return;
+            }
+            $limit = " LIMIT ".($go_num-1).",".$num;
+        }
+        if($staff_name){
+            $staff_name = " AND major_name = '".$staff_name."'";
+        }
+        //查找基本信息
+        $sql = "SELECT * FROM staff_struct_major WHERE 1=1 ".$staff_name. ' order by major_id desc ' .$limit;
+        $total_sql = "SELECT major_id FROM staff_struct_major WHERE 1=1 ".$staff_name;
+        $mysql = $config->data_staff;
+        //$mysqls = $config->data_user;
+		//修改，会员管理-会员列表查询的是report库里面的数据
+		$mysqls = $config->data_report;
+        try{
+            foreach ($mysql->query($sql) as $rows){
+                $list[] = $rows;
+            }
+            $total = $mysql->execute($total_sql);
+            //记录日志
+            $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip=:client_ip';
+            $params = [
+                ':staff_id' => $staffId,
+                ':client_ip' => ip2long($context->getClientAddr()),
+                ':operate_key' => 'staff_list_major_select',
+                ':detail' =>'查看大股东列表',
+            ];
+            $mysql->execute($sql, $params);
+        } catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException('sql run error'.$e);
+        }
+        if(!empty($list)){
+            foreach ($list as $key=>$val){
+                $major_list[$key]["id"] = $val["major_id"];
+                $major_list[$key]["name"] = $val["major_name"];
+                //登录账号
+                $sql = "SELECT staff_key FROM staff_auth WHERE staff_id=:staff_id";
+                $param = [":staff_id"=>$val["major_id"]];
+                $staff_info = [];
+                try{
+                    foreach ($mysql->query($sql,$param) as $row){
+                        $staff_info = $row;
+                    }
+                }catch (\PDOException $e){
+                    $context->reply(["status"=>400,"msg"=>"获取失败"]);
+                    throw new \PDOException($e);
+                }
+                $major_list[$key]["staff_key"] = $staff_info["staff_key"];
+                $major_list[$key]["level"] = 1;
+                $major_list[$key]["level_name"] = "大股东";
+                $info = json_decode($cache->hget("SystemSetting",$val["major_id"]),true);
+                if(empty($info)){
+                    $info = json_decode($cache->hget("SystemSetting",1),true);
+
+                }
+                $major_list[$key]["bet_rate"] = $info["grade1_bet_rate"]."%";
+                $major_list[$key]["profit_rate"] = $info["grade1_profit_rate"]."%";
+                $major_list[$key]["fee_rate"] = $info["grade1_fee_rate"]."%";
+                $major_list[$key]["tax_rate"] = $info["grade1_tax_rate"]."%";
+                //查找该大股东下的所有会员
+                //① 查找该大股东下的所有的总代理
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE major_id=:major_id";
+                $param = [":major_id"=>$val["major_id"]];
+                $agent_row = array();
+                foreach ($mysql->query($sql,$param) as $rows){
+                    $agent_row[] = $rows;
+                }
+                $user_num = 0;
+                if(!empty($agent_row)){
+                    foreach ($agent_row as $k=>$v){
+                        //$sql = "SELECT user_id FROM user_info WHERE agent_id=:agent_id";
+						//修改，会员管理-会员列表查询的是report库里面的数据
+						if($masterId != 0){
+							$accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+							$layers = 0;
+							foreach ($mysql->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+								$layers = $row["layer_list"];
+							}
+							$sql = "SELECT * FROM user_cumulate WHERE layer_id in (" . $layers . ") AND agent_id=:agent_id";
+						} else {
+							$sql = "SELECT user_id FROM user_cumulate WHERE agent_id=:agent_id";
+						}
+                        $param = [":agent_id"=>$v['agent_id']];
+                        $user_num += $mysqls->execute($sql,$param);
+                    }
+                }
+                $major_list[$key]["minor_count"] = $val["minor_count"];
+                $major_list[$key]["agent_count"] = $val["agent_count"];
+                $major_list[$key]["user_count"] = $user_num;
+            }
+        }
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "total"=>$total,
+            "total_page"=>ceil($total/$num),
+            "list"=>$major_list
+        ]);
+
+    }
+}

@@ -1,0 +1,47 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\LotteryBetSetting;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 投注额设置列表
+ * LotteryTicket/LotteryBetSetting/BetSettingSave {"site_list":["site1","site2"],"data":[{}]}
+ * 0-开放 1-停止交易 2-关闭前台 3-关闭前后
+ * */
+class BetSettingSave extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("ticket_setting_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        $data = $context->getData();
+        $site_list = isset($data["site_list"]) ? $data["site_list"] : '';
+        $data_list = isset($data["data"]) ? $data["data"] : "";
+        if(empty($site_list)){
+            $context->reply(["status"=>205,"msg"=>"站点参数不能为空"]);
+            return;
+        }
+        if(!is_array($site_list)){
+            $context->reply(["status"=>206,"msg"=>"站点的格式不正确"]);
+            return;
+        }
+        if(empty($data_list)){
+            $context->reply(["status"=>207,"msg"=>"提交的数据不能为空"]);
+            return;
+        }
+        if(!is_array($data_list)){
+            $context->reply(["status"=>208,"msg"=>"提交的数据格式不正确"]);
+            return;
+        }
+        foreach ($site_list as $item){
+
+        }
+        
+    }
+}

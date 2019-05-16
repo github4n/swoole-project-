@@ -1,0 +1,82 @@
+<?php
+namespace Plat\Websocket\Staff;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;                                                          
+/*
+ * 参数：page:页数    num:条数   admin_name员工名   gonum:跳转页数 type:搜索类型 1模糊查询，2精确匹配
+ * 状态码：
+ * 200：获取列表信息成功
+ * 205：没有操作权限
+ * 201：当前页数不能为空
+ * 203：每页显示的数量不能为空
+ * 204：提交的跳转页数码异常
+ * 206 :页数类型不正确
+ * 207 :条数类型不正确
+ * */                          
+class StaffList extends CheckLogin {
+    function onReceiveLogined(Context $context,Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("account_admin_insert",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_admin;
+
+        $page = isset($data['page']) ? $data['page'] : 1;
+        $num = isset($data['num']) ? $data['num'] : 10;
+        $gonum = isset($data['go_num']) ? $data['go_num'] : 0;
+        $admin_name = isset($data['admin_name']) ? $data['admin_name'] : '';
+        if(!is_numeric($page)){
+            $context->reply(['status'=>206,'msg'=>'页数类型不正确']);
+            return;
+        }
+        if(!is_numeric($num)) {
+            $context->reply(['status'=>207,'msg'=>'条数类型不正确',]);
+            return;
+        }
+        if(!is_numeric($gonum)) {
+            $context->reply(['status'=>208,'msg'=>'跳转的页数类型不正确',]);
+            return;
+        }
+        if($gonum>0){
+            $page = intval($gonum);
+        }
+        $limt = ' LIMIT '.($page-1)*$num.','.$num;
+
+        //员工名精确查询
+        if(!empty($admin_name)){
+            $preg = '/^(?![0-9]+$)(?![a-zA-Z]+$)[0-9A-Za-z]{6,20}$/';
+            if (!preg_match($preg, $admin_name)) {
+                $context->reply(['status' => 300, 'msg' => '请输入正确的搜索账号']);
+                return;
+            }
+            $admin_name = " WHERE admin_key = '".trim($data['admin_name'])."'";
+        }
+
+        try{
+            $sql = "SELECT admin_id,admin_name,admin_key,role_map as role_name FROM admin_info_intact".$admin_name." ORDER BY admin_id DESC ".$limt;
+            $list = [];
+            foreach ($mysql->query($sql) as $row){
+                $list[] = $row;
+            }
+            if(!empty($list)) {
+                foreach ($list as $k=>$v){
+                    foreach (json_decode($v['role_name']) as $item){
+                        $list[$k]['role_name'] = $item;
+                    }
+                }
+            }
+            $totalmysql = "select admin_id from admin_info_intact".$admin_name;
+            $total = $mysql->execute($totalmysql);
+            $context->reply(['status'=>200,'msg'=>'获取列表信息成功','total'=>$total,'totalPage'=>ceil($total/$num),'adminlist'=>$list]);
+        } catch(\PDOException $e){
+            $context->reply(['status'=>400,'msg'=>'获取列表信息失败']);
+            throw new \PDOException('sql run error'.$e);
+        }
+    }
+}

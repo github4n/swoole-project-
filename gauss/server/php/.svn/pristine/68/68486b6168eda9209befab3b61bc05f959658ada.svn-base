@@ -1,0 +1,161 @@
+<?php
+
+namespace App\Task\ExternalGame;
+use Lib\Config;
+use Lib\Task\Adapter;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class GameAmountTransfer implements IHandler
+{
+	public function onTask(Context $context, Config $config)
+	{
+		['data' => $data] = $context->getData();
+		//设置了action Key为发送任务请求
+		if (isset($data['action'])) {
+			$taskAdapter = new Adapter($config->cache_daemon);
+			$taskAdapter->plan('NotifySite',['path' => 'ExternalGame/GameAmountTransfer', 'data'=>["data"=>$data]]);
+		} else {
+			//回调通知
+			//接收三方平台返回信息
+			$client_id = isset($data['data']['client_id']) ? $data['data']['client_id'] : '';
+			$websocketAdapter = new \Lib\Websocket\Adapter($config->cache_daemon);
+			//校验是充值还是提现的key值
+			$withdraw_key = isset($data['return_data']['withdraw_key']) ? $data['return_data']['withdraw_key'] : '';
+			$interface_key = isset($data['data']['interface_key']) ? $data['data']['interface_key'] : '';
+			$code = isset($data['return_data']['d']['code']) ? $data['return_data']['d']['code'] : '';
+			$return_money = isset($data['return_data']['d']['money']) ? $data['return_data']['d']['money'] : '';
+			$user_id = $data['return_data']['user_id'];
+			$mysqlUser = $config->data_user;
+			//获取用户数据
+			$sql = "SELECT user_key,account_name,deal_key,layer_id FROM user_info_intact WHERE user_id='$user_id'";
+			foreach ($mysqlUser->query($sql) as $v) {
+				$user_key = $v['user_key'];
+				$account_name = $v['account_name'];
+				$deal_key = $v['deal_key'];
+				$layer_id = $v['layer_id'];
+			}
+			//获取关联库
+			$deal_mysql = $config->__get("data_" . $deal_key);
+			$time = time();
+			$money = $data['return_data']['money'];
+			$account_name = !empty($account_name) ? $account_name : 1;
+			$json_data = json_encode($data['return_data']['d']);
+			$res = [
+				'status' => 400,
+				'msg' => '交易异常'
+			];
+			//充值
+			if (empty($withdraw_key)) {
+				//插入转出注单sql
+				$sql = "INSERT INTO external_export_launch
+				(user_id,user_key,account_name,layer_id,external_type,launch_data,launch_money,launch_time)
+				SELECT '$user_id','$user_key',$account_name,'$layer_id','$interface_key','$json_data','$money','$time'
+				FROM dual
+				WHERE not exists (select * from external_export_launch where user_id ='$user_id' AND launch_time='$time')";
+				$deal_mysql->execute($sql);
+				//获取插入的主键单号
+				//$get_export_serial_sql = "SELECT serial_last('external_export') as export_serial";
+				$get_export_serial_sql = "select export_serial from external_export_launch where user_id ='$user_id' AND launch_time='$time'";
+				$export_serial = '';
+				foreach ($deal_mysql->query($get_export_serial_sql) as $v) {
+					$export_serial = $v['export_serial'];
+				}
+				if (!empty($export_serial)) {
+					if ($code == 0) {
+						//充值成功
+						//插入转出成功记录sql
+						//insert ignore表示，如果中已经存在相同的记录，则忽略当前新数据;(连续插入三条数据主键冲突)
+						$sqls = "INSERT IGNORE external_export_success SET 
+								export_serial='$export_serial',success_time='$time',success_data='$json_data'";
+						$deal_mysql->execute($sqls);
+						$res = [
+							'status' => 200,
+							'msg' => '充值成功',
+							'data' => [
+								'code' => $code,
+								'now_wallet_money'=>$return_money
+							]
+						];
+					} else {
+						//充值失败-添加失败记录
+						$sqls = "INSERT IGNORE external_export_failure SET
+								 export_serial='$export_serial',failure_time='$time',failure_data='$json_data' ";
+						$deal_mysql->execute($sqls);
+						$res = [
+							'status' => 400,
+							'msg' => '充值失败',
+							'data' => [
+								'code' => $code,
+								'now_wallet_money'=>$return_money
+							]
+						];
+					}
+				} else {
+					$res = [
+						'status' => 400,
+						'msg' => '交易异常'
+					];
+				}
+			}else{
+				//提现
+				$external_type = $interface_key;
+				if ($external_type == 'my') {
+					$external_type = $withdraw_key;
+				}
+				//插入转入注单sql
+				$sql = "INSERT INTO external_import_launch
+				(user_id,user_key,account_name,layer_id,external_type,launch_data,launch_money,launch_time)  
+				SELECT '$user_id','$user_key','$account_name','$layer_id','$external_type','$json_data','$money','$time'
+				FROM dual  
+				WHERE not exists (select * from external_import_launch where user_id ='$user_id' AND launch_time='$time')";
+				$deal_mysql->execute($sql);
+				//获取插入的主键单号
+				//$get_import_serial_sql = "SELECT serial_last('external_import') as import_serial";
+				$get_import_serial_sql = "select import_serial from external_import_launch where user_id ='$user_id' AND launch_time='$time'";
+				$import_serial = '';
+				foreach ($deal_mysql->query($get_import_serial_sql) as $v) {
+					$import_serial = $v['import_serial'];
+				}
+				//提现成功
+				if (!empty($import_serial)) {
+					if ($code == 0) {
+						//提现到我的钱包成功-添加成功记录
+						//插入转出成功记录sql
+						$sqls = "INSERT IGNORE external_import_success SET 
+								import_serial='$import_serial',success_deal_serial=1,success_time='$time',success_data='$json_data' ";
+						$deal_mysql->execute($sqls);
+						$res = [
+							'status' => 200,
+							'msg' => '提现成功',
+							'data' => [
+								'code' => $code,
+								'now_wallet_money'=>$return_money
+							]
+						];
+					}else {
+						//提现失败-添加失败记录
+						$sqls = "INSERT IGNORE external_import_failure SET 
+								import_serial='$import_serial',failure_time='$time',failure_data='$json_data'";
+						$deal_mysql->execute($sqls);
+						$res = [
+							'status' => 400,
+							'msg' => '提现失败',
+							'data' => [
+								'code' => $code,
+								'now_wallet_money'=>$return_money
+							]
+						];
+					}
+				} else {
+					$res = [
+						'status' => 400,
+						'msg' => '交易异常'
+					];
+				}
+			}
+			//推送客户端
+			$websocketAdapter->send($client_id,'ExternalGame/GameAmountTransfer', $res);
+		}
+	}
+}

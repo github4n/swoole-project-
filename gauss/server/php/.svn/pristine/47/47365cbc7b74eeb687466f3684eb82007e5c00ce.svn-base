@@ -1,0 +1,82 @@
+<?php
+namespace Plat\Websocket\Website\Site;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+
+ *  Website/Site/SiteSave {"site_list":["site1","site2"],"status":0}
+ * */
+
+class SiteSave extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("site_status_update", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+
+        $data = $context->getData();
+        $mysqlAdmin = $config->data_admin;
+
+        $site_list = isset($data["site_list"]) ? $data["site_list"] : "";
+        $status = isset($data["status"]) ? $data["status"] : "";
+        if(empty($site_list)){
+            $context->reply(["status"=>205,"msg"=>"站点数据不能为空"]);
+            return;
+        }
+        if(!is_array($site_list)){
+            $context->reply(["status"=>206,"msg"=>"站点数据类型错误"]);
+            return;
+        }
+
+        if(!is_numeric($status)){
+            $context->reply(["status"=>207,"msg"=>"状态类型错误"]);
+            return;
+        }
+        if($status == 0){
+            $status = 0;
+        }elseif($status == 1){
+            $status = 1;
+        }elseif($status == 2){
+            $status = 2;
+        }elseif($status == 3){
+            $status = 3;
+        }else{
+            $context->reply(["status"=>"208","msg"=>"站点状态错误"]);
+            return;
+        }
+        foreach ($site_list as $site_key){
+            $siteMysqlStaff = $config->__get("data_".$site_key."_staff");
+            $sql = "update site set status=:status where site_key=:site_key";
+            $staff_site_sql = "update site_setting set int_value=:status where setting_key='site_status'";
+            try{
+                $mysqlAdmin->execute($sql,[":site_key"=>$site_key,":status"=>$status]);
+                $siteMysqlStaff->execute($staff_site_sql,[":status"=>$status]);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                throw new \PDOException($e);
+            }
+            //记录修改日志
+            $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+            $params = [
+                ':admin_id' => $context->getInfo('adminId'),
+                ':operate_key' => "site_status_update",
+                ':detail' => "修改了站点.".$site_key."的开关"
+            ];
+            $mysqlAdmin->execute($sql,$params);
+        }
+
+        $context->reply([
+            'status'=>200,
+            'msg'=>'修改成功',
+            
+        ]);
+        //通知站点
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $taskAdapter->plan('NotifySite', ["path"=>"Site/Status","data"=>[]],time(),9);
+    }
+}

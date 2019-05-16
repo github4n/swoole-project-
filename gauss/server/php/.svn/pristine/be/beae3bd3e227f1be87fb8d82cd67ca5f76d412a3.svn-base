@@ -1,0 +1,67 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\Setting;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 玩法赔率设置编辑
+ * 投注额设置保存
+ * 参数：LotteryTicket/Setting/PlayRateSettingSave {"game_key":"dice_ah","play_list":[{"play_key":"dice_any2_3","default_rate":21},{"play_key":"dice_any2_1","default_rate":21}]}
+ * */
+class PlayRateSettingSave extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("ticket_setting_bonus",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql=$config->data_public;
+        if(empty($data)){
+            $context->reply(["status"=>202,"msg"=>"没有提交任何修改数据"]);
+            return;
+        }
+        if(empty($data['game_key'])){
+            $context->reply(["status"=>203,"msg"=>"彩种不能为空"]);
+            return;
+        }
+        if(empty($data['play_list'])){
+            $context->reply(["status"=>204,"msg"=>"编辑提交的数据不能为空"]);
+            return;
+        }else{
+            foreach ($data['play_list'] as $key=>$val){
+                if(!is_numeric($val['default_rate'])){
+                    $context->reply(["status"=>208,"msg"=>"提交的赔率类型不正确"]);
+                    return;
+                }
+                try{
+                    $sql = "UPDATE lottery_game_win SET bonus_rate = :bonus_rate WHERE win_key = :win_key AND game_key=:game_key";
+                    $param = [
+                        ":win_key"=>$val['play_key'],
+                        ":bonus_rate"=>$val['default_rate'],
+                        ":game_key"=>$data["game_key"]
+                    ];
+                    $mysql->execute($sql, $param);
+
+                } catch (\PDOException $e) {
+                    $context->reply(["status"=>400,"msg"=>"设置失败"]) ;
+                    throw new \PDOException('sql run error'.$e);
+                }
+            }
+        }
+        //记录修改日志
+        $mysqls=$config->data_admin;
+        $sqlss = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+        $param = [
+            ':admin_id' => $context->getInfo('adminId'),
+            ':operate_key' => "ticket_setting_bonus",
+            ':detail' => "修改了玩法赔率"
+        ];
+        $mysqls->execute($sqlss,$param);
+        $context->reply(['status' => 200, 'msg' => '设置成功']);
+    }
+}

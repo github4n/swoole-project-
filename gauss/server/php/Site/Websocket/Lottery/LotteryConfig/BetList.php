@@ -1,0 +1,102 @@
+<?php
+
+/**
+ * Class BetList
+ * @description 彩票投注额设置列表类
+ * @author Kayden
+ * @date 2019-04-25
+ * @link Lottery/LotteryConfig/BetList {"game_key":"tiktok_fast"}
+ * @param string $game_key 彩种Key
+ * @modifyAuthor Kayden
+ * @modifyDate 2019-04-25
+ */
+
+namespace Site\Websocket\Lottery\LotteryConfig;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+class BetList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo('StaffGrade');
+        if ($StaffGrade != 0) {
+            $context->reply(['status' => 201, '当前账号没有操作权限']);
+            return;
+        }
+
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array('game_lottery_bet', $auth)) {
+            $context->reply(['status' => 201, 'msg' => '你还没有操作权限']);
+            return;
+        }
+
+        //接收参数
+        $data = $context->getData();
+        $game_key = empty($data['game_key']) ? 'tiktok_cq' : $data['game_key'];
+
+        //验证彩种名称
+        if (empty($context->getInfo($game_key))) {
+            $context->reply(['status' => 202, 'msg' => '彩票名称错误', 'data' => $game_key]);
+            return;
+        }
+
+        //连接数据库
+        $staff_mysql = $config->data_staff;
+
+        //查询彩票列表
+        $lottery_list = [];
+        $game_list = [];
+        $model_list = json_decode($context->getInfo('ModelList'), true);
+        $game_sql = 'SELECT game_key FROM lottery_game WHERE acceptable=1 AND model_key=:model_key';
+        foreach ($model_list as $k => $v) {
+            $game_list[$k]['model_name'] = $v['model_name'];
+            $game_param = [':model_key' => $v['model_key']];
+            foreach ($staff_mysql->query($game_sql, $game_param) as  $value) {
+                $lottery_list[] = [
+                    'game_key' => $value['game_key'],
+                    'game_name' => $context->getInfo($value['game_key']),
+                ];
+            }
+            $game_list[$k]['game_list'] = $lottery_list;
+            unset($lottery_list);
+        }
+
+        //查询投注额
+        $list = [];
+        $rate_list = [];
+        $bet_sql = 'SELECT play_key,bet_min,bet_max FROM lottery_game_play WHERE game_key=:game_key';
+        $param = [':game_key' => $game_key];
+        foreach ($staff_mysql->query($bet_sql, $param) as $row) {
+            $list[] = $row;
+        }
+
+        foreach ($list as $k => $v) {
+            $rate_list[$k]['play_key'] = $v['play_key'];
+            $rate_list[$k]['play_name'] = $context->getInfo($v['play_key']);
+            $rate_list[$k]['bet_min'] = $this->intercept_num($v['bet_min']);
+            $rate_list[$k]['bet_max'] = $this->intercept_num($v['bet_max']);
+        }
+
+        //返回数据
+        $context->reply([
+            'status' => 200,
+            'msg' => '获取成功',
+            'game_list' => $game_list,
+            'list' => $rate_list,
+        ]);
+
+        //记录日志
+        $staff_mysql = $config->data_staff;
+        $operate_sql = 'INSERT INTO operate_log (staff_id,operate_key,detail,client_ip) VALUES (:staff_id,:operate_key,:detail,:client_ip)';
+        $operate_param = [
+            ':staff_id' => $context->getInfo('StaffId'),
+            ':operate_key' => 'game_lottery_bet',
+            ':detail' => '查看彩票投注额列表',
+            ':client_ip' => ip2long($context->getClientAddr()),
+        ];
+        $staff_mysql->execute($operate_sql, $operate_param);
+    }
+}

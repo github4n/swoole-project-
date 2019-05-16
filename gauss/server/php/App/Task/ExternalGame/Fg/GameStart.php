@@ -1,0 +1,29 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-3-9
+ * Time: 下午1:09
+ */
+namespace App\Task\ExternalGame\Fg;
+use Lib\Config;
+use Lib\Task\Adapter;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+class GameStart implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['data' => $data] = $context->getData();
+        if (isset($data['action'])) {
+            $taskAdapter = new Adapter($config->cache_daemon);
+            $taskAdapter->plan('NotifySite',['path' => 'ExternalGame/ExternalGameSend', 'data'=>["data"=>$data]]);
+        } else {
+            $datas = isset($data['data']) ? $data['data'] : '';
+            if ($datas && isset($datas['client_id'])) {
+                $websocketAdapter = new \Lib\Websocket\Adapter($config->cache_daemon);
+                $websocketAdapter->send($datas['client_id'],'ExternalGame/GameStart', $data);
+            }
+        }
+    }
+}

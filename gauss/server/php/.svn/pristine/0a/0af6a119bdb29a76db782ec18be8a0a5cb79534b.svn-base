@@ -1,0 +1,100 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-1-2
+ * Time: 下午5:13
+ */
+
+namespace Site\Task\Report;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class UserSubsidy implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['time' => $time] = $context->getData();
+        $daily = intval(date('Ymd', $time));
+        $mysqlReport = $config->data_report;
+        $adapter = $context->getAdapter();
+
+        //检测数据是否锁定
+        $dailyInfo = [];
+        $sql = "select daily from daily_status where daily=:daily and frozen=1";
+        foreach ($mysqlReport->query($sql,[":daily"=>$daily]) as $row){
+            $dailyInfo = $row;
+        }
+        if(!empty($dailyInfo)){
+            $adapter->plan('Report/UserSubsidy', ['time' => $time + 86400], time() + 600, 9);
+            return;
+        }
+
+
+        $sql = "select user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,sum(subsidy) as subsidy from daily_user_game_subsidy where daily = '$daily' group by user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name";
+        $data = array();
+
+        foreach ($mysqlReport->query($sql) as $row) {
+            $user_id = $row['user_id'];
+            $count_sql = "select sum(subsidy) as cumulate_subsidy from daily_user_subsidy where user_id= '$user_id' and daily < '$daily' and deliver_time <> 0";
+            $countSubsidy = 0;
+            foreach ($mysqlReport->query($count_sql) as $tag) {
+                $countSubsidy = !empty($tag['cumulate_subsidy']) ? $tag['cumulate_subsidy'] : 0;
+            }
+            $param = [
+                        'daily' =>  $daily,
+                        'user_id' => $user_id,
+                        'user_key' => $row['user_key'],
+                        'user_name' => $row['user_name'],
+                        'layer_id' => $row['layer_id'],
+                        'layer_name' => $row['layer_name'],
+                        'major_id' => $row['major_id'],
+                        'major_name' => $row['major_name'],
+                        'minor_id' => $row['minor_id'],
+                        'minor_name' => $row['minor_name'],
+                        'agent_id' => $row['agent_id'],
+                        'agent_name' => $row['agent_name'],
+                        'subsidy' => $row['subsidy'],
+                        'cumulate_subsidy' => $countSubsidy,
+                        'deliver_time' => 0
+                    ];
+            $data[] = $param;
+        }
+        $mysqlReport->daily_user_subsidy->load($data, [], 'replace');
+
+        //周报
+        $weekly = intval(date("oW",$time));
+        $first_day = date('Ymd', strtotime("-1 week Monday", $time));
+        $last_day = date('Ymd', strtotime("+0 week Sunday", $time));
+        $weekly_sql = "select user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,sum(subsidy) as subsidy,sum(cumulate_subsidy) as cumulate_subsidy from daily_user_subsidy where daily between '$first_day' and '$last_day' group by user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name";
+        $weekData = $mysqlReport->query($weekly_sql);
+        if (!empty($weekData)) {
+            $mysqlReport->weekly_user_subsidy->import($weekData, [
+                'weekly' => $weekly,
+            ], 'replace');
+        }
+
+        //月报
+        $monthly = intval(date("Ym",$time));
+        $first_day = date('Ym01', $time);
+        $last_day = date('Ymd', strtotime(date('Y-m-01',$time) . ' +1 month -1 day'));
+        $monthly_sql = "select user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,sum(subsidy) as subsidy,sum(cumulate_subsidy) as cumulate_subsidy from daily_user_subsidy where daily between '$first_day' and '$last_day' group by user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name";
+        $monthData = $mysqlReport->query($monthly_sql);
+        if (!empty($monthData)) {
+            $mysqlReport->monthly_user_subsidy->import($monthData, [
+                'monthly' => $monthly,
+            ], 'replace');
+        }
+
+
+        if (time() > $time + 86400) {
+            $adapter->plan('Report/UserSubsidy', ['time' => $time + 86400], time(), 9);
+        }
+        if (time() < $time + 86400 + 3600) {
+            $adapter->plan('Report/UserSubsidy', ['time' => $time], time() + 600, 9);
+        }
+
+
+    }
+}

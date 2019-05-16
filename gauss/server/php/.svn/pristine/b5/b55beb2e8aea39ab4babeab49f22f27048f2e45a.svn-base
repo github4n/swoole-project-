@@ -1,0 +1,133 @@
+<?php
+namespace App\Websocket\ExternalGame;
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+/*
+ * 额度转换
+ * ExternalGame/GameAmountTransfer {"wallet":"my","plat":"ky","money":"500","my_money":"500","ky_money":"500","ag_money":"500","type":0}
+ *
+ * wallet: 选择钱包
+ * plat:   转入平台
+ * type；  类型 0-额度转换 1-一键归户
+ */
+class GameAmountTransfer extends CheckLogin
+{
+	public function onReceiveLogined(Context $context, Config $config)
+	{
+		$param = $context->getData();
+		$my_money = isset($param['my_money']) ? $param['my_money'] : '';
+		$ky_money = isset($param['ky_money']) ? $param['ky_money'] : '';
+		$ag_money = isset($param['ag_money']) ? $param['ag_money'] : '';
+		$type = isset($param['type']) ? $param['type'] : 0;
+		if ($type == 0) {
+			$wallet = isset($param['wallet']) ? $param['wallet'] : '';
+			$plat = isset($param['plat']) ? $param['plat'] : '';
+			if ($wallet == $plat) {
+				$context->reply(['status' => 400,'msg' => '请勿选择相同的类型']);
+				return;
+			}
+			$money = isset($param['money']) ? $param['money'] : '';
+			if (empty($money) || $money <= 0) {
+				$context->reply(['status' => 400,'msg' => '充值金额异常']);
+				return;
+			}
+			if (empty($wallet) || empty($plat)) {
+				$context->reply(['status' => 400,'msg' => '请选择钱包或转入平台类型']);
+				return;
+			}
+		}
+		$user_id = $context->getInfo('UserId');
+		$user_key = $context->getInfo('UserKey');
+		$adapter = new \Lib\Task\Adapter($config->cache_daemon);
+		//额度转换
+		if ($type == 0) {
+			switch ($wallet) {
+				//充值
+				case 'my':
+					switch ($plat) {
+						//充值到开元棋牌
+						case 'ky':
+							//判断选择钱包内的金额
+							if ($money > $my_money) {
+								$context->reply(['status' => 400,'msg' => '余额不足']);
+								return;
+							}
+							$param = [
+								's' => 2,
+								'user_id' => $user_id,
+								'account' => $user_key,
+								'money' => $money,
+								'action' => 'addScore',
+								'client_id' => $context->clientId(),
+								'interface_key' => $plat,
+								'method' => 'GameAmountTransfer'
+							];
+							$adapter->plan('ExternalGame/GameAmountTransfer',['data'=>$param],time(),1);
+							break;
+						//充值到AG视讯
+						case 'ag':
+							break;
+						case 'lb':
+							break;
+					}
+				case 'ky':
+					switch ($plat) {
+						//提现到我的钱包
+						case 'my':
+							//判断选择钱包内的金额
+							if ($money > $ky_money) {
+								$context->reply(['status' => 400,'msg' => '余额不足']);
+								return;
+							}
+							$param = [
+								's' => 3,
+								'user_id' => $user_id,
+								'account' => $user_key,
+								'money' => $money,
+								'action' => 'subordinate',
+								'client_id' => $context->clientId(),
+								'interface_key' => $plat,
+								'withdraw_key' => $wallet,	//校验是充值还是提现的key值
+								'method' => 'GameAmountTransfer'
+							];
+							$adapter->plan('ExternalGame/GameAmountTransfer',['data'=>$param],time(),1);
+							break;
+						case 'ag':
+							//先从ky提现再充值到ag
+							break;
+						case 'lb':
+							break;
+					}
+				case 'ag':
+					break;
+				case 'lb':
+					break;
+				default:
+					$context->reply(['status'=>404,'msg'=>'非法参数']);
+					return;
+			}
+		} elseif ($type == 1) {
+			//一键归户
+			$walletData = ['ky'];
+			$plat = 'my';
+			foreach ($walletData as $wallet) {
+				$money = $wallet.'_money';
+				$param = [
+					's' => 3,
+					'user_id' => $user_id,
+					'account' => $user_key,
+					'money' => $$money,
+					'action' => 'subordinate',
+					'client_id' => $context->clientId(),
+					'interface_key' => $plat,
+					'withdraw_key' => $wallet,	//校验是充值还是提现的key值
+					'method' => 'GameAmountTransfer'
+				];
+				$adapter->plan('ExternalGame/GameAmountTransfer',['data'=>$param],time(),1);
+			}
+		}
+
+	}
+}

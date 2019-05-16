@@ -1,0 +1,20 @@
+<?php
+
+namespace Plat\Task\Fg;
+use Lib\Task\Context;
+use Lib\Config;
+use Lib\Task\IHandler;
+
+class Bet implements IHandler
+{
+	public function onTask(Context $context, Config $config)
+	{
+		['data' => $res] = $context->getData();
+		//推送客户端
+//		$clientid = $res['clientId'];
+//		$websocketAdapter = new \Lib\Websocket\Adapter($config->cache_daemon);
+//		$websocketAdapter->send('123456','Fg/Bet', $res);
+		$adapter = $context->getAdapter();
+		$adapter->plan('NotifyClient',['path' => 'Fg/Bet', 'data' => $res]);
+	}
+}

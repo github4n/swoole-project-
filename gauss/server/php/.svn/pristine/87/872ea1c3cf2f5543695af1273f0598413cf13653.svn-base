@@ -1,0 +1,46 @@
+<?php
+namespace Plat\Websocket\Index;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 首页接口
+ *
+ */
+
+class Index extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+
+        $mysql = $config->data_analysis;
+        //上月日期
+        $lastMonthly = date('Ym',strtotime('-1 month'));
+
+        //上月站点数据sql
+        $sql = "select site_key,site_name,bet_lottery,bet_video,bet_game,bet_sports,bet_cards from monthly_site where monthly = '$lastMonthly'";
+        $list = iterator_to_array($mysql->query($sql));
+        $data = array();
+        if (!empty($list)) {
+            foreach ($list as $item) {
+                //取应收取各站点的总金额
+                $site_key = $item['site_key'];
+                $tax_sql = "select tax_total from monthly_tax where monthly = '$lastMonthly' and site_key = '$site_key'";
+                $tax_total = 0;
+                foreach ($mysql->query($tax_sql) as $v) {
+                    $tax_total = $v['tax_total'];
+                }
+                $item['tax_total'] = $tax_total;
+                $data[] = $item;
+            }
+        }
+
+        //Ｋ线图数据
+        $countSql = "select daily,sum(bet_all) as bet_all,sum(user_all) as user_all from daily_site order by daily desc limit 7";
+        $trend = iterator_to_array($mysql->query($countSql));
+
+        $context->reply(['status'=>200,'msg'=>'成功','data'=>$data,'trend'=>$trend]);
+
+    }
+}

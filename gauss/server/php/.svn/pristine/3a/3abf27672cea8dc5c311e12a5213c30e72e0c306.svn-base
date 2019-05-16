@@ -1,0 +1,125 @@
+<?php
+
+namespace Site\Websocket\Rebate\RebateCount;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+//查看反水详情
+//会员层级
+//Rebate/RebateCount/RebateBrowse {"layer_id":"1","user_id":"","daily":""}
+//日期
+
+class RebateBrowse extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("subsidy_report", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+
+        $data = $context->getData();
+        $mysql_report = $config->data_report;
+        $mysql_user = $config->data_user;
+        $sql = "select * from daily_user_subsidy  where 1=1  ";
+        $layer_id = $data["layer_id"]; //层级$userId
+        $deliverTime = $data["daily"]; //时间
+        $user_id = '';
+
+        if (!empty($layer_id)) {
+            $user_sql = "select user_id from user_info  where  layer_id='$layer_id' ";
+            foreach ($mysql_user->query($user_sql) as $item) {
+                $user_id .= $item['user_id'] . ',';
+            }
+
+            $user_list = rtrim($user_id, ',');
+            if (!empty($user_list)) {
+                $sql .= " AND user_id in ($user_list) ";
+            } else {
+                $context->reply(['status' => 200, 'msg' => []]);
+                return;
+            }
+        }
+
+        if (!empty($deliverTime)) {
+            $sql .= "AND daily = '$deliverTime'";
+        }
+        if (!empty($data["user_id"])) {
+            $user_id = $data["user_id"];
+            $sql .= "AND user_id = '$user_id'";
+        }
+        $subsidy_setting = "select layer_id from subsidy_setting where auto_deliver=1 and deliver_time >0";
+        $subsidy_list = iterator_to_array($mysql_user->query($subsidy_setting));
+        $subsidys = [];
+        if ($subsidy_list[0] != null) {
+            foreach ($subsidy_list as $value) {
+                $subsidys[] = $value['layer_id'];
+            }
+        }
+
+        $list = iterator_to_array($mysql_report->query($sql));
+        $transantion = [];
+        $last_data = [];
+        $mysql_public = $config->data_public;
+        $lottery_game_sql = "select game_key from lottery_game";
+        $external_model_sql = "select category_key,game_key from external_game";
+        foreach ($mysql_public->query($lottery_game_sql) as $value) {
+            $transantion += [$value['game_key'] => 0];
+        }
+        foreach ($mysql_public->query($external_model_sql) as $value) {
+            $transantion += [$value['game_key'] => 0];
+        }
+
+            foreach ($list as $v) {
+                $subsidy_data = $transantion;
+                $daily = $v['daily'];
+                $userId = $v['user_id'];
+                $game_subsidy_sql = "select user_id,game_key, subsidy from  daily_user_game_subsidy where daily='$daily' and user_id='$userId'";
+
+                $game_subsidy_list = iterator_to_array($mysql_report->query($game_subsidy_sql));
+                foreach ($game_subsidy_list as $value) {
+                    $subsidy_data[$value['game_key']] += $value['subsidy'];
+                }
+                $user_id = $value['user_id'];
+                $user_sql = "select layer_name,user_key from user_info_intact where user_id=$user_id";
+                $user_data = iterator_to_array($mysql_user->query($user_sql));
+                $subsidy_data += [
+                    'daily' => $daily,
+                    'user_id' => $v['user_id'],
+                    'layer' => $user_data [0]['layer_name'],
+                    'user_key' => $user_data [0]['user_key'],
+                    'cumulate_subsidy' => $v['cumulate_subsidy'],
+                    'subsidy' => $v['subsidy'],
+                    'cards_game' => 0,
+                ];
+                if (!empty($subsidys) && in_array($layer_id, $subsidys)) {
+                    $subsidy_data += [
+                        'is_automatic' => '是'
+                    ];
+                } else {
+                    $subsidy_data += [
+                        'is_automatic' => '否'
+                    ];
+                }
+
+                if ($v['deliver_time'] == 0) {
+                    $subsidy_data += [
+                        'is_distribute' => '否',
+                        'distribute_time' => ''
+                    ];
+                } else {
+                    $subsidy_time = date("Y-m-d H:i:s", $v['deliver_time']);
+                    $subsidy_data += [
+                        'is_distribute' => '是',
+                        'distribute_time' => $subsidy_time
+                    ];
+                }
+                $last_data[] = $subsidy_data;
+            }
+        $context->reply(['status' => 200, 'list' => $last_data]);
+        return;
+    }
+
+}

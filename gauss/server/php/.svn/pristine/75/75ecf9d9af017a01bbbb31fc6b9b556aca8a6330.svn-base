@@ -1,0 +1,86 @@
+<?php
+namespace Site\Websocket\Website\Message;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 网站管理--消息管理--会员公告修改信息接收
+ * Website/Message/BulletinEditUpdate {"layer_message_id":1,"title":"修改测试标题","publish":"0","layer_id":"2","start_time":"2018-12-03 00:00:00","stop_time":"2018-12-10 23:59:59","content":"修改测试公告内容测试的公告内容。测试公告内容，测试公告内容","image_file":""}
+ * */
+
+class BulletinEditUpdate extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $mysql_staff = $config->data_staff;
+        $layer_message_id = $data["layer_message_id"];
+        if(!is_numeric($layer_message_id)){
+            $context->reply(["status"=>204,"msg"=>"参数类型错误"]);
+            return;
+        }
+        $title = $data["title"];
+        $publish = $data["publish"];
+        $layer_id = intval($data["layer_id"]);
+        $start_time = $data["start_time"];
+        $stop_time = $data["stop_time"];
+        $content = $data["content"];
+        $cover = $data["image"];
+        if(empty($title)){
+            $context->reply(["status"=>205,"msg"=>"公告标题不能为空"]);
+            return;
+        }
+        if(strlen($title)>100){
+            $context->reply(["status"=>206,"msg"=>"公告标题太长"]);
+            return;
+        }
+        if(empty($content)){
+            $context->reply(["status"=>207,"msg"=>"内容描述不能为空"]);
+            return;
+        }
+        if(!empty($start_time)){
+            $start_time = strtotime($start_time);
+        } else{
+            $start_time = 0;
+        }
+        if(!empty($stop_time)){
+            $stop_time = strtotime($stop_time);
+        }else{
+            $stop_time = 0;
+        }
+        $sql = "UPDATE layer_message SET  title=:title, layer_id=:layer_id,start_time=:start_time,stop_time=:stop_time,cover=:cover,content=:content,publish=:publish WHERE layer_message_id=:layer_message_id";
+        $param = [
+            ":layer_message_id"=>$layer_message_id,
+            ":title"=>$title,
+            ":layer_id"=>$layer_id,
+            ":start_time"=>$start_time,
+            ":stop_time"=>$stop_time,
+            ":cover"=>$cover?:0,
+            ":content"=>$content,
+            ":publish"=>$publish==1?:0,
+        ];
+        try{
+            $mysql->execute($sql,$param);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"修改失败"]);
+            throw new \PDOException($e);
+        }
+        $context->reply(["status"=>200,"msg"=>"修改成功"]);
+        //添加日志信息
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $context->getInfo("StaffId"),
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'web_message',
+            ':detail' =>'修改会员公告id为'.$layer_message_id.'的信息内容',
+        ];
+        $mysql_staff->execute($sql, $params);
+    }
+}

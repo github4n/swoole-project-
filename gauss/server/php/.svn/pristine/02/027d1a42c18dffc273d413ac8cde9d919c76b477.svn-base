@@ -1,0 +1,61 @@
+<?php
+namespace Site\Task\Layer;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+/*
+ * 自动升级
+ */
+class LayerUserAuto implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['time' => $time] = $context->getData();
+        $mysqlReport = $config->data_report;
+        $sql = "select user_id,layer_id from user_cumulate where invite_code = 0";
+        $daily = date('Ymd',$time - 86400);
+        //获取会员的基本信息
+        foreach ($mysqlReport->query($sql) as $value) {
+            $user_id = $value['user_id'];
+            $data_sql = "select sum(deposit_amount) as deposit_amount,sum(wager_amount) as wager_amount from daily_user where user_id = '$user_id' and daily <= '$daily' ";
+            $deposit_amount = '';
+            $bet_amount = '';
+            foreach ($mysqlReport->query($data_sql) as $data) {
+                $deposit_amount = $data_sql['deposit_amount'];
+                $bet_amount = $data['wager_amount'];
+            }
+            $layer_id = $value['layer_id'];
+            $mysqlUser = $config->data_user;
+            $layer_sql = "select layer_id,layer_name from layer_info where layer_type = 2 and min_deposit_amount <= '$deposit_amount' and min_bet_amount <= '$bet_amount' order by min_deposit_amount desc limit 1";
+            $layerInfo = [];
+            //获取符合升级条件的会员层级
+            foreach ($mysqlUser->query($layer_sql) as $layer) {
+                if ($layer['layer_id'] != $layer_id) {
+                    $layerInfo['layer_id'] = $layer['layer_id'];
+                    $layerInfo['layer_name'] = $layer['layer_name'];
+                    $layerInfo['user_id'] = $value['user_id'];
+                }
+            }
+            //升级更新操作
+            if (!empty($layerInfo)) {
+                $param = [
+                    'layer_id' => $layerInfo['layer_id'],
+                    'user_id' => $layerInfo['user_id']
+                ];
+                $update_user_sql = 'update user_info set layer_id = :layer_id where user_id = :user_id';
+                $mysqlUser->execute($update_user_sql,$param);
+                $params = [
+                    'layer_id' => $layerInfo['layer_id'],
+                    'layer_name' => $layerInfo['layer_name'],
+                    'user_id' => $layerInfo['user_id']
+                ];
+                $update_event_sql = 'update user_event set layer_id = :layer_id,layer_name = :layer_name where user_id = :user_id';
+                $mysqlReport->execute($update_event_sql,$params);
+                $update_cumulate_sql = 'update user_cumulate set layer_id = :layer_id,layer_name = :layer_name where user_id = :user_id';
+                $mysqlReport->execute($update_cumulate_sql,$params);
+            }
+
+        }
+    }
+}

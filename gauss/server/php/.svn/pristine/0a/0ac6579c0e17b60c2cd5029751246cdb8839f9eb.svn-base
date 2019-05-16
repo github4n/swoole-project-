@@ -1,0 +1,38 @@
+<?php
+namespace Plat\Websocket\Website\OutPort;
+
+use Lib\Websocket\IHandler;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 接收修改app管理的修改的信息
+ * 参数：site_key:站点,app_key:APP名称,link:下载地址
+ * */
+
+class PortList implements IHandler{
+    public function onReceive(Context $context, Config $config)
+    {
+        $context->reply([
+            'status'=>200,
+            'msg'=>'获取成功',
+            'list'=>[
+                [
+                    'sports_key'=>'sports',
+                    'sports_game'=>'体育游戏',
+                    'sports_list'=>[
+                        ['sport_name'=>'沙巴体育','sports_key'=>'sb','sports_switch'=>'true'],
+                        ['sport_name'=>'MG体育','sports_key'=>'mg','sports_switch'=>'false'],
+                    ]
+                ],
+                [
+                    'live_key'=>'live',
+                    'live_game'=>'真人视讯',
+                    'live_list'=>[
+                        ['live_name'=>'AG世勋','live_key'=>'ag','live_switch'=>'true'],
+                        ['live_name'=>'MG视讯','live_key'=>'mg','live_switch'=>'false'],
+                    ]
+                ],
+            ]
+        ]);
+    }
+}

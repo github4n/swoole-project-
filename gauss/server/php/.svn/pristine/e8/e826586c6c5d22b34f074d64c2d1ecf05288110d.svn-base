@@ -1,0 +1,25 @@
+<?php
+namespace Site\Task\ExternalGame;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+class GameAmountTransfer implements IHandler
+{
+	public function onTask(Context $context, Config $config)
+	{
+		//转发app请求至站点
+		['data' => $data] = $context->getData();
+		$websocketAdapter = new \Lib\Websocket\Adapter($config->cache_app);
+		foreach ($websocketAdapter->queryClients() as $clientId) {
+			$websocketAdapter->send($clientId, 'bbb', 1);
+		}
+		return;
+		$interface_key = $data['interface_key'];
+		$adapter = $context->getAdapter();
+		//当提现到我的钱包时
+		if ($interface_key == 'my') {
+			$interface_key = $data['withdraw_key'];
+		}
+		$adapter->plan('NotifyPlat', ['path' => 'ExternalGame/' . $interface_key,'data' =>['data'=>$data]]);
+	}
+}

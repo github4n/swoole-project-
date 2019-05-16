@@ -1,0 +1,223 @@
+<?php
+
+namespace Site\Websocket\Member\BetRecord;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use function PHPSTORM_META\type;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员管理-投注记录
+ * Member/BetRecord/BetRecordAll {"game_key":"six_hk","result":"0","start_time":"2018-12-18","end_time":"2018-12-20","chase":"1","user_key":"user123"}
+ * 参数：page:当前页数,num:每页显示的数量,go_num:跳转的页数
+ *搜索参数：period:期号，game_key:彩票类型，result:订单状态，launch_time:下注时间，chase_mode:是否追号，user_key:会员账号
+ */
+class BetRecordAll extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $data = $context->getData();
+        $num = empty($data["num"])?8:$data["num"];
+        $search_period = empty($data['period'])?null:$data['period'];
+        $gameKey = empty($data['game_key'])?null:$data['game_key'];
+        $result = empty($data['result'])?null:$data['result'];
+        $start_time = empty($data['start_time'])?null:$data['start_time'];
+        $end_time = empty($data['end_time'])?null:$data['end_time'];
+        $chase = empty($data['chase'])?null:$data['chase'];
+        $userKey = empty($data['user_key'])?null:$data['user_key'];
+        $staffId = $context->getInfo('StaffId');
+        $staffGrade = $context->getInfo('StaffGrade');
+        $gameList = json_decode($context->getInfo('GameList'));
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("user_bet", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+
+        $mysql = $config->data_staff;
+        $cache = $config->cache_site;
+        $agent_id = [];
+        switch ($staffGrade)
+        {
+            case 0:
+                $sql = 'SELECT agent_id FROM staff_struct_agent WHERE owner_id='.$staffId;
+                foreach ($mysql->query($sql) as $row)
+                {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 1:
+                $sql = 'SELECT agent_id FROM staff_struct_agent WHERE major_id='.$staffId;
+                foreach ($mysql->query($sql) as $row)
+                {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 2:
+                $sql = 'SELECT agent_id FROM staff_struct_agent WHERE minor_id='.$staffId;
+                foreach ($mysql->query($sql) as $row)
+                {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 3:
+                $agent_id[] = $staffId;
+                break;
+        }
+        $mysql = $config->data_user;
+        $sql = 'SELECT user_id FROM user_info WHERE agent_id =:agent_id';
+        $user_id = [];
+        foreach ($agent_id as $k => $v)
+        {
+            $param = [':agent_id' => $v];
+            foreach ($mysql->query($sql,$param) as $row)
+            {
+                $user_id[] = $row['user_id'];
+            }
+        }
+
+        $ids = implode(',',$user_id);
+
+        $bet_game_key = NULL;
+        $bet_chase = NULL;
+        $user_key = NULL;
+        $bet_result = NULL;
+        $time = NULL;
+        $bet_period = null;
+
+        if (!empty($search_period))
+        {
+            $bet_period = 'AND period='."'$search_period'".' ';
+        }
+
+        if (!empty($gameKey))
+        {
+            $bet_game_key = "AND game_key='".$gameKey."'";
+        }
+        if ($chase == 1)
+        {
+            $bet_chase = "AND period_list IS NOT NULL";
+        }elseif ($chase ==2)
+        {
+            $bet_chase = "AND period_list IS NULL";
+        }
+
+        if (!empty($userKey))
+        {
+            $user_key = "AND user_key='".$userKey."'";
+        }
+        if (is_numeric($result))
+        {
+            $bet_result = "AND result='".$result."'";
+        }
+        if(!empty($start_time)){
+            $start = $start_time." 00:00:00";
+            if(!empty($end_time)) {
+                $end = $end_time."23:59:59";
+                $time = " AND launch_time BETWEEN ".strtotime($start)."  AND ".strtotime($end)." ";
+            } else{
+                $time = " AND launch_time BETWEEN ".strtotime($start)."  AND ".time()." ";
+            }
+        }
+        if(!empty($end_time) && empty($start_time)) {
+            $end = $end_time."23:59:59";
+            $time = " AND launch_time <= ".strtotime($end);
+        }
+        $betList = array();
+        $total = 0;
+        $bonus = 0;
+
+        $totalAmount = array('bet_all'=>0,'bonus'=>0,'rebate' => 0,'revert' => 0,'bet_profit' =>0);
+        $statistics = array();
+        $sql = 'SELECT bet_serial,user_id,user_key,launch_time,period,game_key,play_key,number,quantity,period_list,chase_mode,result,bet_launch,bonus,rebate,revert,(bonus-bet_launch+rebate) AS bet_profit FROM bet_unit_intact WHERE user_id IN ('.$ids.') '.$bet_period.$bet_game_key.$user_key.$bet_result.$bet_chase.$time.' ORDER BY launch_time DESC,period DESC LIMIT 200';
+        for ($i=1;$i<6;$i++)
+        {
+            $mysql = $config->__get("data_deal" . $i);
+            $total += $mysql->execute($sql );
+            foreach ($mysql->query($sql) as $row)
+            {
+                $list[] = $row;
+                $totalAmount['bet_all'] += $row['bet_launch'];
+                $bonus += $row['bonus'];
+                $totalAmount['bonus'] = floor($bonus * 100) / 100;
+                $totalAmount['rebate'] += $row['rebate'];
+                $totalAmount['revert'] += $row['revert'];
+                $totalAmount['bet_profit'] += $row['bet_profit'];
+                $statistics[] = $row['user_id'];
+            }
+
+            if (!empty($list))
+            {
+                foreach($list as $key => $val)
+                {
+                    $play_key = $val['play_key'];
+                    $betList[$key]['bet_serial'] = $val['bet_serial'];
+                    $betList[$key]['user_id'] = $val['user_id'];
+                    $betList[$key]['user_key'] = $val['user_key'];
+                    $betList[$key]['launch_time'] = date('Y-m-d H:i:s',$val['launch_time']);
+                    $betList[$key]['period'] = $val['period'];
+                    $betList[$key]['game_name'] = $context->getInfo($val['game_key']);
+                    $betList[$key]['play_key'] = $val['play_key'];
+                    $betList[$key]['play_name'] = $context->getInfo($val['play_key']);
+                    $tmp_number = json_decode($val['number'],true);
+                    $res  = [];
+                    $tmp_num = [];
+                    $number = $this->NumberSettle($tmp_number,$res);
+                    foreach ($number as $k => $v)
+                    {
+                        //$context->reply($val['play_key'].'-'.$v);
+                        $tmp_num[] = $cache->hget("WinList",$play_key."-".$v);
+                        //array_push($tmp_num,$cache->hget("WinList",$play_key."-".$v));
+                    }
+                    $betList[$key]['number'] = $tmp_num;
+                    $betList[$key]['quantity'] = $val['quantity'];
+                    $period = json_decode($val['period_list'],true);
+                    $betList[$key]['chase_num'] = empty($period)?0:count($period);
+                    $chase_mode = json_decode($val['chase_mode'],true);
+                    $betList[$key]['step'] = $chase_mode['step'];
+                    $betList[$key]['type'] = $chase_mode['type'];
+                    $betList[$key]['multiple'] = $chase_mode['multiple'];
+                    $betList[$key]['result'] = $val['result'];
+                    $betList[$key]['bet_launch'] = $val['bet_launch'];
+                    $betList[$key]['bonus'] = $val['bonus'];
+                    $betList[$key]['rebate'] = $val['rebate'];
+                    $betList[$key]['revert'] = $val['revert'];
+                    $betList[$key]['bet_profit'] = $val['bet_profit'];
+                    /*if ($betList[$key]['chase_num'] > 1)
+                    {
+                        $betList[$key]['chase_list'] = array_column($period,'period');
+                    }*/
+                    //unset($betList[$key]['period_list']);
+                    //unset($tmp_num);
+                }
+            }
+        }
+
+        $totalAmount['user_total'] = count(array_unique($statistics));
+        $context->reply(['status' => 200,
+            'msg' => '获取成功',
+            'game_list' =>  $gameList,
+            'totalRecord' => $total,
+            'totalPage' => ceil($total/$num),
+            'totalAmount' => $totalAmount,
+            'data' => $betList]
+        );
+    }
+
+    private function NumberSettle($arr,&$res)
+    {
+        foreach ($arr as $k => $v)
+        {
+            if (is_array($v))
+            {
+                $this->NumberSettle($v,$res);
+            }else
+            {
+                $res[] = $v;
+            }
+        }
+        return $res;
+    }
+}

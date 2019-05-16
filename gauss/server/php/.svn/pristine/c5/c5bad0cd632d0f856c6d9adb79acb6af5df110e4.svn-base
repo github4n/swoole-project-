@@ -1,0 +1,27 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-3-7
+ * Time: 上午11:26
+ */
+
+namespace Site\Task\ExternalGame;
+use Lib\Task\Context;
+use Lib\Config;
+use Lib\Task\IHandler;
+use Lib\Task\Adapter;
+class ExternalGameReceive implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        // TODO: 推送请求三方游戏的返回信息到APP
+        ['data' => $data] = $context->getData();
+        $method = isset($data['data']['method']) ? $data['data']['method'] : '';
+        $interface_key = isset($data['data']['interface_key']) ? $data['data']['interface_key'] : '';
+        if ($method && $interface_key) {
+            $adapter = new Adapter($config->cache_daemon);
+            $adapter->plan('NotifyApp',['path' => 'ExternalGame/' . $method,'data'=>['data'=>$data]],time(),1);
+        }
+    }
+}

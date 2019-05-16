@@ -1,0 +1,158 @@
+<?php
+
+namespace Site\Websocket\Member\Analyze;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员管理-会员分析-有效会员
+ * Member/Analyze/MemberAnalyze {"start_time":"","end_time":""}
+ */
+
+class MemberAnalyze extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("user_analysis", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo("MasterId");
+        $params = $context->getData();
+
+        $start_time = isset($params['start_time']) ? $params['start_time'] : '';
+        $end_time = isset($params['end_time']) ? $params['end_time'] : '';
+        $time = '';
+        if($start_time && $end_time){
+            $start_time = intval(date("Ymd",strtotime($start_time)));
+            $end_time = intval(date("Ymd",strtotime($end_time)));
+            $time = " AND daily BETWEEN '$start_time' AND '$end_time'";
+        }
+        if ($MasterId != 0) {
+            $staffId =$MasterId;
+        }
+
+        //求账号下及会员
+        $agentMysql = $config->data_staff;
+        $userMysql = $config->data_user;
+        switch ($StaffGrade)
+        {
+            case 0:
+                if(!empty($MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_lists = 0;
+
+                    foreach ($agentMysql->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+                        $layer_lists = $row["layer_list"];
+                    }
+                }else{
+                    $accout_sql = "select group_concat(layer_id) as layer_list from layer_info";
+                    foreach ($userMysql->query($accout_sql) as $row){
+                        $layer_lists = $row["layer_list"];
+                    }
+                }
+                $sql = "SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent";
+                foreach($agentMysql->query($sql) as $row ) {
+                    $agent_list = $row['agent_list'];
+                }
+                break;
+            case 1:
+                if(!empty($MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_lists = 0;
+
+                    foreach ($agentMysql->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+                        $layer_lists = $row["layer_list"];
+                    }
+                }else{
+                    $accout_sql = "select group_concat(layer_id) as layer_list from layer_info";
+                    foreach ($userMysql->query($accout_sql) as $row){
+                        $layer_lists = $row["layer_list"];
+                    }
+                }
+                $sql = "SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent WHERE major_id='$staffId'";
+                foreach($agentMysql->query($sql) as $row ) {
+                    $agent_list = $row['agent_list'];
+                }
+                break;
+            case 2:
+                if(!empty($MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_lists = 0;
+
+                    foreach ($agentMysql->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+                        $layer_lists = $row["layer_list"];
+                    }
+                }else{
+                    $accout_sql = "select group_concat(layer_id) as layer_list from layer_info";
+                    foreach ($userMysql->query($accout_sql) as $row){
+                        $layer_lists = $row["layer_list"];
+                    }
+                }
+                $sql = "SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent WHERE minor_id='$staffId'";
+                foreach($agentMysql->query($sql) as $row ) {
+                    $layer_lists = $row['agent_list'];
+                }
+                break;
+            case 3:
+                if(!empty($MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_lists = 0;
+
+                    foreach ($agentMysql->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+                        $layer_lists = $row["layer_list"];
+                    }
+                }else{
+                    $accout_sql = "select group_concat(layer_id) as layer_list from layer_info";
+                    foreach ($userMysql->query($accout_sql) as $row){
+                        $layer_lists = $row["layer_list"];
+                    }
+                }
+                $agent_list = $staffId;
+                break;
+        }
+
+        //根据总代理id查询下属的所有账号id以及所属的数据库
+
+        $sql = "SELECT group_concat(user_id) as user_list FROM user_info_intact WHERE agent_id in ($agent_list) and layer_id in ($layer_lists)";
+        foreach ($userMysql->query($sql) as $item) {
+            $user_list = $item['user_list'];
+        }
+        if(empty($user_list)){
+            $ids = 0;
+        } else{
+            $ids = $user_list;
+        }
+
+        $mysqlReport = $config->data_report;
+        $sql = "select daily,count(bet_count > 0) as bet_count,sum(staff_deposit_amount) as staff_deposit_amount,sum(staff_deposit_count) as staff_deposit_count,sum(bank_deposit_amount) as bank_deposit_amount,sum(bank_deposit_count) as bank_deposit_count,sum(simple_deposit_amount) as simple_deposit_amount,sum(simple_deposit_count) as simple_deposit_count,sum(withdraw_amount - staff_withdraw_amount) as online_withdraw_amount,sum(withdraw_count - staff_withdraw_count) as online_withdraw_count,sum(staff_withdraw_amount) as staff_withdraw_amount ,sum(staff_withdraw_count) as staff_withdraw_count from daily_user where user_id in ($ids) " .$time . "group by daily";
+
+
+        $data = [];
+        try{
+            foreach ($mysqlReport->query($sql) as $row) {
+                //今日新注册的人数
+                $starts_time =  strtotime($row["daily"]." 00:00:00") ;
+                $ends_time =  strtotime($row["daily"]." 23:59:59") ;
+                $times = " AND register_time BETWEEN '$starts_time' AND '$ends_time'";
+                $sqls = "select user_id from user_info_intact where user_id in ($ids) " . $times;
+                $total_user = $userMysql->execute($sqls);
+                $row['is_today_register'] = $total_user;
+                $row['res'] = $row['staff_deposit_amount'] + $row['bank_deposit_amount'] - $row['staff_withdraw_amount']+$row["simple_deposit_amount"] - $row["online_withdraw_amount"] - $row["staff_withdraw_amount"];
+                $data[] = $row;
+            }
+            $total = count($data);
+            $context->reply(['status' => 200,'msg' => '成功','total' => $total,'data' => $data]);
+        } catch (\PDOException $e) {
+            $context->reply(["status" => 400,"msg" =>" 获取列表失败"]);
+            throw new \PDOException($e);
+        }
+
+    }
+}

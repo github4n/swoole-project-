@@ -1,0 +1,62 @@
+<?php
+
+namespace Plat\Websocket\LotteryTicket\Setting;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 玩法赔率设置编辑
+ * 参数：LotteryTicket/Setting/PlayRateSettingSave {"site":"site1"}
+ * */
+
+class PlayRateSettingSave extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("lottery_win_update", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $site = !empty($data['site']) ? $data['site'] : "";
+        $public_mysql = $config->data_public;
+        $amdin_mysql = $config->data_admin;
+        $analysis_mysql = $config->data_analysis;
+        if (empty($site)) {
+            $context->reply(["status" => 202, "msg" => "输入数据为空"]);
+            return;
+        }
+        $site_sql = "select *  from site  where site_key='$site' ";
+        $site_data = iterator_to_array($amdin_mysql->query($site_sql));
+        if (empty($site_data)) {
+            $context->reply(["status" => 203, "msg" => "输入的站点不存在"]);
+            return;
+        }
+        if ($site_data[0]['status'] != 3) {
+            $context->reply(["status" => 203, "msg" => $site . "站点未关闭无法修改赔率"]);
+            return;
+        }
+        $lastResult=[];
+        $site_win_sql="select model_key,game_key,play_key,win_key,bonus_rate from site_win where site_key ='$site'  group by model_key,game_key,play_key,win_key ";
+        $win_data = iterator_to_array($amdin_mysql->query($site_win_sql));
+        if(!empty($win_data)){
+            foreach ($win_data as $v1){
+                $model_key=$v1['model_key'];
+                $game_key=$v1['game_key'];
+                $play_key=$v1['play_key'];
+                $win_key=$v1['win_key'];
+                $bonus_rate=$v1['bonus_rate'];
+                $lastResult[$model_key][$game_key][$play_key][] =[$win_key=>$bonus_rate
+                    
+                ];
+                
+            }
+            $context->reply(["status" => 203, "msg" => $lastResult]);
+            return;
+        }
+    }
+
+}

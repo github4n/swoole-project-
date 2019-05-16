@@ -1,0 +1,233 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 18-12-18
+ * Time: 下午4:17
+ */
+
+namespace App\Websocket\Betting;
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+use App\Websocket\Betting\Common\CheckRuleList;
+/*
+ * 追号投注
+ *Betting/FollowUpBetting {"game_key":"six_hk","rule_list":[{"play_key":"six_miss5","number":["six_miss5_15","six_miss5_12","six_miss5_35","six_miss5_18","six_miss5_22","six_miss5_5","six_miss5_9"],"price":5,"quantity":"21","rebate_rate":"0"}],"period_list":[{"period":"2018147","multiple":"2"},{"period":"2018148","multiple":"2"}],"chase_mode":{"type":"multiple","step":"2","multiple":"2"},"stop_mode":"1"}
+ */
+class FollowUpBetting extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $params = $context->getData();
+        $deal_key = $context->getInfo("DealKey");
+        $mysql = $config->__get("data_" . $deal_key);
+        $layer_id = $context->getInfo("LayerId");
+        $user_id = $context->getInfo("UserId");
+        $user_key = $context->getInfo("UserKey");
+        $account_name = !empty($context->getInfo('AccountName')) ? $context->getInfo('AccountName') :'';
+        $period_list = isset($params['period_list']) ? $params['period_list'] : '';
+        $game_key = isset($params['game_key']) ? $params['game_key'] : '';
+        $rule_list = isset($params['rule_list']) ? $params['rule_list'] : '';
+        $chase_mode = isset($params['chase_mode']) ? $params['chase_mode'] : '';
+        $stop_mode = isset($params['stop_mode']) ? $params['stop_mode'] : 0;
+        //追号内容
+        if (empty($chase_mode)) {
+            $context->reply(['status'=>406,'msg'=>'请选号']);
+            return;
+        }
+
+        //检测参数合法性连接库
+        $lottery_mysql = $config->data_public;
+
+        if (empty($period_list)) {
+            $context->reply(['status'=>401,'msg'=>'请选号']);
+            return;
+        }
+
+        if (empty($game_key)) {
+            $context->reply(['status'=>402,'msg'=>'请选号']);
+            return;
+        }
+        //投注内容参数
+        if (empty($rule_list)) {
+            $context->reply(['status'=>405,'msg'=>'请选号']);
+            return;
+        }
+
+        //追不停参数？
+        if ($stop_mode >1 || $stop_mode<0) {
+            $context->reply(['status'=>407,'msg'=>'请选号']);
+            return;
+        }
+        //判断该层级的用户余额是否被冻结
+        $auth = $context->getInfo("Auth");
+        if(!empty($auth)){
+            if(in_array("bet_stop",json_decode($auth)) || in_array("balance_freeze",json_decode($auth))){
+                $context->reply(["status"=>230,"msg"=>"该账户禁止投注,请联系客服"]);
+                return;
+            }
+        }
+        //获取最小投注额,最大投注额,最大返点
+        $mysqlStaff = $config->data_staff;
+        $rebate_sql = "SELECT rebate_max,acceptable FROM lottery_game WHERE game_key='$game_key'";
+        $rebate_max = 0;
+        $acceptable = 1;
+        foreach ($mysqlStaff->query($rebate_sql) as $v) {
+            $rebate_max = $v['rebate_max'];
+            $acceptable = $v["acceptable"];
+        }
+        if($acceptable == 0){
+            $context->reply(["status"=>400,"msg"=>"该彩票暂停销售"]);
+            return;
+        }
+        //投注内容详细参数判断并计算金额基数
+        $ruleArray = [];
+        //取game的model_key对比玩法
+        $model_key = substr($game_key,0,strpos($game_key,"_"));
+        $checkModel = new CheckRuleList();
+        $money = [];
+        foreach ($rule_list as $rule) {
+            $play_key = isset($rule['play_key']) ? $rule['play_key'] : '';
+            if ($model_key != substr($play_key,0,strpos($play_key,"_"))) {
+                $context->reply(['status'=>447,'msg'=>'请选号']);
+                return;
+            }
+            //检查投注号码及拆分多注内容的结果
+            $result = $checkModel->checkRule($rule,$config);
+            //成功
+            if ($result['status'] == 200) {
+                $ruleArray[] = $result['data'];
+            } else {
+                $context->reply($result);
+                return;
+            }
+            $check_betSql = "select bet_min,bet_max,acceptable from lottery_game_play where game_key = '$game_key' and play_key = '$play_key'";
+            foreach ($mysqlStaff->query($check_betSql) as $ruleMoney) {
+                //单注金额最大最小值监测
+                if ($rule['price'] > $ruleMoney['bet_max'] || $rule['price'] < $ruleMoney['bet_min']) {
+                    $context->reply(['status'=>432,'msg'=>'投注金额有误，请重新投注']);
+                    return;
+                }
+                //判断玩法是否关闭
+                if($ruleMoney["acceptable"] == 0){
+                    $context->reply(["status"=>410,"msg"=>"该彩票暂停销售"]);
+                    return;
+                }
+            }
+
+            //判断返点不能超过最大值
+            if (!isset($rule['rebate_rate']) || $rule['rebate_rate'] > $rebate_max) {
+                $context->reply(['status'=>410,'msg'=>'返点金额有误,请选择正确的返点']);
+                return;
+            }
+            //检测该层级用户是否是禁止返点
+            if(!empty($auth)){
+                if(in_array("rebate_prohibit",json_decode($auth))){
+                    $rule['rebate_rate'] = 0;
+                }
+            }
+
+            $money[] = $rule['price'] * $rule['quantity'];
+        }
+
+        //检查期号是否在开盘范围内的sql
+        $check_period_sql = "SELECT start_time,stop_time FROM lottery_period WHERE game_key=:game_key AND period=:period";
+
+        //期号数组详细参数判断并计算余额
+        $sumMoney  = 0;
+            foreach ($period_list as $key=>$value) {
+                if (!isset($value['period']) || empty($value['period'])) {
+                    $context->reply(['status'=>413,'msg'=>'请选号']);
+                    return;
+                }
+                $period_param = [
+                    ":game_key" => $game_key,
+                    ":period" => $value['period'],
+                ];
+                $res = [];
+                foreach ($lottery_mysql->query($check_period_sql,$period_param) as $dat) {
+                    $res = $dat;
+                }
+                if (empty($res)) {
+                    $context->reply(['status'=>430,'msg'=>'请选号']);
+                    return;
+                }
+
+                //验证第一期的期号是否在合法开盘范围内下的注
+                $check_param = [
+                    ":game_key" => $game_key,
+                    ":period" => $period_list[0]['period']
+                ];
+                $check_data = [];
+                foreach ($lottery_mysql->query($check_period_sql,$check_param) as $row) {
+                    $check_data = $row;
+                }
+                //查询开盘及封盘时间
+                if (!$check_data){
+                    $context->reply(['status'=>430,'msg'=>'封盘中，请等待']);
+                    return;
+                }
+
+                //未开盘
+                if (!$check_data['start_time'] > time()) {
+                    $context->reply(['status'=>431,'msg'=>'封盘中，请等待']);
+                    return;
+                }
+
+                //截止
+                if ($check_data['stop_time'] < time()) {
+                    $context->reply(['status'=>432,'msg'=>'封盘中，请等待']);
+                    return;
+                }
+
+
+                if (!isset($value['multiple']) || !is_numeric($value['multiple']) || $value['multiple'] < 0) {
+                    $context->reply(['status'=>414,'msg'=>'请输入正确的投注的追投的倍数']);
+                    return;
+                }
+                $sumMoney += array_sum($money) * $value['multiple'];
+            }
+
+        //查询余额
+        $sql = "select money from account where user_id = '$user_id'";
+        $balance = 0;
+        foreach ($mysql->query($sql) as $row){
+            $balance = $row['money'];
+        }
+
+        //检测下注金额是否大于余额
+        if ($sumMoney > intval($balance)) {
+            $context->reply(['status'=>418,'msg'=>'余额不足']);
+            return;
+        }
+
+        //入库参数
+        $param = [
+            ":layer_id"   =>  $layer_id,
+            ":user_id"    =>  $user_id,
+            ":user_key"   =>  $user_key,
+            ":account_name" =>$account_name,
+            ":period_list"=>  json_encode($period_list),//期号数组
+            ":game_key"   =>  $game_key,
+            ":rule_list"  =>  json_encode($ruleArray),//投注内容数组
+            ":chase_mode" =>  json_encode($chase_mode),//追号模式
+            ":stop_mode"  =>  $stop_mode     // 0-追不停 1-中奖即停
+
+        ];
+
+        //入库语句
+        $sql = "insert into bet_chase set user_id=:user_id,user_key=:user_key,layer_id=:layer_id,game_key=:game_key,rule_list=:rule_list,period_list=:period_list,chase_mode=:chase_mode,stop_mode=:stop_mode,account_name=:account_name";
+        try{
+            $mysql->execute($sql,$param);
+
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"投注失败"]);
+            throw new \PDOException($e);
+        }
+        $context->reply(['status'=>200,'msg'=>'投注成功']);
+        $id = $context->clientId();
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $taskAdapter->plan('User/Balance', ['user_id' => $user_id,'deal_key'=>$deal_key,'id'=>$id]);
+    }
+}

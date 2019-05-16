@@ -1,0 +1,139 @@
+#!/bin/bash
+export MYSQL_HOST=localhost
+export MYSQL_PWD=$MYSQL_ROOT_PASSWORD
+
+mysql -uroot mysql <<SQL
+create user if not exists 'phpmyadmin'@'%' identified by 'o5UC95311O1silJ0';
+SQL
+
+while read line; do
+    MODULE=${line%% *}
+    SCHEMA=${line##* }
+    echo "========== create database ${SCHEMA}"
+    mysql -uroot mysql <<SQL
+drop database if exists ${SCHEMA};
+create database ${SCHEMA} default character set utf8mb4 default collate utf8mb4_general_ci;
+SQL
+    mysql -uroot -N ${SCHEMA} < /opt/gauss/mysql/$MODULE.sql
+    mysql -uroot mysql <<SQL
+create role if not exists 'master_${SCHEMA}', 'slave_${SCHEMA}';
+grant 'master_${SCHEMA}' to 'phpmyadmin'@'%';
+
+replace into tables_priv(host,db,user,table_name,grantor,table_priv)
+    select '%','${SCHEMA}','master_${SCHEMA}',table_name,user(),'select'
+    from information_schema.tables
+    where table_schema='${SCHEMA}' and table_name not like '\_%';
+update tables_priv inner join (
+    select event_object_schema as table_name,group_concat(event_manipulation separator ',') as trigger_list
+    from information_schema.triggers
+    where trigger_schema='${SCHEMA}'
+    group by event_object_schema
+) tables_trigger
+    set tables_priv.table_priv=concat_ws(',',tables_priv.table_priv,tables_trigger.trigger_list)
+    where db='${SCHEMA}' and user='master_${SCHEMA}';
+replace into procs_priv(host,db,user,routine_name,routine_type,grantor,proc_priv)
+    select '%','${SCHEMA}','master_${SCHEMA}',routine_name,routine_type,user(),'execute'
+    from information_schema.routines
+    where routine_schema='${SCHEMA}' and routine_name not like '\_%';
+
+replace into tables_priv(host,db,user,table_name,grantor,table_priv)
+    select '%','${SCHEMA}','slave_${SCHEMA}',table_name,user(),'select'
+    from information_schema.tables
+    where table_schema='${SCHEMA}' and table_name not like '\_%';
+replace into procs_priv(host,db,user,routine_name,routine_type,grantor,proc_priv)
+    select '%','${SCHEMA}','slave_${SCHEMA}',routine_name,routine_type,user(),'execute'
+    from information_schema.routines
+    where routine_schema='${SCHEMA}' and routine_name not like '\_%' and routine_type='FUNCTION';
+SQL
+done <<EOT
+public   plat_public
+analysis plat_analysis
+admin    plat_admin
+staff    site1_staff
+report   site1_report
+user     site1_user
+deal     site1_deal1
+deal     site1_deal2
+deal     site1_deal3
+deal     site1_deal4
+deal     site1_deal5
+guest    site1_guest
+staff    site2_staff
+report   site2_report
+user     site2_user
+deal     site2_deal1
+deal     site2_deal2
+deal     site2_deal3
+deal     site2_deal4
+deal     site2_deal5
+guest    site2_guest
+EOT
+
+mysql -uroot mysql <<SQL
+create user if not exists 'plat_admin'@'%' identified by 'PbeXKasLdsDq0VEv';
+create user if not exists 'site1_staff'@'%' identified by 'WU80HM25VXCLptQ7';
+create user if not exists 'site1_user'@'%'  identified by 'ysWLWc6ZIC41LCJq';
+create user if not exists 'site2_staff'@'%' identified by 'AIX3IdoflRAPuspz';
+create user if not exists 'site2_user'@'%'  identified by 'uibiFN11gTblWi6k';
+
+grant 'master_plat_admin'    to 'plat_admin'@'%';
+grant 'master_plat_public'   to 'plat_admin'@'%';
+grant 'master_plat_analysis' to 'plat_admin'@'%';
+grant 'master_site1_staff'    to 'plat_admin'@'%';
+grant 'master_site1_report'   to 'plat_admin'@'%';
+grant 'master_site2_staff'    to 'plat_admin'@'%';
+grant 'master_site2_report'   to 'plat_admin'@'%';
+
+grant 'slave_plat_public'    to 'site1_staff'@'%';
+grant 'master_site1_staff'   to 'site1_staff'@'%';
+grant 'master_site1_report'  to 'site1_staff'@'%';
+grant 'master_site1_user'    to 'site1_staff'@'%';
+grant 'master_site1_deal1'   to 'site1_staff'@'%';
+grant 'master_site1_deal2'   to 'site1_staff'@'%';
+grant 'master_site1_deal3'   to 'site1_staff'@'%';
+grant 'master_site1_deal4'   to 'site1_staff'@'%';
+grant 'master_site1_deal5'   to 'site1_staff'@'%';
+grant 'master_site1_guest'   to 'site1_staff'@'%';
+
+grant 'slave_plat_public'    to 'site1_user'@'%';
+grant 'slave_site1_staff'    to 'site1_user'@'%';
+grant 'master_site1_report'   to 'site1_user'@'%';
+grant 'master_site1_user'    to 'site1_user'@'%';
+grant 'master_site1_deal1'   to 'site1_user'@'%';
+grant 'master_site1_deal2'   to 'site1_user'@'%';
+grant 'master_site1_deal3'   to 'site1_user'@'%';
+grant 'master_site1_deal4'   to 'site1_user'@'%';
+grant 'master_site1_deal5'   to 'site1_user'@'%';
+grant 'master_site1_guest'   to 'site1_user'@'%';
+
+grant 'slave_plat_public'    to 'site2_staff'@'%';
+grant 'master_site2_staff'   to 'site2_staff'@'%';
+grant 'master_site2_report'  to 'site2_staff'@'%';
+grant 'master_site2_user'    to 'site2_staff'@'%';
+grant 'master_site2_deal1'   to 'site2_staff'@'%';
+grant 'master_site2_deal2'   to 'site2_staff'@'%';
+grant 'master_site2_deal3'   to 'site2_staff'@'%';
+grant 'master_site2_deal4'   to 'site2_staff'@'%';
+grant 'master_site2_deal5'   to 'site2_staff'@'%';
+grant 'master_site2_guest'   to 'site2_staff'@'%';
+
+grant 'slave_plat_public'    to 'site2_user'@'%';
+grant 'slave_site2_staff'    to 'site2_user'@'%';
+grant 'master_site2_report'   to 'site2_user'@'%';
+grant 'master_site2_user'    to 'site2_user'@'%';
+grant 'master_site2_deal1'   to 'site2_user'@'%';
+grant 'master_site2_deal2'   to 'site2_user'@'%';
+grant 'master_site2_deal3'   to 'site2_user'@'%';
+grant 'master_site2_deal4'   to 'site2_user'@'%';
+grant 'master_site2_deal5'   to 'site2_user'@'%';
+grant 'master_site2_guest'   to 'site2_user'@'%';
+
+replace into tables_priv(host,db,user,table_name,grantor,table_priv)
+    select r.to_host,p.db,r.to_user,p.table_name,p.grantor,p.table_priv
+    from tables_priv p inner join role_edges r on p.host=r.from_host and p.user=r.from_user;
+replace into procs_priv(host,db,user,routine_name,routine_type,grantor,proc_priv)
+    select r.to_host,p.db,r.to_user,p.routine_name,p.routine_type,p.grantor,p.proc_priv
+    from procs_priv p inner join role_edges r on p.host=r.from_host and p.user=r.from_user;
+
+flush privileges;
+SQL

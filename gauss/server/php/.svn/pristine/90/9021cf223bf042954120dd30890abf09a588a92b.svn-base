@@ -1,0 +1,59 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\LotteryBetSetting;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 投注额设置列表
+ * LotteryTicket/LotteryBetSetting/BetSetting {"site_name":"","status":""}
+ * 0-开放 1-停止交易 2-关闭前台 3-关闭前后
+ * */
+class BetSetting extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("lottery_bet_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        $data = $context->getData();
+        $mysqlAdmin = $config->data_admin;
+        $mysqlAnalysis = $config->data_analysis;
+        $monthly = intval(date("Ym",strtotime("today")));
+        $site_key = isset($data["site_name"]) ? $data["site_name"] : "";
+        $status = isset($data["status"]) ? $data["status"] : "";
+        if(!empty($site_key)){
+            $site_key = " and site_name = '$site_key'";
+        }
+        if(!empty($status)){
+            if(!is_numeric($status)){
+               $context->reply(["status"=>205,"msg"=>"搜索的状态类型不正确"]);
+               return;
+            }
+            $status = " and status = ".$status;
+        }
+        $sql = "select site_key,site_name from site where 1=1".$site_key.$status;
+        $siteList = iterator_to_array($mysqlAdmin->query($sql));
+        $site_list = [];
+        if(!empty($siteList)){
+            foreach ($siteList as $key=>$val){
+                $info = [];
+                $sql = "select bet_all,bonus_all from monthly_site where site_key=:site_key and monthly=:monthly";
+                $param = [":site_key"=>$val["site_key"],":monthly"=>$monthly];
+                foreach ($mysqlAnalysis->query($sql,$param) as $row){
+                    $info = $row;
+                }
+                $site_list[$key]["site_key"] = $val["site_key"];
+                $site_list[$key]["site_name"] = $val["site_name"];
+                $site_list[$key]["bet_all"] =  empty($info["bet_all"]) ? "0" : $info["bet_all"];
+                $site_list[$key]["bonus_all"] = empty($info["bonus_all"]) ? "0" : $info["bonus_all"];
+                $site_list[$key]["profit_all"] = empty($info["bet_all"]-$info["bonus_all"]) ? "0" : $info["bet_all"]-$info["bonus_all"];
+            }
+        }
+        $context->reply(["status"=>200,"msg"=>"获取列表成功","list"=>$site_list]);
+    }
+}

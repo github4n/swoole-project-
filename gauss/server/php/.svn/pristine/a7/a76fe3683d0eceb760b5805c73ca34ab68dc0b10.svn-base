@@ -1,0 +1,175 @@
+<?php
+namespace Site\Task\Lottery\Settle;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+abstract class Base implements IHandler
+{
+    abstract protected function loadNumber(array $number);
+
+    protected $rate_cache;
+    protected $step_cache;
+    protected function getRate(string $play_key, string $win_key,float $rebate): float
+    {
+        if(empty($rebate)){
+            return $this->rate_cache[$play_key][$win_key];
+        }else{
+            $rate = $this->rate_cache[$play_key][$win_key];
+            $step = $this->step_cache[$play_key][$win_key] ;
+            return $rate - $step * $rebate*10;
+        }
+    }
+
+    public function onTask(Context $context, Config $config)
+    {
+        ['deal_key' => $deal_key, 'game_key' => $game_key, 'period' => $period, 'betList' => $betList] = $context->getData();
+
+        // 取开奖号
+        $mysqlPublic = $config->data_public;
+        $sql = 'select * from lottery_number where game_key=:game_key and period=:period';
+        $params = ['game_key' => $game_key, 'period' => $period];
+        foreach ($mysqlPublic->query($sql, $params) as $row) {
+            $this->loadNumber($row);
+        }
+
+        // 取赔率
+        $cache = $config->cache_site;
+        $mysqlStaff = $config->data_staff;
+        $sql = 'select play_key,win_key,bonus_rate from lottery_game_win where game_key=:game_key';
+        foreach ($mysqlStaff->query($sql, ['game_key' => $game_key]) as $row) {
+            ['play_key' => $play_key, 'win_key' => $win_key, 'bonus_rate' => $bonus_rate] = $row;
+            $this->rate_cache[$play_key][$win_key] = $bonus_rate;
+            // get step
+            $this->step_cache[$play_key][$win_key] = $cache->hget('Step',$play_key.'-'.$win_key);
+
+        }
+
+
+
+        // 结算
+        $settleList = [];
+        foreach ($betList as $bet) {
+            $rule_list = json_decode($bet['rule_list'],true);//转化rule_list
+            $unit_list = [];
+            $win = false;
+            foreach ($rule_list as $rule) {
+                $play_key = $rule['play_key'];
+                $unit = $this->$play_key($rule);//获取中奖结果
+                $unit["bonus"] = $unit["bonus"] * $bet["multiple"];
+                $unit["revert"] = $unit["revert"] * $bet["multiple"];
+                $unit_list[] = $unit;
+                if (2 == $unit['result']) {
+                    $win = true;
+                }
+            }
+
+            $settleList[] = [
+                'bet_serial' => $bet['bet_serial'],
+                'period' => $period,
+                'status' => 1,
+                'unit_list' => json_encode($unit_list),
+            ];
+
+            if ($win and 1 == $bet['stop_mode']) { //中奖即停
+                $period_list = json_decode($bet['period_list'],true);
+                foreach ($period_list as $chaseInfo) {
+                    ['period' => $chasePeriod, 'multiple' => $chaseMultiple] = $chaseInfo;
+                    if ($chasePeriod > $period) {
+                        $unit_list = [];
+                        foreach ($rule_list as $rule) {
+                            $unit_list[] = [
+                                'rule_id' => $rule['rule_id'],
+                                'result' => 0,
+                                'bet' => 0,
+                                'bonus' => 0,
+                                'rebate' => 0,
+                                'revert' => $chaseMultiple * $rule['price'] * $rule['quantity'],
+                            ];
+                        }
+                        $settleList[] = [
+                            'bet_serial' => $bet['bet_serial'],
+                            'period' => $chasePeriod,
+                            'status' => -1,
+                            'unit_list' => json_encode($unit_list),
+                        ];
+                    }
+                }
+            }
+        }
+        // 保存结果
+        $mysqlDeal = $config->__get('data_' . $deal_key);
+        $mysqlDeal->bet_settle->load($settleList,[], 'ignore');
+    }
+    //排列组合的结算
+    public function combination(array $a, int $m) {
+        $r = array();
+
+        $n = count($a);
+        if ($m <= 0 || $m > $n) {
+            return $r;
+        }
+
+        for ($i=0; $i<$n; $i++) {
+            $t = array($a[$i]);
+            if ($m == 1) {
+                $r[] = $t;
+            } else {
+
+                $b = array_slice($a, $i+1);
+                $c = $this->combination($b, $m-1);
+                foreach ($c as $v) {
+                    //array_merge() 函数把一个或多个数组合并为一个数组
+                    $r[] = array_merge($t, $v);
+                }
+            }
+        }
+
+        return $r;
+    }
+
+    /**
+     * 检查快3胆拖3玩法
+     * @param $a
+     * @param $mcombinationDiceMerge3
+     * @return array
+     */
+    public function combinationDiceMerge3($a)
+    {
+        $r = array();
+        if (count($a[0]) == 2) {
+            foreach ($a[1] as $value) {
+                $arrayTranslation = $a[0];
+                array_push($arrayTranslation, $value);
+                $r[] = $arrayTranslation;
+            }
+        }
+
+        if (count($a[0]) == 1) {
+            $assemble = $this->combination($a[1], 2);
+            foreach ($assemble as $value) {
+                $r[] = array_merge($a[0], $value);
+            }
+        }
+
+        return $r;
+    }
+
+    /**
+     * 拆分快3胆拖2,二同号单选玩法
+     * @param $a
+     * @param $m
+     * @return array
+     */
+    public function combinationSpecial($a)
+    {
+        $r = array();
+        foreach ($a[0] as $value1) {
+            foreach ($a[1] as $value2) {
+                $r[] = [$value1, $value2];
+            }
+        }
+        return $r;
+    }
+}

@@ -1,0 +1,217 @@
+<?php
+namespace Site\Task\System;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Dividend implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ["time"=>$time] = $context->getData();
+        $mysqlReport = $config->data_report;
+        $mysqlStaff = $config->data_staff;
+        $all_row = [];
+        $monthly = intval(date('Ym', $time));
+        $major_sql = "select major_id ,sum(wager_amount) as wager_amount,sum(profit_amount) as profit_amount,".
+            "sum(bonus_amount) as bonus_amount,sum(subsidy_amount) as subsidy_amount,sum(brokerage_amount) as brokerage_amount,".
+            "sum(coupon_amount) as coupon_amount,sum(rebate_amount) as rebate_amount from monthly_staff where monthly = :monthly ".
+            "group by major_id"; //大股东
+        $minor_sql = "select major_id,minor_id,sum(wager_amount) as wager_amount,sum(profit_amount) as profit_amount,".
+            "sum(bonus_amount) as bonus_amount,sum(subsidy_amount) as subsidy_amount,sum(brokerage_amount) as brokerage_amount,".
+            "sum(coupon_amount) as coupon_amount,sum(rebate_amount) as rebate_amount from monthly_staff where monthly = :monthly ".
+            "group by major_id,minor_id"; //股东
+        $agent_sql = "select major_id,minor_id,agent_id,sum(wager_amount) as wager_amount,sum(profit_amount) as profit_amount,".
+            "sum(bonus_amount) as bonus_amount,sum(subsidy_amount) as subsidy_amount,sum(brokerage_amount) as brokerage_amount,".
+            "sum(coupon_amount) as coupon_amount,sum(rebate_amount) as rebate_amount from monthly_staff where monthly = :monthly ".
+            "group by major_id,minor_id,agent_id"; //总代理
+        //全站代理分红数据
+        $sql = "select grade1_bet_rate,grade1_profit_rate,grade1_fee_rate,grade1_tax_rate,grade2_bet_rate,grade2_profit_rate,".
+            "grade2_fee_rate,grade2_tax_rate,grade3_bet_rate,grade3_profit_rate,grade3_fee_rate,grade3_tax_rate from dividend_setting where scope_staff_id=1";
+        $dividend_setting_info = [];
+        foreach ($mysqlStaff->query($sql) as $row){
+            $dividend_setting_info = $row;
+        }
+        foreach ($mysqlReport->query($major_sql,[":monthly"=>$monthly]) as $row){
+            $sql = "select grade1_bet_rate,grade1_profit_rate,grade1_fee_rate,grade1_tax_rate,grade2_bet_rate,grade2_profit_rate,".
+                "grade2_fee_rate,grade2_tax_rate,grade3_bet_rate,grade3_profit_rate,grade3_fee_rate,grade3_tax_rate from dividend_setting where scope_staff_id=:scope_staff_id";
+            $info = [];
+            foreach ($mysqlStaff->query($sql,[":scope_staff_id"=>$row["major_id"]]) as $rows){
+                $info =  $rows;
+            }
+
+            if(empty($info)){
+                $bet_rate = $dividend_setting_info["grade1_bet_rate"];
+                $fee_rate = $dividend_setting_info["grade1_fee_rate"];
+                $tax_rate = $dividend_setting_info["grade1_tax_rate"];
+                $profit_rate =  $dividend_setting_info["grade1_profit_rate"];
+                $dividend_bet = (($row["wager_amount"]*$bet_rate/100-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100))*$fee_rate/100;
+                $dividend_profit = (($row["wager_amount"]-$row["profit_amount"]-$row["coupon_amount"]-$row["rebate_amount"]-$row["brokerage_amount"]-$row["subsidy_amount"])-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100)*$profit_rate/100*$fee_rate/100;
+            }else{
+                $bet_rate = $info["grade1_bet_rate"];
+                $fee_rate = $info["grade1_fee_rate"];
+                $tax_rate = $info["grade1_tax_rate"];
+                $profit_rate =  $dividend_setting_info["grade1_profit_rate"];
+                $dividend_bet = (($row["wager_amount"]*$bet_rate/100-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100))*$fee_rate/100;
+                $dividend_profit = (($row["wager_amount"]-$row["profit_amount"]-$row["coupon_amount"]-$row["rebate_amount"]-$row["brokerage_amount"]-$row["subsidy_amount"])-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100)*$profit_rate/100*$fee_rate/100;
+            }
+            $system_data = [
+                "staff_id"=>$row["major_id"],
+                "bet_amount"=>$row["wager_amount"], //有效投注总额
+                "profit_amount"=>$row["profit_amount"],//损益总额
+                "bet_rate"=>$bet_rate, //投注分红比例
+                "profit_rate"=>$profit_rate,  //损益分红比例
+                "fee_rate"=>$fee_rate, //行政费比例
+                "tax_rate"=>$tax_rate, //平台费比例
+                "dividend_profit"=> $dividend_profit,//损益分红
+                "dividend_bet"=> $dividend_bet,//投注分红
+                "dividend_fee"=> 0,//行政费
+                "dividend_tax" => 0,//平台费
+                "dividend_result"=>$dividend_bet+$dividend_profit,//最终分红
+                "settle_time"=>time(),
+                "deliver_time"=>0
+            ];
+            $all_row[] = $system_data;
+        }
+        foreach ($mysqlReport->query($minor_sql,[":monthly"=>$monthly]) as $row){
+            //查股东
+            $sql = "select grade2_bet_rate,grade2_profit_rate,grade2_fee_rate,grade2_tax_rate,".
+                "grade3_bet_rate,grade3_profit_rate,grade3_fee_rate,grade3_tax_rate from dividend_setting where scope_staff_id=:scope_staff_id";
+            $minor = [];
+            foreach ($mysqlStaff->query($sql,[":scope_staff_id"=>$row["minor_id"]]) as $rows){
+                $minor =  $rows;
+            }
+            if(!empty($minor)){
+                $bet_rate = $minor["grade2_bet_rate"];
+                $fee_rate = $minor["grade2_fee_rate"];
+                $tax_rate = $minor["grade2_tax_rate"];
+                $profit_rate =  $minor["grade2_profit_rate"];
+                $dividend_bet = (($row["wager_amount"]*$bet_rate/100-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100))*$fee_rate/100;
+                $dividend_profit = (($row["wager_amount"]-$row["profit_amount"]-$row["coupon_amount"]-$row["rebate_amount"]-$row["brokerage_amount"]-$row["subsidy_amount"])-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100)*$profit_rate/100*$fee_rate/100;
+            }else{
+                //查大股东
+                $sql = "select grade2_bet_rate,grade2_profit_rate,".
+                    "grade2_fee_rate,grade2_tax_rate,grade3_bet_rate,grade3_profit_rate,grade3_fee_rate,grade3_tax_rate from dividend_setting where scope_staff_id=:scope_staff_id";
+                $major= [];
+                foreach ($mysqlStaff->query($sql,[":scope_staff_id"=>$row["major_id"]]) as $rowss){
+                    $major =  $rowss;
+                }
+                if(!empty($major)){
+                    $bet_rate = $major["grade2_bet_rate"];
+                    $fee_rate = $major["grade2_fee_rate"];
+                    $tax_rate = $major["grade2_tax_rate"];
+                    $profit_rate =  $major["grade2_profit_rate"];
+                    $dividend_bet = (($row["wager_amount"]*$bet_rate/100-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100))*$fee_rate/100;
+                    $dividend_profit = (($row["wager_amount"]-$row["profit_amount"]-$row["coupon_amount"]-$row["rebate_amount"]-$row["brokerage_amount"]-$row["subsidy_amount"])-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100)*$profit_rate/100*$fee_rate/100;
+                }else{
+                    $bet_rate = $dividend_setting_info["grade2_bet_rate"];
+                    $fee_rate = $dividend_setting_info["grade2_fee_rate"];
+                    $tax_rate = $dividend_setting_info["grade2_tax_rate"];
+                    $profit_rate =  $dividend_setting_info["grade2_profit_rate"];
+                    $dividend_bet = (($row["wager_amount"]*$bet_rate/100-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100))*$fee_rate/100;
+                    $dividend_profit = (($row["wager_amount"]-$row["profit_amount"]-$row["coupon_amount"]-$row["rebate_amount"]-$row["brokerage_amount"]-$row["subsidy_amount"])-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100)*$profit_rate/100*$fee_rate/100;
+                }
+
+            }
+            $system_data = [
+                "staff_id"=>$row["minor_id"],
+                "bet_amount"=>$row["wager_amount"], //有效投注总额
+                "profit_amount"=>$row["profit_amount"],//损益总额
+                "bet_rate"=>$bet_rate, //投注分红比例
+                "profit_rate"=>$profit_rate,  //损益分红比例
+                "fee_rate"=>$fee_rate, //行政费比例
+                "tax_rate"=>$tax_rate, //平台费比例
+                "dividend_profit"=> $dividend_profit,//损益分红
+                "dividend_bet"=> $dividend_bet,//投注分红
+                "dividend_fee"=> 0,//行政费
+                "dividend_tax" => 0,//平台费
+                "dividend_result"=>$dividend_bet+$dividend_profit,//最终分红
+                "settle_time"=>time(),
+                "deliver_time"=>0
+            ];
+            $all_row[] = $system_data;
+        }
+        foreach ($mysqlReport->query($agent_sql,[":monthly"=>$monthly]) as $row){
+            //查总代理
+            $agent_sql = "select grade3_bet_rate,grade3_profit_rate,grade3_fee_rate,grade3_tax_rate ".
+                "from dividend_setting where scope_staff_id=:scope_staff_id";
+            $agent = [];
+            foreach ($mysqlStaff->query($agent_sql,[":scope_staff_id"=>$row["agent_id"]]) as $rows ){
+                $agent = $rows;
+            }
+            if(!empty($agent)){
+                $bet_rate = $agent["grade3_bet_rate"];
+                $fee_rate = $agent["grade3_fee_rate"];
+                $tax_rate = $agent["grade3_tax_rate"];
+                $profit_rate =  $agent["grade3_profit_rate"];
+                $dividend_bet = (($row["wager_amount"]*$bet_rate/100-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100))*$fee_rate/100;
+                $dividend_profit = (($row["wager_amount"]-$row["profit_amount"]-$row["coupon_amount"]-$row["rebate_amount"]-$row["brokerage_amount"]-$row["subsidy_amount"])-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100)*$profit_rate/100*$fee_rate/100;
+            }else{
+                //查股东
+                $minor_sql = "select grade3_bet_rate,grade3_profit_rate,grade3_fee_rate,grade3_tax_rate ".
+                    "from dividend_setting where scope_staff_id=:scope_staff_id";
+                $minor = [];
+                foreach ($mysqlStaff->query($minor_sql,[":scope_staff_id"=>$row["minor_id"]]) as $rowss){
+                    $minor =  $rowss;
+                }
+                if(!empty($minor)){
+                    $bet_rate = $minor["grade3_bet_rate"];
+                    $fee_rate = $minor["grade3_fee_rate"];
+                    $tax_rate = $minor["grade3_tax_rate"];
+                    $profit_rate =  $minor["grade3_profit_rate"];
+                    $dividend_bet = (($row["wager_amount"]*$bet_rate/100-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100))*$fee_rate/100;
+                    $dividend_profit = (($row["wager_amount"]-$row["profit_amount"]-$row["coupon_amount"]-$row["rebate_amount"]-$row["brokerage_amount"]-$row["subsidy_amount"])-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100)*$profit_rate/100*$fee_rate/100;
+                }else{
+                    //查大股东
+                    $major_sql = "select grade3_bet_rate,grade3_profit_rate,grade3_fee_rate,grade3_tax_rate ".
+                        "from dividend_setting where scope_staff_id=:scope_staff_id";
+                    $major= [];
+                    foreach ($mysqlStaff->query($major_sql,[":scope_staff_id"=>$row["major_id"]]) as $rows){
+                        $major =  $rows;
+                    }
+                    if(!empty($major)){
+                        $bet_rate = $major["grade3_bet_rate"];
+                        $fee_rate = $major["grade3_fee_rate"];
+                        $tax_rate = $major["grade3_tax_rate"];
+                        $profit_rate =  $major["grade3_profit_rate"];
+                        $dividend_bet = (($row["wager_amount"]*$bet_rate/100-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100))*$fee_rate/100;
+                        $dividend_profit = (($row["wager_amount"]-$row["profit_amount"]-$row["coupon_amount"]-$row["rebate_amount"]-$row["brokerage_amount"]-$row["subsidy_amount"])-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100)*$profit_rate/100*$fee_rate/100;
+                    }else{
+                        $bet_rate = $dividend_setting_info["grade3_bet_rate"];
+                        $fee_rate = $dividend_setting_info["grade3_fee_rate"];
+                        $tax_rate = $dividend_setting_info["grade3_tax_rate"];
+                        $profit_rate =  $dividend_setting_info["grade3_profit_rate"];
+                        $dividend_bet = (($row["wager_amount"]*$bet_rate/100-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100))*$fee_rate/100;
+                        $dividend_profit = (($row["wager_amount"]-$row["profit_amount"]-$row["coupon_amount"]-$row["rebate_amount"]-$row["brokerage_amount"]-$row["subsidy_amount"])-($row["wager_amount"]-$row["profit_amount"])*$tax_rate/100)*$profit_rate/100*$fee_rate/100;
+                    }
+
+                }
+            }
+
+            $system_data = [
+                "staff_id"=>$row["agent_id"],
+                "bet_amount"=>$row["wager_amount"], //有效投注总额
+                "profit_amount"=>$row["profit_amount"],//损益总额
+                "bet_rate"=>$bet_rate, //投注分红比例
+                "profit_rate"=>$profit_rate,  //损益分红比例
+                "fee_rate"=>$fee_rate, //行政费比例
+                "tax_rate"=>$tax_rate, //平台费比例
+                "dividend_profit"=> $dividend_profit,//损益分红
+                "dividend_bet"=> $dividend_bet,//投注分红
+                "dividend_fee"=> 0,//行政费
+                "dividend_tax" => 0,//平台费
+                "dividend_result"=>$dividend_bet+$dividend_profit,//最终分红
+                "settle_time"=>time(),
+                "deliver_time"=>0
+            ];
+            $all_row[] = $system_data;
+        }
+        $websocketAdapter = new \Lib\Websocket\Adapter($config->cache_site);
+        foreach ($websocketAdapter->queryClients() as $clientId) {
+            $websocketAdapter->send($clientId, "test", $monthly);
+            $websocketAdapter->send($clientId, "test", $all_row);
+        }
+        $mysqlStaff->dividend_settle->load($all_row, [], 'replace');
+    }
+}

@@ -1,0 +1,38 @@
+<?php
+namespace Plat\Websocket\Website\Rent;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 接收修改app管理的修改的信息
+ * 参数：site_key:站点,app_key:APP名称,link:下载地址
+ * */
+
+class RentList extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("website_tax_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $site_key = $data["site_key"]?:"site1";
+        $list =array();
+        $mysql = $config->data_admin;
+        $sql = "SELECT * FROM site_rent_config WHERE site_key=:site_key";
+        $param = [":site_key"=>$site_key];
+        try{
+            foreach ($mysql->query($sql,$param) as $rows){
+                $list = $rows;
+            }
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException('select site_rent_config sql run error'.$e);
+        }
+        $context->reply(["status"=>200,"msg"=>"获取成功","list"=>$list]);
+    }
+}

@@ -1,0 +1,310 @@
+<?php
+
+namespace Site\Websocket\Cash\WithdrawDetail;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ *
+ * @description  现金系统-出款记录详细
+ * @Author  Rose
+ * @date  2019-05-07
+ * @links  Cash/WithdrawDetail/AccountDetail {"user_key":"deal3","withdraw_serial":"181219105912000003"}
+ * @modifyAuthor   Rose
+ * @modifyTime  2019-05-08
+ * */
+
+class AccountDetail extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo('StaffGrade');
+        if ($StaffGrade != 0) {
+            $context->reply(['status' => 203, 'msg' => '当前账号没有操作权限']);
+
+            return;
+        }
+        $data = $context->getData();
+        $mysqlUser = $config->data_user;
+        $withdraw_serial = isset($data['withdraw_serial']) ? $data['withdraw_serial'] : '';
+        $user_key = isset($data['user_key']) ? $data['user_key'] : '';
+        if (empty($user_key)) {
+            $context->reply(['status' => 206, 'msg' => '用户参数错误']);
+
+            return;
+        }
+        if (empty($withdraw_serial)) {
+            $context->reply(['status' => 205, 'msg' => '出款单号不能为空']);
+
+            return;
+        }
+        $user_sql = 'select deal_key,layer_id,user_id from user_info_intact where user_key=:user_key';
+        $user_info = [];
+        foreach ($mysqlUser->query($user_sql, [':user_key' => $user_key]) as $row) {
+            $user_info = $row;
+        }
+        if (empty($user_info)) {
+            $context->reply(['status' => 300, 'msg' => '会员参数错误']);
+
+            return;
+        }
+        $user_id = $user_info['user_id'];
+        $deal_key = $user_info['deal_key'];
+        $mysqlDeal = $config->__get('data_'.$deal_key);
+
+        $info = [];
+        $sql = 'select user_id,withdraw_serial,user_key,launch_money,handling_fee,withdraw_money,launch_time,reject_time,finish_time,cancel_time,accept_time from withdraw_intact where withdraw_serial=:withdraw_serial';
+        foreach ($mysqlDeal->query($sql, [':withdraw_serial' => $withdraw_serial]) as $row) {
+            $info = $row;
+        }
+        if (empty($info)) {
+            $context->reply(['status' => 205, 'msg' => '提交的数据有误']);
+
+            return;
+        }
+        $data_info = [
+            'withdraw_serial' => $info['withdraw_serial'],
+            'user_key' => $info['user_key'],
+            'launch_money' => $info['launch_money'],
+            'handling_fee' => $info['handling_fee'],
+            'launch_time' => date('Y-m-d H:i:s', $info['launch_time']),
+        ];
+        if (empty($info['reject_time']) && empty($info['accept_time'])) {
+            $data_info['status'] = '未审核';
+        }
+        if (!empty($info['reject_time'])) {
+            $data_info['status'] = '审核未通过';
+        }
+        if (!empty($info['accept_time'])) {
+            $data_info['status'] = '审核通过';
+        }
+        if (!empty($info['finish_time'])) {
+            $data_info['status'] = '出款完成';
+        }
+        if (!empty($info['cancel_time'])) {
+            $data_info['status'] = '出款失败';
+        }
+        //最后的银行卡充值
+        $sql = 'select  FROM_UNIXTIME(launch_time) as launch_time,launch_money from deposit_bank_intact where user_id=:user_id and launch_time<:launch_time and finish_time>0 order by launch_time desc limit 1';
+        $list = [];
+        foreach ($mysqlDeal->query($sql, [':user_id' => $info['user_id'], ':launch_time' => $info['launch_time']]) as $row) {
+            $list = $row;
+        }
+        if (empty($list)) {
+            $data_info['bank_recharge'] = ['launch_time' => '', 'launch_money' => '0.00'];
+        } else {
+            $data_info['bank_recharge'] = $list;
+        }
+        //三方
+        $sql = 'select FROM_UNIXTIME(launch_time) as launch_time,launch_money from deposit_gateway_intact where user_id=:user_id and launch_time<:launch_time and finish_time>0 order by launch_time desc limit 1';
+        $list = [];
+        foreach ($mysqlDeal->query($sql, [':user_id' => $info['user_id'], ':launch_time' => $info['launch_time']]) as $row) {
+            $list = $row;
+        }
+        if (empty($list)) {
+            $data_info['gate_recharge'] = ['launch_time' => '', 'launch_money' => '0.00'];
+        } else {
+            $data_info['gate_recharge'] = $list;
+        }
+        //人工
+        $sql = 'select FROM_UNIXTIME(deal_time) as launch_time,money as launch_money from staff_deposit_intact where user_id=:user_id and deal_time<:deal_time and deal_time>0 order by deal_time desc limit 1';
+        $list = [];
+        foreach ($mysqlDeal->query($sql, [':user_id' => $info['user_id'], ':deal_time' => $info['launch_time']]) as $row) {
+            $list = $row;
+        }
+        if (empty($list)) {
+            $data_info['staff_recharge'] = ['launch_time' => '', 'launch_money' => '0.00'];
+        } else {
+            $data_info['staff_recharge'] = $list;
+        }
+        //快捷
+        $sql = 'select FROM_UNIXTIME(launch_time) as launch_time,launch_money from deposit_simple_intact where user_id=:user_id and launch_time<:launch_time and finish_time>0 order by launch_time desc limit 1';
+        $list = [];
+        foreach ($mysqlDeal->query($sql, [':user_id' => $info['user_id'], ':launch_time' => $info['launch_time']]) as $row) {
+            $list = $row;
+        }
+        if (empty($list)) {
+            $data_info['simple_recharge'] = ['launch_time' => '', 'launch_money' => '0.00'];
+        } else {
+            $data_info['simple_recharge'] = $list;
+        }
+        //投注
+        $sql = 'select sum(quantity) as bet_num,sum(bet) as bet,max(price) as max_price,sum(bonus) as all_bonus,max(bonus) as max_bonus '.
+            'from bet_unit_intact where user_id=:user_id and launch_time < :launch_time';
+        $bet_list = [];
+        foreach ($mysqlDeal->query($sql, [':user_id' => $info['user_id'], ':launch_time' => $info['launch_time']]) as $row) {
+            $bet_list = $row;
+        }
+        $data_info['user_bet'] = [
+            'bet_num' => empty($bet_list['bet_num']) ? '' : $bet_list['bet_num'],
+            'bet' => empty($bet_list['bet']) ? '' : $bet_list['bet'],
+            'max_price' => empty($bet_list['max_price']) ? '' : $bet_list['max_price'],
+            'all_bonus' => empty($bet_list['all_bonus']) ? '' : $bet_list['all_bonus'],
+            'max_bonus' => empty($bet_list['max_bonus']) ? '' : $bet_list['max_bonus'], ];
+        //提现
+        $sql = 'select count(withdraw_serial) as withdraw_num,sum(withdraw_money) as all_money,max(withdraw_money) as max_money,'.
+            'max(launch_time) as last_time from withdraw_intact where user_id=:user_id and finish_time>0 and launch_time < :launch_time';
+        $withraw_list = [];
+        foreach ($mysqlDeal->query($sql, [':user_id' => $info['user_id'], ':launch_time' => $info['launch_time']]) as $row) {
+            $withraw_list = $row;
+        }
+        $data_info['withdraw'] = [
+            'withdraw_num' => empty($withraw_list['withdraw_num']) ? '' : $withraw_list['withdraw_num'],
+            'all_money' => empty($withraw_list['all_money']) ? '' : $withraw_list['all_money'],
+            'max_money' => empty($withraw_list['max_money']) ? '' : $withraw_list['max_money'],
+            'last_time' => empty($withraw_list['last_time']) ? '' : $withraw_list['last_time'],
+        ];
+        //查找上一次出款成功的时间
+        $sql = 'select max(launch_time) as max_time from withdraw_intact where user_id=:user_id and finish_time>0 and launch_time>:launch_time limit 1';
+        $max_time = 0;
+        foreach ($mysqlDeal->query($sql, [':user_id' => $info['user_id'], ':launch_time' => $info['launch_time']]) as $row) {
+            $max_time = intval($row['max_time']);
+        }
+        $bank_sql = 'select sum(finish_money) as money,sum(vary_coupon_audit) as coupon_audit from deposit_bank_intact where user_id = :user_id and finish_time between :start_time and :end_time';
+        $gate_sql = 'select sum(finish_money) as money,sum(vary_coupon_audit) as coupon_audit from deposit_gateway_intact where user_id = :user_id and finish_time between :start_time and :end_time';
+        $simple_sql = 'select sum(finish_money) as money,sum(vary_coupon_audit) as coupon_audit from deposit_simple_intact where user_id = :user_id and finish_time between :start_time and :end_time';
+        $bet_sql = 'select sum(bet) as bet,sum(bet_launch) as bet_launch from bet_unit_intact where user_id=:user_id and launch_time between :start_time and :end_time';
+        $staff_sql = 'select sum(money) as money,sum(new_coupon_audit - old_coupon_audit) as coupon_audit from staff_deposit_intact where user_id=:user_id and deal_time between :start_time and :end_time';
+        $money = 0;
+        $coupon_audit = 0;
+        $bet = 0;
+        $bet_launch = 0;
+        foreach ($mysqlDeal->query($bank_sql, [':user_id' => $info['user_id'], ':end_time' => $info['launch_time'], ':start_time' => $max_time]) as $row) {
+            $money += $row['money'];
+            $coupon_audit += $row['coupon_audit'];
+        }
+        foreach ($mysqlDeal->query($gate_sql, [':user_id' => $info['user_id'], ':end_time' => $info['launch_time'], ':start_time' => $max_time]) as $row) {
+            $money += $row['money'];
+            $coupon_audit += $row['coupon_audit'];
+        }
+        foreach ($mysqlDeal->query($simple_sql, [':user_id' => $info['user_id'], ':end_time' => $info['launch_time'], ':start_time' => $max_time]) as $row) {
+            $money += $row['money'];
+            $coupon_audit += $row['coupon_audit'];
+        }
+        foreach ($mysqlDeal->query($bet_sql, [':user_id' => $info['user_id'], ':end_time' => $info['launch_time'], ':start_time' => $max_time]) as $row) {
+            $bet += $row['bet'];
+            $bet_launch += $row['bet_launch'];
+        }
+        $staff_coupon = 0;
+        foreach ($mysqlDeal->query($staff_sql, [':user_id' => $info['user_id'], ':end_time' => $info['launch_time'], ':start_time' => $max_time]) as $row) {
+            $money += $row['money'];
+            $coupon_audit += $row['coupon_audit'];
+            $staff_coupon = $row['coupon_audit'];
+        }
+        $data_info['bet_info'] = [
+            'start_time' => !empty($max_time) ? date('Y-m-d H:i:s', $max_time) : '',
+            'end_time' => !empty($info['launch_time']) ? date('Y-m-d H:i:s', $info['launch_time']) : '',
+            'deposit' => $money,
+            'coupon_audit' => $coupon_audit,
+            'bet_launch' => $bet_launch, //实际打码
+            'bet' => $bet, //有效打码
+            'meet_bet' => $money, //达标打码
+            'is_meet' => $money >= $bet ? 0 : 1,    //1达标，0未达标
+        ];
+        //用户福利
+        $data_info['user_coupon']['staff_coupon'] = $this->intercept_num($staff_coupon + $coupon_audit);
+
+        //关联用户
+        $sql = 'select distinct client_ip from user_ip_history where user_id = :user_id';
+        $ip_list = iterator_to_array($mysqlUser->query($sql, [':user_id' => $info['user_id']]));
+        if (!empty($ip_list)) {
+            foreach ($ip_list as $key => $val) {
+                $sql = 'select distinct user_id from user_ip_history where client_ip=:client_ip and user_id !=:user_id';
+                $user_list = iterator_to_array($mysqlUser->query($sql, [':client_ip' => $val['client_ip'], ':user_id' => $info['user_id']]));
+            }
+        }
+        if (!empty($user_list)) {
+            foreach ($user_list as $k => $v) {
+                if (!empty($v['user_id'])) {
+                    $sql = 'select user_key,deal_key from user_info_intact where user_id=:user_id';
+                    $user_info = [];
+                    foreach ($mysqlUser->query($sql, [':user_id' => $v['user_id']]) as $row) {
+                        $user_info = $row;
+                    }
+                    $mysql_deal = $config->__get('data_'.$user_info['deal_key']);
+                    //最后充值时间,最后充值金额，累计充值金额
+                    $sql = 'select finish_time,finish_money from deposit_intact where user_id=:user_id and finish_time<:finish_time order by finish_time desc limit 1';
+                    $deposit = iterator_to_array($mysql_deal->query($sql, [':user_id' => $v['user_id'], ':finish_time' => $info['launch_time']]));
+
+                    $total_sql = 'select sum(finish_money) as finish_money from deposit_intact where user_id=:user_id and finish_time<:finish_time';
+                    $total_staff_sql = 'select sum(money) as finish_money from staff_deposit where user_id=:user_id and deposit_time< :deposit_time';
+                    //人工存款的充值金额及时间
+                    $staff_sql = 'select money,deposit_time from staff_deposit_intact where user_id=:user_id and deposit_time<:deposit_time order by deposit_time desc limit 1';
+                    $staff_deposit = iterator_to_array($mysql_deal->query($staff_sql, [':user_id' => $v['user_id'], ':deposit_time' => $info['launch_time']]));
+                    $total_deposit = iterator_to_array($mysql_deal->query($total_sql, [':user_id' => $v['user_id'], ':finish_time' => $info['launch_time']]));
+                    $total_staff_deposit = iterator_to_array($mysql_deal->query($total_staff_sql, [':user_id' => $v['user_id'], ':deposit_time' => $info['launch_time']]));
+
+                    //最后出款总额和最后出款时间
+                    $sql = 'select withdraw_money,finish_time from withdraw_intact where user_id=:user_id and finish_time<:finish_time  order by finish_time desc limit 1';
+                    $staff_sql = 'select money,deal_time from staff_withdraw_intact where user_id=:user_id and deal_time<:deal_time  order by deal_time desc limit 1';
+                    //累计出款金额
+                    $total_sql = 'select sum(withdraw_money) as withdraw_money from withdraw_intact where user_id=:user_id and finish_time<:finish_time';
+                    $total_staff_sql = 'select sum(money) as money from staff_withdraw_intact where user_id=:user_id and deal_time<:deal_time';
+
+                    $withdraws = iterator_to_array($mysql_deal->query($sql, [':user_id' => $v['user_id'], ':finish_time' => $info['launch_time']]));
+                    $withdraw = iterator_to_array($mysql_deal->query($sql, [':user_id' => $v['user_id'], ':finish_time' => $info['launch_time']]));
+                    $staff_withdraws = iterator_to_array($mysql_deal->query($staff_sql, [':user_id' => $v['user_id'], ':deal_time' => $info['launch_time']]));
+                    $staff_withdraw = iterator_to_array($mysql_deal->query($staff_sql, [':user_id' => $v['user_id'], ':deal_time' => $info['launch_time']]));
+                    $total_withdraw = iterator_to_array($mysql_deal->query($total_sql, [':user_id' => $v['user_id'], ':finish_time' => $info['launch_time']]));
+                    $total_staff_withdraw = iterator_to_array($mysql_deal->query($total_staff_sql, [':user_id' => $v['user_id'], ':deal_time' => $info['launch_time']]));
+                    //累计打码金额
+                    $bet_sql = 'select sum(bet) as bet_all from bet_unit_intact where user_id=:user_id and launch_time<:launch_time';
+                    $total_bet = iterator_to_array($mysql_deal->query($bet_sql, [':user_id' => $v['user_id'], ':launch_time' => $info['launch_time']]));
+
+                    if (empty($deposit) && empty($total_deposit) && empty($total_staff_deposit) && empty($staff_deposit)) {
+                        $data_info['withdraw_list'] = [];
+                    } else {
+                        $data_info['withdraw_list'][$k]['user_key'] = $user_info['user_key'];
+                        $data_info['withdraw_list'][$k]['deposit_money'] = (empty($total_deposit[0]['finish_money']) ? '0.00' : $total_deposit[0]['finish_money']) + (empty($total_staff_deposit[0]['finish_money']) ? 0 : $total_staff_deposit[0]['finish_money']);
+                        if (!empty($deposit) && empty($staff_deposit)) {
+                            $data_info['withdraw_list'][$k]['last_deposit_time'] = empty($deposit[0]['finish_time']) ? '' : date('Y-m-d H:i:s', $deposit[0]['finish_time']);
+                            $data_info['withdraw_list'][$k]['last_deposit_money'] = empty($deposit[0]['finish_money']) ? '0.00' : $deposit[0]['finish_money'];
+                        } elseif (!empty($staff_deposit) && empty($deposit)) {
+                            $data_info['withdraw_list'][$k]['last_deposit_time'] = empty($staff_deposit[0]['deposit_time']) ? '' : date('Y-m-d H:i:s', $staff_deposit[0]['deposit_time']);
+                            $data_info['withdraw_list'][$k]['last_deposit_money'] = empty($staff_deposit[0]['money']) ? '0.00' : $staff_deposit[0]['money'];
+                        } elseif (!empty($staff_deposit) && !empty($deposit)) {
+                            if (empty($staff_deposit[0]['deposit_time']) > $deposit[0]['finish_time']) {
+                                $data_info['withdraw_list'][$k]['last_deposit_time'] = empty($staff_deposit[0]['deposit_time']) ? '' : date('Y-m-d H:i:s', $staff_deposit[0]['deposit_time']);
+                                $data_info['withdraw_list'][$k]['last_deposit_money'] = empty($staff_deposit[0]['money']) ? '0.00' : $staff_deposit[0]['money'];
+                            } else {
+                                $data_info['withdraw_list'][$k]['last_deposit_time'] = empty($deposit[0]['finish_time']) ? '' : date('Y-m-d H:i:s', $deposit[0]['finish_time']);
+                                $data_info['withdraw_list'][$k]['last_deposit_money'] = empty($deposit[0]['finish_money']) ? '0.00' : $deposit[0]['finish_money'];
+                            }
+                        } else {
+                            $data_info['withdraw_list'][$k]['last_deposit_time'] = '';
+                            $data_info['withdraw_list'][$k]['last_deposit_money'] = '0.00';
+                        }
+                        $data_info['withdraw_list'][$k]['withdraw_money'] = (empty($total_withdraw[0]['withdraw_money']) ? '0.00' : $total_withdraw[0]['withdraw_money']) + (empty($total_staff_withdraw[0]['money']) ? 0 : $total_staff_withdraw[0]['money']);
+                        $data_info['withdraw_list'][$k]['bet_all'] = empty($total_bet[0]['bet_all']) ? '0.00' : $total_bet[0]['bet_all'];
+                        if (empty($withdraws[0]) && empty($staff_withdraws[0])) {
+                            $data_info['withdraw_list'][$k]['last_withdraw_time'] = '';
+                            $data_info['withdraw_list'][$k]['last_withdraw_money'] = '0.00';
+                        }
+                        if (!empty($withdraws[0]) && !empty($staff_withdraws[0])) {
+                            if ($withdraw[0]['finish_time'] > $staff_withdraw[0]['deal_time']) {
+                                $data_info['withdraw_list'][$k]['last_withdraw_time'] = empty($withdraw[0]['finish_time']) ? '' : date('Y-m-d H:i:s', $withdraw[0]['finish_time']);
+                                $data_info['withdraw_list'][$k]['last_withdraw_money'] = $withdraw[0]['withdraw_money'];
+                            } else {
+                                $data_info['withdraw_list'][$k]['last_withdraw_time'] = empty($staff_withdraw[0]['deal_time']) ? '' : date('Y-m-d H:i:s', $staff_withdraw[0]['deal_time']);
+                                $data_info['withdraw_list'][$k]['last_withdraw_money'] = empty($staff_withdraw[0]['money']) ? '0.00' : $staff_withdraw[0]['money'];
+                            }
+                        }
+                        if (!empty($withdraws[0]) && empty(($staff_withdraws[0]))) {
+                            $data_info['withdraw_list'][$k]['last_withdraw_time'] = empty($withdraw[0]['finish_time']) ? '' : date('Y-m-d H:i:s', $withdraw[0]['finish_time']);
+                            $data_info['withdraw_list'][$k]['last_withdraw_money'] = !empty($withdraw[0]['withdraw_money']) ? $withdraw[0]['withdraw_money'] : '0.00';
+                        }
+                        if (empty($withdraws[0]) && !empty(($staff_withdraws[0]))) {
+                            $data_info['withdraw_list'][$k]['last_withdraw_time'] = empty($staff_withdraw[0]['deal_time']) ? '' : date('Y-m-d H:i:s', $staff_withdraw[0]['deal_time']);
+                            $data_info['withdraw_list'][$k]['last_withdraw_money'] = empty($staff_withdraw[0]['money']) ? '0.00' : $staff_withdraw[0]['money'];
+                        }
+                    }
+                }
+            }
+        } else {
+            $data_info['withdraw_list'] = [];
+        }
+        $context->reply(['status' => 200, 'msg' => '获取成功', 'data' => $data_info]);
+    }
+}

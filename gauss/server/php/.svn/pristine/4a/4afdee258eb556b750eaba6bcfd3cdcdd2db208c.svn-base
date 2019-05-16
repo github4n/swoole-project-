@@ -1,0 +1,100 @@
+<?php
+namespace Site\Websocket\System\SystemSetting;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 体系分红设置-总代理设置列表
+ * 参数：page:当前显示页数,num:每页显示数量,go_num:跳转的页数
+ * */
+
+class GeneraAgent extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有修改权限"]);
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo("MasterId");
+        $scope_staff_id =  $MasterId==0 ? $staffId : $MasterId ;
+        $data = $context->getData();
+        $page = $data["page"] ?: 1;
+        $num = $data["num"] ?: 10;
+        $go_num = $data["go_num"];
+        if(!is_numeric($page) && $page <= 0){
+            $context->reply(["status"=>202,"msg"=>"当前页数不正确"]);
+            return;
+        }
+        if(!is_numeric($num)){
+            $context->reply(["status"=>203,"msg"=>"每页显示的数量不正确"]);
+            return;
+        }
+        $limit = " LIMIT ".($page-1)*$num.",".$num;
+        if(!empty($go_num) && !is_numeric($go_num)){
+            if($go_num <= 0){
+                $context->reply(["status"=>204,"msg"=>"跳转的页数不正确"]);
+                return;
+            }
+            $limit = " LIMIT ".($go_num-1)*$num.",".$num;
+        }
+        $mysql = $config->data_staff;
+        $sql = "SELECT agent_id,agent_name,minor_name,major_name FROM staff_struct_agent WHERE owner_id=:owner_id";
+        $param = [":owner_id"=>$scope_staff_id];
+        $major_list = array();
+        try{
+            foreach ($mysql->query($sql,$param) as $rows){
+                $major_list[] = $rows;
+            }
+
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        $total = 0;
+        $majors_list = array();
+        if(!empty($major_list)){
+            foreach ($major_list as $key=>$val){
+                $total_sql = "SELECT scope_staff_id FROM dividend_setting WHERE scope_staff_id=:scope_staff_id";
+                $sql = "SELECT * FROM dividend_setting WHERE scope_staff_id=:scope_staff_id".$limit;
+                $param = [":scope_staff_id"=>$val["agent_id"]];
+                $dividend = array();
+                try{
+                    foreach ($mysql->query($sql,$param) as $row){
+                        $dividend = $row;
+                    }
+                    $total += $mysql->execute($total_sql,$param);
+                } catch (\PDOException $e){
+                    $context->reply(["status"=>400,"msg"=>"获取失败"]);
+                    throw new \PDOException($e);
+                }
+
+                if(!empty($dividend)){
+                    $sql = "select staff_key from staff_info_intact where staff_id=:staff_id";
+                    foreach ($mysql->query($sql,[":staff_id"=>$val["agent_id"]]) as $row){
+                        $majors_list[$key]["agent_key"] = $row["staff_key"];
+                    }
+                    $majors_list[$key]["agent_id"] = $val["agent_id"];
+                    $majors_list[$key]["agent_name"] = $val["agent_name"];
+                    $majors_list[$key]["major_name"] = $val["major_name"];
+                    $majors_list[$key]["minor_name"] = $val["minor_name"];
+                    $majors_list[$key]["self_bet"] = $dividend["grade3_bet_rate"]."%";
+                    $majors_list[$key]["self_profit"] = $dividend["grade3_profit_rate"]."%";
+                    $majors_list[$key]["self_fee"] = $dividend["grade3_fee_rate"]."%";
+                    $majors_list[$key]["self_tax"] = $dividend["grade3_tax_rate"]."%";
+                }
+            }
+        }
+        sort($majors_list,1);
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "total"=>$total,
+            "total_page"=>ceil($total/$num),
+            "list"=>$majors_list
+        ]);
+    }
+}

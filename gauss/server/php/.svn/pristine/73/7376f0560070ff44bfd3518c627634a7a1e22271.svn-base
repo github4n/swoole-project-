@@ -1,0 +1,201 @@
+<?php
+namespace Plat\Websocket\Report;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 站点彩票报表
+ * 参数：site_key:站点key值,date:(1:今日,2:昨日,3:本周,4:上周,5:本月,6:上月)
+ * Report/SiteReport
+ *
+ * */
+
+class SiteReport extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("report_site",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $cache = $config->cache_plat;
+        $mysqls = $config->data_analysis;
+        $mysqlAdmin = $config->data_admin;
+        
+        $site_key = isset($data["site_key"]) ?$data["site_key"]:"";
+        $date = isset($data["date"]) ? $data["date"]:"";
+        $site_key = empty($site_key) ? "site1" : $site_key;
+        $date = empty($date) ? "today" : $date;
+        //获取站点信息
+        $sql = "select site_key,site_name from site";
+        $sitelist = iterator_to_array($mysqlAdmin->query($sql));
+        $allList = [];
+       
+        $sqls = "SELECT model_key,game_key FROM site_game WHERE site_key=:site_key";
+        $game_list = iterator_to_array($mysqlAdmin->query($sqls,[":site_key"=>$site_key]));
+        foreach ($game_list as $key=>$val){
+            if($date=="today"){
+                //今天
+                $day = intval(date('Ymd',strtotime("today")));
+                $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                    "sum(bet_amount-bonus_amount) as profit_amount  FROM daily_site_lottery WHERE site_key=:site_key AND daily=:daily";
+                //彩票列表
+                $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,(bet_amount-bonus_amount) as profit_amount FROM daily_site_lottery WHERE site_key=:site_key AND daily=:daily and game_key=:game_key";
+                $params = [":site_key"=>$site_key,":daily"=>$day,":game_key"=>$val["game_key"]];
+                $param = [":site_key"=>$site_key,":daily"=>$day];
+            } else if($date=="yesterday"){
+                //昨天
+                $day = intval(date('Ymd',strtotime("yesterday")));
+                $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                    "sum(bet_amount-bonus_amount) as profit_amount  FROM daily_site_lottery WHERE site_key=:site_key AND daily=:daily";
+                $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,(bet_amount-bonus_amount) as profit_amount FROM daily_site_lottery WHERE site_key=:site_key AND daily=:daily and game_key=:game_key";
+                $params = [":site_key"=>$site_key,":daily"=>$day,":game_key"=>$val["game_key"]];
+                $param = [":site_key"=>$site_key,":daily"=>$day];
+            }else if($date=="thisweek"){
+                //本周
+                $day = intval(date('oW',strtotime("today")));
+                $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                    "sum(bet_amount-bonus_amount) as profit_amount  FROM weekly_site_lottery WHERE site_key=:site_key AND weekly=:weekly";
+                $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,(bet_amount-bonus_amount) as profit_amount FROM weekly_site_lottery WHERE site_key=:site_key AND weekly=:weekly and game_key=:game_key";
+                $params = [":site_key"=>$site_key,":weekly"=>$day,":game_key"=>$val["game_key"]];
+                $param = [":site_key"=>$site_key,":weekly"=>$day];
+            }else if($date == "lastweek"){
+                //上周
+                $day = intval(date("oW",strtotime("-2 week Monday"))) ;
+                $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                    "sum(bet_amount-bonus_amount) as profit_amount  FROM weekly_site_lottery WHERE site_key=:site_key AND weekly=:weekly";
+                $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,profit_amount FROM weekly_site_lottery WHERE site_key=:site_key AND weekly=:weekly and game_key=:game_key";
+                $params = [":site_key"=>$site_key,":weekly"=>$day,":game_key"=>$val["game_key"]];
+                $param = [":site_key"=>$site_key,":weekly"=>$day];
+            }else if($date == "thismonth"){
+                //本月
+                $day = intval(date("Ym",strtotime("today"))) ;
+                $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                    "sum(bet_amount-bonus_amount) as profit_amount  FROM monthly_site_lottery WHERE site_key=:site_key AND monthly=:monthly";
+                $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,(bet_amount-bonus_amount) as profit_amount FROM monthly_site_lottery WHERE site_key=:site_key AND monthly=:monthly and game_key=:game_key";
+                $params = [":site_key"=>$site_key,":monthly"=>$day,":game_key"=>$val["game_key"]];
+                $param = [":site_key"=>$site_key,":monthly"=>$day];
+            }else if($date == "lastmonth"){
+                //上月
+                $day = intval(date("Ym",strtotime('last month')));
+                $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,"."
+            sum(bet_amount-bonus_amount) as profit_amount  FROM monthly_site_lottery WHERE site_key=:site_key AND monthly=:monthly";
+                $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,(bet_amount-bonus_amount) as profit_amount FROM monthly_site_lottery WHERE site_key=:site_key AND monthly=:monthly and game_key=:game_key";
+                $params = [":site_key"=>$site_key,":monthly"=>$day,":game_key"=>$val["game_key"]];
+                $param = [":site_key"=>$site_key,":monthly"=>$day];
+            }else{
+                $context->reply(["status"=>204,"msg"=>"报表时间不合法"]);
+                return;
+            }
+            foreach ($mysqls->query($sql,$param) as $rows){
+                $list["bet_amount"] = empty($rows["bet_amount"]) ? 0 : $rows["bet_amount"];
+                $list["bet_count"] = empty($rows["bet_count"]) ? 0 : $rows["bet_count"];
+                $list["bonus_amount"] = empty($rows["bonus_amount"]) ? 0 : $rows["bonus_amount"];
+                $list["profit_amount"] = empty($rows["profit_amount"]) ? 0 : $rows["profit_amount"];
+            }
+            
+            $lotteryInfo = [];
+            foreach ($mysqls->query($sqls,$params) as $row){
+                $lotteryInfo = $row;
+            }
+            if (!empty($lotteryInfo)){
+               $gameList["game_key"] = $val["game_key"];
+               $gameList["game_name"] = $cache->hget("AllGame",$val["game_key"]);
+               $gameList["bet_amount"] = $lotteryInfo["bet_amount"];
+               $gameList["bet_count"] = $lotteryInfo["bet_count"];
+               $gameList["bonus_amount"] = $lotteryInfo["bonus_amount"];
+               $gameList["profit_amount"] = $lotteryInfo["profit_amount"];
+               $gameList["bet_rate"] = $lotteryInfo["bet_amount"]/ $list["bet_amount"];
+               $gameList["bet_count_rate"] = $lotteryInfo["bet_count"]/ $list["bet_count"];
+                if($val["model_key"] == "dice"){
+                    $allList[$val["model_key"]]["bet_amount"] += $lotteryInfo['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $lotteryInfo['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $lotteryInfo['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $lotteryInfo['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$list["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$list["bet_count"];
+                }
+                if($val["model_key"] == "eleven"){
+                    $allList[$val["model_key"]]["bet_amount"] += $lotteryInfo['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $lotteryInfo['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $lotteryInfo['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $lotteryInfo['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$list["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$list["bet_count"];
+                }
+                if($val["model_key"] == "ladder"){
+                    $allList[$val["model_key"]]["bet_amount"] += $lotteryInfo['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $lotteryInfo['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $lotteryInfo['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $lotteryInfo['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$list["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$list["bet_count"];
+                }
+                if($val["model_key"] == "lucky"){
+                    $allList[$val["model_key"]]["bet_amount"] += $lotteryInfo['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $lotteryInfo['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $lotteryInfo['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $lotteryInfo['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$list["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$list["bet_count"];
+                }
+                if($val["model_key"] == "racer"){
+                    $allList[$val["model_key"]]["bet_amount"] += $lotteryInfo['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $lotteryInfo['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $lotteryInfo['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $lotteryInfo['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$list["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$list["bet_count"];
+                }
+                if($val["model_key"] == "six"){
+                    $allList[$val["model_key"]]["bet_amount"] += empty($lotteryInfo['bet_amount']) ? 0 : $lotteryInfo['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += empty($lotteryInfo['bet_count']) ? 0 : $lotteryInfo['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += empty($lotteryInfo['bonus_amount']) ? 0 : $lotteryInfo['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += empty($lotteryInfo['profit_amount']) ? 0 : $lotteryInfo['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$list["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$list["bet_count"];
+                }
+                if($val["model_key"] == "tiktok"){
+                    $allList[$val["model_key"]]["bet_amount"] += $lotteryInfo['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $lotteryInfo['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $lotteryInfo['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $lotteryInfo['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$list["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$list["bet_count"];
+                    
+                }
+            }else{
+                $gameList["game_key"] = $val["game_key"];
+                $gameList["game_name"] = $cache->hget("AllGame",$val["game_key"]);
+                $gameList["bet_amount"] = "0";
+                $gameList["bet_count"] = "0";
+                $gameList["bonus_amount"] = "0";
+                $gameList["profit_amount"] = "0";
+                $gameList["bet_rate"] = "0";
+                $gameList["bet_count_rate"] = "0";
+            }
+            $allList[$val["model_key"]]["model_name"] = $cache->hget("Model",$val["model_key"]);;
+            $allList[$val["model_key"]]["bet_amount"] = empty($allList[$val["model_key"]]["bet_amount"]) ? 0 : $allList[$val["model_key"]]["bet_amount"] ;
+            $allList[$val["model_key"]]["bet_count"] = empty($allList[$val["model_key"]]["bet_count"]) ? 0 : $allList[$val["model_key"]]["bet_count"] ;
+            $allList[$val["model_key"]]["bonus_amount"] = empty($allList[$val["model_key"]]["bonus_amount"]) ? 0 : $allList[$val["model_key"]]["bonus_amount"] ;
+            $allList[$val["model_key"]]["profit_amount"] = empty($allList[$val["model_key"]]["profit_amount"]) ? 0 : $allList[$val["model_key"]]["profit_amount"] ;
+            $allList[$val["model_key"]]["bet_rate"] = empty($allList[$val["model_key"]]["bet_rate"]) ? 0 : $allList[$val["model_key"]]["bet_rate"] ;
+            $allList[$val["model_key"]]["bet_count_rate"] = empty($allList[$val["model_key"]]["bet_count_rate"]) ? 0 : $allList[$val["model_key"]]["bet_count_rate"] ;
+            $allList[$val["model_key"]]["list"][] = $gameList;
+
+        }
+
+        
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "today"=>$list,
+            "sitelist"=> $sitelist,
+            "list"=>$allList,
+        ]);
+    }
+}

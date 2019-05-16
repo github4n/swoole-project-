@@ -1,0 +1,91 @@
+<?php
+
+namespace App\Task\ExternalGame;
+use Lib\Config;
+use Lib\Task\Adapter;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class GameAmountTransfer implements IHandler
+{
+	public function onTask(Context $context, Config $config)
+	{
+		['data' => $data] = $context->getData();
+		//设置了action Key为发送任务请求
+		if (isset($data['action'])) {
+			$taskAdapter = new Adapter($config->cache_daemon);
+			$taskAdapter->plan('NotifySite',['path' => 'ExternalGame/GameAmountTransfer', 'data'=>["data"=>$data]]);
+		} else {
+			//回调通知
+			//接收三方平台返回信息
+			$client_id = isset($data['data']['client_id']) ? $data['data']['client_id'] : '';
+			$websocketAdapter = new \Lib\Websocket\Adapter($config->cache_daemon);
+			//校验是充值还是提现的key值
+			$withdraw_key = isset($data['data']['withdraw_key']) ? $data['data']['withdraw_key'] : '';
+			$interface_key = isset($data['data']['interface_key']) ? $data['data']['interface_key'] : '';
+			$code = isset($data['return_data']['d']['code']) ? $data['return_data']['d']['code'] : '';
+			if (!$withdraw_key) {
+				//充值
+				if ($code == 0) {
+					//充值成功
+					switch ($interface_key) {
+						case 'ky':
+							$res = [
+								'code' => $code,
+								'msg' => $data['return_data']
+							];
+							break;
+						case 'ag':
+
+							break;
+						case 'lb':
+
+							break;
+						default:
+
+							break;
+					}
+				} else {
+					//充值失败-添加失败记录
+					$res = [
+						'code' => $code,
+						'msg' => $data['return_data']
+					];
+				}
+			} else {
+				//提现
+				if ($code == 0) {
+					//提现成功
+					switch ($interface_key) {
+						case 'my':
+							$res = [
+								'code' => $code,
+								'msg' => $data['return_data']
+							];
+							break;
+						case 'ky':
+
+							break;
+						case 'ag':
+
+							break;
+						case 'lb':
+
+							break;
+						default:
+
+							break;
+					}
+				} else {
+					//提现失败-添加失败记录
+					$res = [
+						'code' => $code,
+						'msg' => $data['return_data']
+					];
+				}
+			}
+			//推送客户端
+			$websocketAdapter->send($client_id,'ExternalGame/GameAmountTransfer', $res);
+		}
+	}
+}

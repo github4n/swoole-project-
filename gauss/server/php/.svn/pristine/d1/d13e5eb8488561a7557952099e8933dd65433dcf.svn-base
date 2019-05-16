@@ -1,0 +1,61 @@
+<?php
+namespace Site\Websocket\Lottery\LotteryConfig;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 玩法赔率设置列表
+ * Lottery/LotteryConfig/PlayRateSave
+ * */
+class PlayRateSave extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $game_key = $data["game_key"];
+        $win_list = $data["win_list"];
+        if(!is_array($win_list)){
+            $context->reply(["status"=>204,"msg"=>"参数类型错误"]);
+            return;
+        }
+        if(empty($game_key)){
+            $context->reply(["status"=>205,"msg"=>"彩票名称不能为空"]);
+            return;
+        }
+        foreach ($win_list as $item){
+            $win_key = $item["win_key"];
+            $bonus_rate = $item["bonus_rate"];
+            if(empty($win_key)) {
+                $context->reply(["status"=>206,"msg"=>"赔率名称不能为空"]);
+                return;
+            }
+            if(!is_numeric($bonus_rate)){
+                $context->reply(["status"=>207,"msg"=>"赔率的参数类型错误"]);
+                return;
+            }
+            $sql = "UPDATE lottery_game_win SET bonus_rate=:bonus_rate WHERE game_key=:game_key AND win_key=:win_key";
+            $param = [
+                ":bonus_rate"=>$bonus_rate,
+                ":win_key"=>$win_key,
+                ":game_key"=>$game_key,
+            ];
+            try{
+                $mysql->execute($sql,$param);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                throw new \PDOException($e);
+            }
+        }
+        //记录日志
+        $context->reply(["status"=>200,"msg"=>"修改成功"]);
+        
+
+    }
+}

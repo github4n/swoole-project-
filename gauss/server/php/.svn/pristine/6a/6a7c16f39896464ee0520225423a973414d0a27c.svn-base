@@ -1,0 +1,72 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-3-11
+ * Time: 下午12:19
+ */
+
+namespace App\Websocket\ExternalGame;
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+/*
+ * ExternalGame/GameStart  {"interface_key":"fg","game_code":"dfdc","game_type":"h5","language":"zh-cn","return_url":"http://www.baidu.com"}
+ */
+class GameStart extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $param = $context->getData();
+        $interface_key = isset($param['interface_key']) ? $param['interface_key'] : '';
+        if (empty($interface_key)) {
+            $context->reply(['status' => 400,'msg' => '三方平台Key不能为空']);
+            return;
+        }
+        $adapter = new \Lib\Task\Adapter($config->cache_daemon);
+        switch ($interface_key) {
+            case 'fg':
+                $game_code = isset($param['game_code']) ? $param['game_code'] : '';
+                $game_type = isset($param['game_type']) ? $param['game_type'] : '';
+                $language = isset($param['language']) ? $param['language'] : '';
+                $ip = $context->getClientAddr();
+                $return_url = isset($param['return_url']) ? $param['return_url'] : '';
+                $fg_member_code = $context->getInfo('fg_member_code');
+                if (empty($game_code) || empty($game_type) || empty($language) ||empty($return_url) || empty($fg_member_code)) {
+                    $context->reply(['status' => 401,'msg'=>'启动游戏失败,缺少启动游戏参数']);
+                    return;
+                }
+                $params = [
+                    'member_code' => $fg_member_code,
+                    'game_code' => $game_code,
+                    'game_type' => $game_type,
+                    'language' => $language,
+                    'ip' => $ip,
+                    'return_url' => $return_url,
+                    'action' => 'launch_game',
+                    'client_id' => $context->clientId(),
+                    'interface_key' => $interface_key,
+                    'method' => 'GameStart'
+                ];
+                $adapter->plan('ExternalGame/GameStart',['data' => $params],time());
+                break;
+            case 'ag':
+
+
+                break;
+            case 'ky':
+
+
+                break;
+            case 'lb':
+
+
+                break;
+            default:
+                $context->reply(['status'=>404,'msg'=>'游戏启动失败']);
+                return;
+                break;
+        }
+    }
+}

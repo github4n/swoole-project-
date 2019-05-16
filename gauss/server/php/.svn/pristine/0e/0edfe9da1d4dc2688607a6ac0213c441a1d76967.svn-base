@@ -1,0 +1,77 @@
+<?php
+
+namespace Plat\Websocket\LotteryTicket\LotteryRateSetting;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 投注额设置保存
+ * 参数：   LotteryTicket/LotteryRateSetting/PlayRateSettingBatchSave  {"site_win":{"dice":{"dice_ah":{"dice_any2":[{"dice_any2_1":"10"},{"dice_any2_2":"5"},{"dice_any2_3":"7.056"},{"dice_any2_4":"7.056"},{"dice_any2_5":"7.056"},{"dice_any2_6":"7.056"}]}}},"site":["site1","site2"]}  
+
+ * * */
+
+class PlayRateSettingBatchSave extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("lottery_win_update", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $admin_mysql = $config->data_admin;
+        $site = !empty($data['site']) ? $data['site'] : '';
+        $site_win = !empty($data['site_win']) ? $data['site_win'] : '';
+        if (empty($site) || empty($site_win)) {
+            $context->reply(["status" => 202, "msg" => "站点及赔率均不可为空"]);
+            return;
+        }
+
+        foreach ($site as $site_choise) {
+            $site_set = $site_choise;
+            $site_sql = "select *  from site  where site_key='$site_set' ";
+            $site_data = iterator_to_array($admin_mysql->query($site_sql));
+            if (empty($site_data)) {
+                $context->reply(["status" => 203, "msg" => "输入的站点不存在"]);
+                return;
+            }
+            if ($site_data[0]['status'] == 0 || $site_data[0]['status'] == 1) {
+                $context->reply(["status" => 203, "msg" => $site_set . "站点未关闭无法修改站点赔率"]);
+                return;
+            }
+            foreach ($site_win as $mkey => $model_key) {//tiktok_cq
+                $model_set = $mkey;
+                foreach ($model_key as $gkey => $game_key) {//tiktok_ball1
+                    $game_set = $gkey;
+                    foreach ($game_key as $pkey => $play_key) {//"tiktok_ball1_0":"2.00"
+                        $play_set = $pkey;
+                        foreach ($play_key as $tkey => $value) {
+                            foreach ($value as $win_key => $lastBonus) {
+                                $modify_bonus_rate = " update  site_win set bonus_rate='$lastBonus' where site_key='$site_set'  and model_key ='$model_set' and game_key='$game_set' and play_key='$play_set'  and win_key='$win_key' ";
+                                try {
+                                    $admin_mysql->execute($modify_bonus_rate);
+                                } catch (\PDOException $e) {
+                                    $context->reply(["status" => 400, "msg" => "修改站点" . $site_set . "彩种" . $play_key . ':' . "玩法" . $tkey . "的赔率失败"]);
+                                    throw new \PDOException($e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        //记录修改日志
+        $mysqls = $config->data_admin;
+        $sqlss = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+        $param = [
+            ':admin_id' => $context->getInfo('adminId'),
+            ':operate_key' => "ticket_setting_bonus",
+            ':detail' => "修改了玩法赔率"
+        ];
+        $mysqls->execute($sqlss, $param);
+        $context->reply(['status' => 200, 'msg' => '设置成功']);
+    }
+
+}

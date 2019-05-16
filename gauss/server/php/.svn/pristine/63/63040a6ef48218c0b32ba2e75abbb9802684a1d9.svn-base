@@ -1,0 +1,64 @@
+<?php
+namespace Site\Websocket\Account\Logs;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 日志列表
+ *  Account/Logs/LogsExport
+ * 参数：staff_name:员工名,start_time:开始时间,end_time:结束时间 page:当前页数,num:每页显示的数量,gon_um:跳转的页数,
+ * {"staff_name":"name","start_time":"2018-10-25","end_time":"2018-10-26","page":1,"num":20,"gonum":3}
+ * */
+
+class LogsExport extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $masterId = $context->getInfo('MasterId');
+        $staff_id = $context->getInfo('StaffId');
+        $master_id = $masterId==0 ? $staff_id : $masterId;
+        $data = $context->getData();
+        $staff_name = $data["staff_name"];
+        $start_time = $data["start_time"];
+        $end_time = $data["end_time"];
+        $staff_names = '';
+        $time = '';
+        //用户名模糊查询
+        if(!empty($staff_name)){
+            $staff_names = " AND staff_name like '%".$staff_name."%' ";
+        }
+        //只有开始时间的话那就查询那目前时间的数据，如果只有结束时间的话就只查询在从这个时间之前的数据，两个参数都有的话就查询之间的数据
+        if(!empty($start_time)){
+            $start = $start_time." 00:00:00";
+            if(!empty($end_time)) {
+                $end = $end_time."23:59:59";
+                $time = "AND log_time BETWEEN ".strtotime($start)."  AND ".strtotime($end);
+            } else{
+                $time = "AND log_time BETWEEN ".strtotime($start)."  AND ".time();
+            }
+        }
+        if(!empty($end_time) && empty($start_time)) {
+            $end = $end_time."23:59:59";
+            $time = "AND log_time <= ".strtotime($end);
+        }
+        $mysql = $config->data_staff;
+        try{
+            $list=array();
+            $sql = "SELECT log_id,staff_name,leader_name,detail,log_time FROM operate_log_intact WHERE master_id = :master_id".$staff_names.$time;
+            $param = [":master_id"=>$master_id];
+            foreach($mysql->query($sql,$param) as $row){
+                $list[] = $row;
+            }
+            if(!empty($list)){
+                foreach ($list as $key=>$val){
+                    $list[$key]['log_time'] = date("Y-m-d H:i:s",$val['log_time']);
+                }
+            }
+            $context->reply(['status'=>200,'msg'=>'获取成功','loglist'=>$list]);
+        } catch(\PDOException $e){
+            $context->reply(['status'=>400,'msg'=>'获取失败']);
+            throw new \PDOException("sql run error".$e);
+        }
+    }
+}

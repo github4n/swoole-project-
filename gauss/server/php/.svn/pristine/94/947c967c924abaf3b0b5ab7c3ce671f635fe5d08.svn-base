@@ -1,0 +1,79 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-3-13
+ * Time: 下午4:44
+ */
+
+namespace Site\Task\ExternalGame;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class FgGameLog implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['data' => $data] = $context->getData();
+        if (isset($data['gt'])) {
+            $adapter = $context->getAdapter();
+            $data['action'] = 'get_log_page';
+            $adapter->plan('NotifyPlat', ['path' => 'ExternalGame/fg','data' =>['data' => $data]]);
+        } else {
+            //检查状态码
+            if (isset($data['status']) && $data['status'] == 200) {
+                $data = isset($data['data']) ? $data['data'] : [];
+                //遍历得到的数据
+                $mysqlUser = $config->data_user;
+                foreach ($data as $value) {
+                    $fg_id = $value['fg_id'];
+                    $fg_game_id = $value['fg_game_id'];
+                    $fg_gt = $value['fg_gt'];
+                    $fg_member_code = $value['fg_member_code'];
+                    $audit_amount = $value['audit_amount'];
+                    $user_id_sql = "select user_id from user_fungaming where fg_member_code = '$fg_member_code'";
+                    foreach ($mysqlUser->query($user_id_sql) as $value) {
+                        $user_id = $value['user_id'];
+                        //系统不存在该fg会员则无法入库
+                        if (empty($user_id)) {
+                            return;
+                        }
+                        $user_info_sql = "select user_key,layer_id,deal_key from user_info_intact where user_id = $user_id";
+                        foreach ($mysqlUser->query($user_info_sql) as $val) {
+                            $user_key = $val['user_key'];
+                            $layer_id = $val['layer_id'];
+                            $deal_key = $val['deal_key'];
+                            $time = time();
+                            $mysqlDeal = $config->__get('data_'. $deal_key);
+                            //检查是否已经插入过的数据
+                            $check_sql = "select audit_serial from external_audit_fungaming where fg_id='$fg_id',fg_game_id='$fg_game_id'";
+                            foreach ($mysqlDeal->query($check_sql) as $v) {
+                                if ($v['audit_serial']) {
+                                    return;
+                                }
+                            }
+                            $audit_sql = "insert into external_audit set user_id='$user_id',user_key='$user_key',layer_id='$layer_id',audit_amount = '$audit_amount',audit_time= '$time'";
+                            //先入三方打码稽核表
+                            $mysqlDeal->execute($audit_sql);
+                            $sql = 'SELECT serial_last("audit") as audit_serial';
+                            $audit_serial = '';
+                            foreach ($mysqlDeal->query($sql) as $row){
+                                $audit_serial = $row['audit_serial'];
+                            }
+                            if (!empty($audit_serial)) {
+                                //后入fg平台打码表
+                                $insert_sql = "insert into external_audit_fungaming set audit_serial = '$audit_serial',fg_id= '$fg_id',fg_game_id='$fg_game_id',fg_gt='$fg_gt',fg_time ='$time'";
+                                $mysqlDeal->execute($insert_sql);
+                            }
+                        }
+                    }
+
+                }
+            }
+            return;
+
+        }
+
+    }
+}

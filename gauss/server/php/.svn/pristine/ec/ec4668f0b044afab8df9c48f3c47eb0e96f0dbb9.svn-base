@@ -1,0 +1,48 @@
+<?php
+namespace App\Websocket\User\Message;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use App\Websocket\CheckLogin;
+/*
+ * 我的--我的消息--公告详情
+ * User/Message/BulletinDetail
+ * */
+
+class BulletinDetail extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $guest_id = $context->getInfo("GuestId");
+        if(!empty($guest_id)){
+            $context->reply(["status"=>500,"msg"=>"游客身份，没有访问权限"]);
+            return;
+        }
+        
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $layer_message_id = $data["layer_message_id"];
+        if(!is_numeric($layer_message_id)){
+            $context->reply(["status"=>205,"msg"=>"消息参数错误"]);
+            return;
+        }
+        $sql = "SELECT layer_message_id,title,content FROM layer_message WHERE layer_message_id=:layer_message_id";
+        $param = [
+            ":layer_message_id"=>$layer_message_id
+        ];
+        $list = array();
+        try{
+            foreach ($mysql->query($sql,$param) as $rows){
+                $list = $rows;
+            }
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取列表失败"]);
+            throw new \PDOException($e);
+        }
+        if(empty($list)){
+            $context->reply(["status"=>206,"msg"=>"获取失败，检查参数"]);
+            return;
+        }
+        $context->reply(["status"=>200,"msg"=>"获取成功","info"=>$list]);
+    }
+}

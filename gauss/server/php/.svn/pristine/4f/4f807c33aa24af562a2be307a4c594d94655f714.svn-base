@@ -1,0 +1,296 @@
+<?php
+
+namespace Site\Websocket\Member\MemberList;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员管理-会员列表
+ * Member/MemberList/MemberList
+ * 参数：page：当前页数,num:每页显示数量,gonum:跳转页数,name:会员名,rel_name:真实姓名,level:会员层级,is_agent:是否代理（1是，2否）,agent_level:代理层级,major:大股东名字,Shareholder:股东名字,generaagent:总代理,ip:IP地址,tel:手机号,level_one:一级上线名称,level_tow:二级上线名称,level_three:三级上线名称,start_time:开始注册时间,end_time:结束注册时间
+ *
+ */
+
+class MemberList extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("user_list_select", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $MasterId = $context->getInfo("MasterId");
+        $master_id = $MasterId == 0 ? $staffId : $MasterId;
+        $data = $context->getData();
+        $mysql = $config->data_report;
+        $staff_mysql = $config->data_staff;
+        $user_mysql = $config->data_user;
+        $public_mysql = $config->data_public;
+        $cache = $config->cache_site;
+        $page = isset($data["page"]) ? $data["page"] : 1;
+        $num = isset($data["num"]) ? $data["num"] : 10;
+        $go_num = isset($data["go_num"]) ? $data["go_num"] : '';
+        $user_key = isset($data["user_key"]) ? $data["user_key"] : '';
+        $level = isset($data["level_id"]) ? $data["level_id"] : "";
+        $major_name = isset($data["major_name"]) ? $data["major_name"] : "";
+        $minor_name = isset($data["minor_name"]) ? $data["minor_name"] : "";
+        $agent_name = isset($data["agent_name"]) ? $data["agent_name"] : "";
+        $ip = isset($data["ip"]) ? $data["ip"] : "";
+        $phone_number = isset($data["phone_number"]) ? $data["phone_number"] : '';   //手机号
+        $broker_1_name = isset($data["broker_1_name"]) ? $data["broker_1_name"] : "";  //一级上线
+        $broker_2_name = isset($data["broker_2_name"]) ? $data["broker_2_name"] : "";  //二级上线
+        $broker_3_name = isset($data["broker_3_name"]) ? $data["broker_3_name"] : "";  //三级上线
+        $start_time = isset($data["register_start_time"]) ? $data["register_start_time"] : "";
+        $end_time = isset($data["register_end_time"]) ? $data["register_end_time"] : "";
+        $user_name = isset($data["user_name"]) ? $data["user_name"] : "";
+        $time = "";
+        $layers = "";
+        //子账号的权限信息  //会员层级列表
+        if (!empty($MasterId)) {
+            $sql = "SELECT layer_id FROM staff_layer WHERE staff_id=:staff_id";
+            $param = [":staff_id" => $staffId];
+            $layer_list = [];
+            foreach ($staff_mysql->query($sql, $param) as $rows) {
+                $user_layer[] .= $rows["layer_id"];
+                $layers_list["layer_name"] = $context->getInfo($rows["layer_id"]);
+                $layers_list["layer_id"] = $rows["layer_id"];
+                $layer_list[] = $layers_list;
+            }
+            $layers = implode(",", $user_layer);
+        } else {
+            $layer_list = json_decode($cache->hget("LayerList", "allLayer"));
+        }
+        if (!is_numeric($page) && $page <= 0) {
+            $context->reply(["status" => 202, "msg" => "当前页数不正确"]);
+            return;
+        }
+        if (!is_numeric($num)) {
+            $context->reply(["status" => 203, "msg" => "每页显示的数量不正确"]);
+            return;
+        }
+        if (!empty($user_name)) {
+            $user_name = " AND user_name ='" . $user_name . "'";
+        }
+        $limit = " LIMIT " . ($page - 1) * $num . "," . $num;
+        if (!empty($go_num) && !is_numeric($go_num)) {
+            if ($go_num <= 0) {
+                $context->reply(["status" => 204, "msg" => "跳转的页数不正确"]);
+                return;
+            }
+            $limit = " LIMIT " . ($go_num - 1) * $num . "," . $num;
+        }
+        if (!empty($user_key)) {
+            $user_key = " AND user_key = '" . $user_key . "'";
+        }
+        if (!empty($level)) {
+            $level = " AND layer_id = " . $level;
+        }
+        if (!empty($major_name)) {
+            $major_name = " AND major_name = '" . $major_name . "'";
+        }
+        if (!empty($minor_name)) {
+            $minor_name = " AND minor_name = '" . $minor_name . "'";
+        }
+        if (!empty($agent_name)) {
+            $agent_name = " AND agent_name = '" . $agent_name . "'";
+        }
+        if (!empty($ip)) {
+            $ip = " AND (register_ip = " . ip2long($ip) . " OR login_ip = " . ip2long($ip) . ')';
+        }
+        if (!empty($phone_number)) {
+            $phone_number = " AND phone_number = " . $phone_number;
+        }
+        if (!empty($broker_1_name)) {
+            $broker_1_name = " AND broker_1_key = '" . $broker_1_name . "'";
+        }
+        if (!empty($broker_2_name)) {
+            $broker_2_name = "  AND broker_2_key = '" . $broker_2_name . "'";
+        }
+        if (!empty($broker_3_name)) {
+            $broker_3_name = "  AND broker_3_key = '" . $broker_3_name . "'";
+        }
+        if (!empty($start_time) && !empty($end_time)) {
+            $start_time = strtotime($start_time . " 00:00:00");
+            $end_time = strtotime($end_time . " 23:59:59");
+            $time = " AND register_time BETWEEN '$start_time' AND '$end_time'";
+        }
+        $list = array();
+        if (empty($layers)) {
+            $layers .= "'" . "'";
+        }
+        if ($StaffGrade == 0) {
+            if (empty($MasterId)) {
+                $sql = "SELECT * FROM user_cumulate WHERE 1=1 " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time . $limit;
+                $total_sql = "SELECT user_id FROM user_cumulate WHERE 1=1 " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time;
+            } else {
+                $sql = "SELECT * FROM user_cumulate WHERE layer_id in (" . $layers . ")" . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time . $limit;
+                $total_sql = "SELECT user_id FROM user_cumulate WHERE layer_id in (" . $layers . ")" . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time;
+            }
+            try {
+                foreach ($mysql->query($sql) as $rows) {
+                    $list[] = $rows;
+                }
+                $total = $mysql->execute($total_sql);
+            } catch (\PDOException $e) {
+                $context->reply(["status" => 400, "msg" => "获取列表失败"]);
+                throw new \PDOException($e);
+            }
+        } elseif ($StaffGrade == 1) {
+            if (empty($MasterId)) {
+                $sql = "SELECT * FROM user_cumulate WHERE major_id=:major_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time . $limit;
+                $total_sql = "SELECT user_id FROM user_cumulate WHERE major_id=:major_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time;
+            } else {
+                $sql = "SELECT * FROM user_cumulate WHERE layer_id in(" . $layers . ") AND major_id=:major_id" . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time . $limit;
+                $total_sql = "SELECT user_id FROM user_cumulate WHERE layer_id in(" . $layers . ") AND major_id=:major_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time;
+            }
+            $param = [":major_id" => $master_id];
+            try {
+                foreach ($mysql->query($sql, $param) as $rows) {
+                    $list[] = $rows;
+                }
+                $total = $mysql->execute($total_sql, $param);
+            } catch (\PDOException $e) {
+                $context->reply(["status" => 400, "msg" => "获取列表失败"]);
+                throw new \PDOException($e);
+            }
+        } elseif ($StaffGrade == 2) {
+            if (empty($MasterId)) {
+                $sql = "SELECT * FROM user_cumulate WHERE minor_id=:minor_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time . $limit;
+                $total_sql = "SELECT user_id FROM user_cumulate WHERE minor_id=:minor_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time;
+            } else {
+                $sql = "SELECT * FROM user_cumulate WHERE layer_id in(" . $layers . ") AND minor_id=:minor_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time . $limit;
+                $total_sql = "SELECT user_id FROM user_cumulate WHERE layer_id in(" . $layers . ") AND minor_id=:minor_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time;
+            }
+            $param = [":minor_id" => $master_id];
+            try {
+                foreach ($mysql->query($sql, $param) as $rows) {
+                    $list[] = $rows;
+                }
+                $total = $mysql->execute($total_sql, $param);
+            } catch (\PDOException $e) {
+                $context->reply(["status" => 400, "msg" => "获取列表失败"]);
+                throw new \PDOException($e);
+            }
+        } elseif ($StaffGrade == 3) {
+            if (empty($MasterId)) {
+                $sql = "SELECT * FROM user_cumulate WHERE agent_id=:agent_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time . $limit;
+                $total_sql = "SELECT user_id FROM user_cumulate WHERE agent_id=:agent_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time;
+            } else {
+                $sql = "SELECT * FROM user_cumulate WHERE layer_id in(" . $layers . ") AND agent_id=:agent_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time . $limit;
+                $total_sql = "SELECT user_id FROM user_cumulate WHERE layer_id in(" . $layers . ") AND agent_id=:agent_id " . $user_name . $user_key . $level . $major_name . $minor_name . $agent_name . $ip . $phone_number . $broker_1_name . $broker_2_name . $broker_3_name . $time;
+            }
+            $param = [":agent_id" => $master_id];
+            try {
+                foreach ($mysql->query($sql, $param) as $rows) {
+                    $list[] = $rows;
+                }
+                $total = $mysql->execute($total_sql, $param);
+            } catch (\PDOException $e) {
+                $context->reply(["status" => 400, "msg" => "获取列表失败"]);
+                throw new \PDOException($e);
+            }
+        } else {
+            $context->reply(["status" => 205, "msg" => "当前登录账号没有访问权限"]);
+            return;
+        }
+        $user_list = array();
+        if (!empty($list)) {
+            foreach ($list as $key => $val) {
+                $user_list[$key]["user_id"] = $val["user_id"];
+                $user_list[$key]["user_key"] = $val["user_key"];
+                $user_list[$key]["user_name"] = $val["user_name"];
+                $user_list[$key]["layer_id"] = $val["layer_id"];
+                $user_list[$key]["layer_name"] = $val["layer_name"];
+                $user_list[$key]["major_name"] = $val["major_name"];
+                $user_list[$key]["minor_name"] = $val["minor_name"];
+                $user_list[$key]["agent_name"] = $val["agent_name"];
+                $user_list[$key]["money"] = $val["money"];
+                $user_list[$key]["broker_1_key"] = empty($val["broker_1_key"]) ? "" : $val["broker_1_key"];
+                $user_list[$key]["broker_1_id"] = $val["broker_1_id"];
+                $user_list[$key]["broker_2_key"] = empty($val["broker_2_key"]) ? "" : $val["broker_2_key"];
+                $user_list[$key]["broker_2_id"] = $val["broker_2_id"];
+                $user_list[$key]["broker_3_key"] = empty($val["broker_3_key"]) ? "" : $val["broker_3_key"];
+                $user_list[$key]["broker_3_id"] = $val["broker_3_id"];
+                $user_list[$key]["brokerage"] = $val["brokerage"];
+                $user_list[$key]["register_ip_time"] = empty($val["register_time"]) ? "" : date("Y-m-d H:i:s", $val["register_time"]) . "/";
+                $register_ip = empty($val["register_ip"]) ? "" : long2ip($val["register_ip"]);
+
+                $address = '';
+                $ip = !empty($val["register_ip"]) ? $val["register_ip"] : '';
+                if ($ip != '') {
+                    $ipTranslation = substr($ip, 0, 8);
+                    $ip = long2ip($ip);
+                    $ipSaved = json_decode($cache->hget("ipList", $ipTranslation));
+                    if (!empty($ipSaved)) {
+                        $address = " " . "(" . $ipSaved[0]->region . " " . $ipSaved[0]->city . ")";
+                    } else {
+                        $ip_sql = "select * from ip_address where ip_net='$ipTranslation' ";
+                        $ip_result = iterator_to_array($public_mysql->query($ip_sql));
+                        if (!empty($ip_result)) {
+                            $address = " " . "(" . $ip_result[0]['region'] . " " . $ip_result[0]['city'] . ")";
+                            $cache->hset("ipList", $ipTranslation, json_encode($ip_result));
+                        }
+                    }
+                }
+
+                $user_list[$key]["register_ip_time"] .= $register_ip . $address;
+                $user_list[$key]["login_ip_time"] = empty($val["login_time"]) ? "" : date("Y-m-d H:i:s", $val["login_time"]) . "/";
+                $login_ip = empty($val["login_ip"]) ? "" : long2ip($val["login_ip"]);
+
+                $address = '';
+                $ip = !empty($val["login_ip_time"]) ? $val["login_ip_time"] : '';
+                if ($ip != '') {
+                    $ipTranslation = substr($ip, 0, 8);
+                    $ip = long2ip($ip);
+                    $ipSaved = json_decode($cache->hget("ipList", $ipTranslation));
+                    if (!empty($ipSaved)) {
+                        $address = " " . "(" . $ipSaved[0]->region . " " . $ipSaved[0]->city . ")";
+                    } else {
+                        $ip_sql = "select * from ip_address where ip_net='$ipTranslation' ";
+                        $ip_result = iterator_to_array($public_mysql->query($ip_sql));
+                        if (!empty($ip_result)) {
+                            $address = " " . "(" . $ip_result[0]['region'] . " " . $ip_result[0]['city'] . ")";
+                            $cache->hset("ipList", $ipTranslation, json_encode($ip_result));
+                        }
+                    }
+                }
+
+                $user_list[$key]["login_ip_time"] .= $login_ip . $address;
+                $user_list[$key]["invite_code"] = $val["invite_code"];
+                $user_list[$key]["profit_all"] = $val["profit_all"];
+                if ($val["register_device"] == 0) {
+                    $user_list[$key]["register_device"] = "PC";
+                } elseif ($val["register_device"] == 1) {
+                    $user_list[$key]["register_device"] = "手机浏览器";
+                } elseif ($val["register_device"] == 2) {
+                    $user_list[$key]["register_device"] = "iPhone APP";
+                } elseif ($val["register_device"] == 3) {
+                    $user_list[$key]["register_device"] = "安卓 APP";
+                }
+            }
+        }
+        //返回所有的会员层级的列表
+        $context->reply([
+            "status" => 200,
+            "msg" => "获取成功",
+            "total" => $total, //总记录数
+            "total_page" => ceil($total / $num), //总页数
+            "level_list" => $layer_list,
+            "list" => $user_list,
+        ]);
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'user_list_select',
+            ':detail' => '查看会员列表信息',
+        ];
+        $staff_mysql->execute($sql, $params);
+    }
+
+}

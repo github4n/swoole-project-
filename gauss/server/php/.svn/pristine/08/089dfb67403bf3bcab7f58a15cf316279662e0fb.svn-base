@@ -1,0 +1,23 @@
+<?php
+namespace Plat\Websocket\Website\OutPort;
+
+use Lib\Websocket\IHandler;
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 接收修改app管理的修改的信息
+ * 参数：site_key:站点
+ * {"site_key":"nck","play_switch":[{"sport_sb_switch":"true","sport_mg_switch":"false",}]}
+ * */
+
+class PortSave extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $context->reply([
+            'status'=>200,
+            'msg'=>'设置成功',
+        ]);
+    }
+}

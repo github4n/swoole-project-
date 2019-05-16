@@ -1,0 +1,92 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 18-12-31
+ * Time: 下午6:08
+ */
+
+namespace Site\Task\Report;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class UserDeal implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        // TODO: Implement onTask() method.
+        ['time' => $time] = $context->getData();
+        $daily = intval(date('Ymd', $time));
+        $start_time = strtotime($daily.' 00:00:00');
+        $end_time = strtotime($daily.' 23:59:59');
+        $adapter = $context->getAdapter();
+        $mysqlReport = $config->data_report;
+
+        //检测数据是否锁定
+        $dailyInfo = [];
+        $sql = "select daily from daily_status where daily=:daily and frozen=1";
+        foreach ($mysqlReport->query($sql,[":daily"=>$daily]) as $row){
+            $dailyInfo = $row;
+        }
+        if(!empty($dailyInfo)){
+            $adapter->plan('Report/UserDeal', ['time' => $time + 86400], time() + 600, 9);
+            return;
+        }
+        $sql = "select user_id,deal_type,sum(vary_money) as vary_money,sum(vary_deposit_audit) as vary_deposit_audit,sum(vary_coupon_audit) as vary_coupon_audit,count(deal_serial) as deal_count from deal where deal_time between '$start_time' and '$end_time' group by user_id,deal_type,user_key";
+
+        $data = array();
+        foreach ($config->deal_list as $deal) {
+            $mysql = $config->__get('data_' . $deal);
+            foreach ($mysql->query($sql) as $row) {
+                $param = [':user_id'=>$row['user_id']];
+                $user_sql = 'select user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,broker_1_id,broker_1_key,broker_1_name,broker_2_id,broker_2_key,broker_2_name,broker_3_id,broker_3_key,broker_3_name from user_cumulate where user_id=:user_id';
+                $userInfo = [];
+                foreach ($mysqlReport->query($user_sql,$param) as $value) {
+                    $userInfo = $value;
+                }
+                if(!empty($userInfo)){
+                    $result = [
+                        'daily'        => $daily,
+                        'user_id'      => $row['user_id'],
+                        'user_key'     => $userInfo['user_key'],
+                        'user_name'    => $userInfo['user_name'],
+                        'layer_id'     => $userInfo['layer_id'],
+                        'layer_name'   => $userInfo['layer_name'],
+                        'major_id'     => $userInfo['major_id'],
+                        'major_name'   => $userInfo['major_name'],
+                        'minor_id'     => $userInfo['minor_id'],
+                        'minor_name'   => $userInfo['minor_name'],
+                        'agent_id'     => $userInfo['agent_id'],
+                        'agent_name'   => $userInfo['agent_name'],
+                        'broker_1_id'  => $userInfo['broker_1_id'],
+                        'broker_1_key' => $userInfo['broker_1_key'],
+                        'broker_1_name'=> $userInfo['broker_1_name'],
+                        'broker_2_id'  => $userInfo['broker_2_id'],
+                        'broker_2_key' => $userInfo['broker_2_key'],
+                        'broker_2_name'=> $userInfo['broker_2_name'],
+                        'broker_3_id'  => $userInfo['broker_3_id'],
+                        'broker_3_key' => $userInfo['broker_3_key'],
+                        'broker_3_name'=> $userInfo['broker_3_name'],
+                        'deal_type'    => $row['deal_type'],
+                        'deal_count'   => $row['deal_count'],
+                        'vary_money'   => $row['vary_money'],
+                        'vary_deposit_audit'=> $row['vary_deposit_audit'],
+                        'vary_coupon_audit' => $row['vary_coupon_audit']
+                    ];
+                    $data[] = $result;
+                }
+
+            }
+        }
+
+        $mysqlReport->daily_user_deal->load($data, [], 'replace');
+
+        if (time() > $time + 86400) {
+            $adapter->plan('Report/UserDeal', ['time' => $time + 86400], time(), 9);
+        }
+        if (time() < $time + 86400 + 3600) {
+            $adapter->plan('Report/UserDeal', ['time' => $time], time() + 600, 9);
+        }
+    }
+}

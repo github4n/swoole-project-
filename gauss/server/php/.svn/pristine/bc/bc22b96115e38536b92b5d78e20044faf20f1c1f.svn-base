@@ -1,0 +1,94 @@
+<?php
+namespace Site\Websocket\Lottery\LotteryConfig;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 返点投注额批量编辑
+ * Lottery/LotteryConfig/BatchBet {"game_key":"tiktok_fast","play_list":["tiktok_any1","tiktok_any2","tiktok_any3","tiktok_half1"],"bet_min":"5.00","bet_max":"4000.00"}
+ * 参数  game_key(string)    play_list(array)     bet_min(float)    bet_max(float)
+ * */
+class BatchBet extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("game_lottery_bet",$auth)) {
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $game_key = $data["game_key"];
+        $play_list = $data["play_list"];
+        $min_bet = $data["bet_min"];
+        $max_bet = $data["bet_max"];
+        if (!is_array($play_list))
+        {
+            $context->reply(["status"=>204,"msg"=>"数据格式错误"]);
+            return;
+        }
+        if(empty($play_list)){
+            $context->reply(["status"=>205,"msg"=>"玩法类型不能为空"]);
+            return;
+        }
+        if(empty($game_key)){
+            $context->reply(["status"=>206,"msg"=>"彩票名称不能为空"]);
+            return;
+        }
+
+        $bet = null;
+        if (empty($min_bet) && empty($max_bet))
+        {
+            $context->reply(["status" => 209, "msg" => "投注额为空"]);
+            return;
+        }else if (!empty($min_bet) && !empty($max_bet))
+        {
+            $bet = ' bet_min='.$min_bet.' , bet_max='.$max_bet;
+        }else if(!empty($min_bet) && empty($max_bet))
+        {
+            $bet = ' bet_min='.$min_bet;
+        }else if(empty($min_bet) && !empty($max_bet))
+        {
+            $bet = ' bet_max='.$max_bet;
+        }
+
+
+        //执行修改
+        $bet_sql = 'UPDATE lottery_game_play SET '.$bet.' WHERE game_key=:game_key AND play_key=:play_key';
+        foreach ($play_list as $item)
+        {
+            $params = [
+                ':game_key' => $game_key,
+                ':play_key' => $item
+            ];
+            $flag = $mysql->execute($bet_sql,$params);
+            if (!$flag)
+            {
+                $context->reply(["status"=>210,"msg"=>"修改失败"]);
+                return;
+            }
+        }
+
+        $context->reply(["status"=>200,"msg"=>"修改成功"]);
+
+        //记录日志
+        $staff_mysql = $config->data_staff;
+        $operate_sql = 'INSERT INTO operate_log (staff_id,operate_key,detail,client_ip) VALUES (:staff_id,:operate_key,:detail,:client_ip)';
+        $operate_param = [
+            ':staff_id' => $context->getInfo('StaffId'),
+            ':operate_key' => 'game_lottery_bet',
+            ':detail' => '批量修改彩票投注额',
+            ':client_ip' => ip2long($context->getClientAddr())
+        ];
+        $staff_mysql->execute($operate_sql,$operate_param);
+    }
+}

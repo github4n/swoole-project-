@@ -1,0 +1,61 @@
+<?php
+namespace Plat\Websocket\Index;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 首页接口
+ *
+ */
+
+class Index extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+
+        $mysql = $config->data_analysis;
+        //上月日期
+        $lastMonthly = date('Ym',strtotime('-1 month'));
+
+        //上月站点佣金sql
+        $sumSql = "select site_key,site_name,tax_total from monthly_tax where monthly = '$lastMonthly' order by tax_total desc ";
+
+        $list = iterator_to_array($mysql->query($sumSql));
+        $data = array();
+        if (!empty($list)) {
+            foreach ($list as $item) {
+                $site_key = $item['site_key'];
+                //上月各站点投注额
+                $sql = "select bet_lottery,bet_video,bet_game,bet_sports,bet_cards from monthly_site where site_key = '$site_key' and monthly = '$lastMonthly'";
+                foreach ($mysql->query($sql) as $item) {
+                    $bet_lottery = $item['bet_lottery'];
+                    $bet_video = $item['bet_video'];
+                    $bet_game = $item['bet_game'];
+                    $bet_sports = $item['bet_sports'];
+                    $bet_cards = $item['bet_cards'];
+                }
+
+                $tag = [
+                    'site_key'=>$site_key,
+                    'site_name'=>$item['site_name'],
+                    'bet_lottery'=> !empty($bet_lottery) ? $bet_lottery : 0,
+                    'bet_video'=> !empty($bet_video) ? $bet_video : 0,
+                    'bet_game'=> !empty($bet_game) ? $bet_game : 0,
+                    'bet_sports'=> !empty($bet_sports) ? $bet_sports : 0,
+                    'bet_cards' => !empty($bet_cards) ? $bet_cards : 0,
+                    'tax_total' => !empty($item['tax_total']) ? $item['tax_total'] : 0,
+                ];
+
+                $data[] = $tag;
+            }
+        }
+
+        //Ｋ线图数据
+        $countSql = "select bet_all,user_all from daily_site order by daily desc limit 7";
+        $trend = iterator_to_array($mysql->query($countSql));
+
+        $context->reply(['status'=>200,'msg'=>'成功','data'=>$data,'trend'=>$trend]);
+
+    }
+}

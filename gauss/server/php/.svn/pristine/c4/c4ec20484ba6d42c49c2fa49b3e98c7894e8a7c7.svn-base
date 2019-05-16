@@ -1,0 +1,32 @@
+<?php
+namespace Site\Task\User;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Recharge implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['data' => $data] = $context->getData();
+        $adapter = $context->getAdapter();
+        
+        $deposit_serial = $data["deposit_serial"];
+        $client_id= $data["client_id"];
+        
+        //$redirect= "http://".$context->getPath()."/1/Pay/Mall"."?"."deposit_serial"."=".$deposit_serial;  拿不到站点ip
+        $data=[
+            "redirect"=>$redirect,
+            "client_id"=>$client_id
+        ];
+        
+        $adapter->plan('NotifyApp', ['path' => 'User/RechargeRecord', 'data' => ["data"=>$data]]);
+        
+        $websocketAdapter = new \Lib\Websocket\Adapter($config->cache_site);
+        foreach ($websocketAdapter->queryClients() as $clientId) {
+            $websocketAdapter->send($clientId, "test", $data);
+        }
+
+    }
+}

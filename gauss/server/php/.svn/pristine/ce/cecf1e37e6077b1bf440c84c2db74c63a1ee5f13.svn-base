@@ -1,0 +1,81 @@
+<?php
+
+namespace Site\Websocket\Account\BoundIp;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 员工新增绑定ip
+ *  Account/BoundIp/BoundAdd {"staff_id":"5","ip":"192.168.1.1"}
+ * */
+
+class BoundAdd extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("slave_list_insert", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $mysql = $config->data_staff;
+        $data = $context->getData();
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $id = $data["staff_id"];
+        $ip = ip2long($data["ip"]);
+        if ($ip == false) {
+            $context->reply(["status" => 204, "msg" => "请输入正确的IP"]);
+            return;
+        }
+        $ip=sprintf("%u",$ip);//避免为负数的情况
+        if ($StaffGrade == 0) {
+            $slave_list = "select * from staff_info_intact where staff_id ='$id' ";
+        } else {
+            $slave_list = "select * from staff_info_intact where staff_id ='$id'and  master_id='$staffId' ";
+        }
+        //ip2long
+        //long2ip
+        //INET_ATON();
+        // INET_NTOA();不支持
+
+        $slaveResult = iterator_to_array($mysql->query($slave_list));
+        $ip_select = "select * from staff_bind_ip where staff_id='$id' and bind_ip='$ip' ";
+        $ipResult = iterator_to_array($mysql->query($ip_select));
+
+        if ($slaveResult[0] == null) {
+            $context->reply(["status" => 202, "msg" => "搜索不到该账号"]);
+            return;
+        }
+
+        if ($ipResult[0] != null) {
+            $context->reply(["status" => 203, "msg" => "该子账号已绑定该ip"]);
+            return;
+        }
+        $add_time = time();
+        $sql = "INSERT INTO `staff_bind_ip` (`staff_id`, `bind_ip`, `add_time`) VALUES ('$id','$ip','$add_time') ";
+        try {
+            $mysql->execute($sql);
+        } catch (\PDOException $e) {
+            $context->reply(["status" => 400, "msg" => "新增失败"]);
+            throw new \PDOException($e);
+        }
+
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'slave_list_update',
+            ':detail' => '新增子账号绑定ip' . json_encode($id),
+        ];
+        $mysql->execute($sql, $params);
+        $context->reply([
+            "status" => 200,
+            "msg" => "新增成功"
+        ]);
+    }
+
+}

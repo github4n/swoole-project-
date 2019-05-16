@@ -1,0 +1,108 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\Setting;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 返点设置列表
+ * type 1普通设置  2批量设置
+ *  LotteryTicket/Setting/RebateSettingSave {"type":1,"game_key":"dice_js","play_list":[{"play_key":"dice_pair","default_rebate":"0.5"},{"play_key":"dice_merge3","default_rebate":"0.5"}]}
+ *  LotteryTicket/Setting/RebateSettingSave {"type":2,"game_key":"dice_js","play_key":["dice_pair","dice_merge3"],"default_rebate":"10"}
+ * */
+class RebateSettingSave extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("ticket_setting_rebate",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $mysql = $config->data_public;
+        $data = $context->getData();
+        $type = $data["type"];
+        $game_key = $data["game_key"];
+        if(empty($data)){
+            $context->reply(["status"=>202,"msg"=>"起提交修改的数据"]);
+            return;
+        }
+        if(empty($game_key)){
+            $context->reply(["status"=>207,"msg"=>"彩种类型不能为空"]);
+            return;
+        }
+        if (empty($data['type'])){
+            $context->reply(["status"=>203,"msg"=>"请提交编辑数据的类型"]) ;
+            return;
+        }
+        if($type == 1){
+            $play_list = $data["play_list"];
+            if(!is_array($play_list)){
+                $context->reply(["status"=>210,"msg"=>"参数错误"]);
+                return;
+            }
+            foreach ($play_list as $val){
+                $play_key = $val["play_key"];
+                $rebate = $val["default_rebate"];
+                if(empty($play_key)){
+                    $context->reply(["status"=>211,"msg"=>"玩法不能为空"]);
+                    return;
+                }
+                if(!is_numeric($rebate)){
+                    $context->reply(["status"=>212,"msg"=>"返点参数错误"]);
+                    return;
+                }
+                try{
+                    $sqls = "UPDATE lottery_game_play SET rebate_max = :rebate_max WHERE game_key=:game_key AND play_key=:play_key";
+                    $params = [
+                        ":rebate_max"=>$rebate,
+                        ":game_key"=>$game_key,
+                        ":play_key"=>$play_key,
+                    ];
+                    $mysql->execute($sqls, $params);
+
+                } catch (\PDOException $e) {
+                    $context->reply(["status"=>400,"msg"=>"设置失败"]) ;
+                    throw new \PDOException($e);
+                }
+            }
+        }else if($type == 2){
+            $play_list = $data['play_key'];
+            $rebate = $data["default_rebate"];
+            if(!is_array($play_list)){
+                $context->reply(["status"=>205,"msg"=>"参数类型错误"]);
+                return;
+            }else{
+                foreach ($play_list as $key=>$val){
+                    try{
+                        $sql = "UPDATE lottery_game_play SET rebate_max = :rebate_max WHERE game_key=:game_key AND play_key = :play_key";
+                        $param = [
+                            ":rebate_max"=>$rebate,
+                            ":game_key"=>$game_key,
+                            ":play_key"=>$val,
+                        ];
+                        $mysql->execute($sql, $param);
+                    }catch (\PDOException $e) {
+                        $context->reply(["status"=>400,"msg"=>"设置失败"]) ;
+                        throw new \PDOException($e);
+                    }
+                }
+            }
+        } else{
+            $context->reply(["status"=>206,"msg"=>"编辑的类型不合法"]);
+            return;
+        }
+        //记录修改日志
+        $mysqls = $config->data_admin;
+        $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+        $params = [
+            ':admin_id' => $context->getInfo('adminId'),
+            ':operate_key' => "ticket_setting_rebate",
+            ':detail' => "修改了返点设置信息"
+        ];
+        $mysqls->execute($sql,$params);
+        $context->reply(['status' => 200, 'msg' => '设置成功']);
+
+    }
+}

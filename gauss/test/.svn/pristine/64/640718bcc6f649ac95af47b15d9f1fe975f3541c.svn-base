@@ -1,0 +1,571 @@
+delimiter ;;
+
+drop table if exists layer_message;;
+create table layer_message(
+    layer_message_id int unsigned auto_increment not null comment '消息id',
+    title varchar(100) not null comment '标题',
+    layer_id int unsigned not null comment '指定层级，0-所有层级',
+    start_time int unsigned not null comment '开始时间',
+    stop_time int unsigned not null comment '结束时间',
+    cover mediumtext not null comment '封面图',
+    content mediumtext not null comment '内容',
+    publish tinyint not null default 1 comment '启用',
+    primary key(layer_message_id)
+) comment '会员公告';;
+
+drop table if exists user_message;;
+create table user_message(
+    user_message_id int unsigned auto_increment not null comment '消息id',
+    user_id int unsigned not null comment '会员id',
+    user_key varchar(20) not null comment '会员key',
+    title varchar(100) not null comment '标题',
+    start_time int unsigned not null comment '开始时间',
+    stop_time int unsigned not null comment '结束时间',
+    content mediumtext not null comment '内容',
+    primary key(user_message_id)
+) comment '会员私信';;
+
+drop table if exists user_session;;
+create table user_session(
+    client_id varchar(32) not null comment '客户端连接id',
+    user_id int unsigned not null comment '用户id',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    agent_id int unsigned not null comment '所属总代理id',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    login_time int unsigned not null comment '登陆时间',
+    client_ip int unsigned not null comment '客户端ip',
+    user_agent varchar(40) not null comment 'sha1(user-agent)',
+    resume_key varchar(40) not null comment '恢复key',
+    lose_time int unsigned not null default 0 comment '掉线时间',
+    index(user_id),
+    index(resume_key),
+    primary key(client_id)
+) comment '用户登陆session';;
+
+drop table if exists user_ip_history;;
+create table user_ip_history(
+    user_id int unsigned not null comment '用户id',
+    client_ip int unsigned not null comment '客户端ip',
+    country varchar(20) not null comment '国家',
+    area varchar(20) not null comment '大区',
+    region varchar(20) not null comment '省',
+    city varchar(20) not null comment '市',
+    county varchar(20) not null comment '县',
+    isp varchar(20) not null comment '运营商',
+    login_time int unsigned not null comment '登陆时间',
+    primary key(user_id,login_time)
+) comment '用户ip历史';;
+
+drop table if exists user_info;;
+create table user_info(
+    user_id int unsigned auto_increment not null comment '用户id',
+    deal_key varchar(10) not null comment '交易数据库',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    agent_id int unsigned not null comment '所属总代理id',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    register_invite varchar(10) not null comment '注册使用的邀请码',
+    register_time int unsigned not null comment '注册时间',
+    register_ip int unsigned not null comment '注册ip',
+    register_device tinyint unsigned not null comment '注册设备类型：0-PC，1-手机浏览器，2-苹果手机app，3-安卓手机app',
+    login_time int unsigned not null comment '登陆时间',
+    login_ip int unsigned not null comment '登陆ip',
+    login_device tinyint unsigned not null comment '登录设备类型：0-PC，1-手机浏览器，2-苹果手机app，3-安卓手机app',
+    phone_number varchar(20) not null default '' comment '手机号',
+    memo varchar(200) not null comment '备注',
+    index(layer_id,user_id),
+    index(agent_id,user_id),
+    index(broker_1_id,user_id),
+    index(broker_2_id,user_id),
+    index(broker_3_id,user_id),
+    index(register_time,user_id),
+    index(login_time,user_id),
+    primary key(user_id)
+);;
+
+drop table if exists user_auth;;
+create table user_auth(
+    user_id int not null comment '用户id',
+    user_key varchar(20) not null comment '登陆名',
+    password_salt varchar(40) not null comment '密码hash盐',
+    password_hash varchar(40) not null comment '密码的hash',
+    unique(user_key),
+    primary key(user_id)
+) comment '用户登陆信息';;
+
+drop table if exists layer_info;;
+create table layer_info(
+    layer_id int unsigned auto_increment not null comment '层级id',
+    layer_name varchar(20) not null comment '层级名称',
+    layer_type tinyint unsigned not null comment '层级类型：1-手工会员，2-自动会员，101-手工代理，102-自动代理，103-新代理',
+    min_deposit_amount double not null default 0 comment '条件-充值金额',
+    min_bet_amount double not null default 0 comment '条件-有效投注金额',
+    min_deposit_user double not null default 0 comment '条件-首充人数',
+    max_day int not null default 0 comment '条件-天数',
+    withdraw_audit_amount double not null default 10000 comment '出款审核下限',
+    withdraw_audit_first tinyint not null default 1 comment '首次出款是否审核',
+    primary key(layer_id)
+) comment '会员/代理层级信息';;
+
+drop table if exists layer_permit;;
+create table layer_permit(
+    layer_id int unsigned not null comment '层级id',
+    operate_key varchar(30) not null comment '操作key',
+    primary key(layer_id,operate_key)
+) comment '层级权限';;
+
+drop table if exists invite_info;;
+create table invite_info(
+    invite_code varchar(10) not null comment '邀请码',
+    user_id int unsigned not null comment '用户id',
+    start_time int unsigned not null comment '生成邀请码时间',
+    unique(user_id,start_time),
+    primary key(invite_code)
+) comment '邀请码信息';;
+
+drop table if exists operate;;
+create table operate(
+    operate_key varchar(30) not null comment '操作key',
+    operate_name varchar(20) not null comment '操作名称',
+    require_permit tinyint not null default 1 comment '0-不需要授权，1-用户层级授权，2-代理层级授权，3-用户或代理层级授权',
+    record_log tinyint not null default 1 comment '是否需要记录日志',
+    display_order int unsigned auto_increment not null unique,
+    primary key(operate_key)
+) comment '操作';;
+
+drop table if exists operate_log;;
+create table operate_log(
+    log_id bigint unsigned auto_increment not null comment '日志id',
+    user_id int unsigned not null comment '会员id',
+    operate_key varchar(30) not null comment '操作key',
+    detail text not null comment '操作详情',
+    log_time int unsigned not null default 0 comment '日志记录时间',
+    index(user_id,log_time),
+    primary key(log_id)
+) comment '操作日志';;
+
+drop table if exists coupon_daily_setting;;
+create table coupon_daily_setting(
+    layer_id int unsigned not null comment '层级id',
+    bet_money_1 double not null comment '投注额1挡',
+    coupon_rate_1 double not null comment '加奖比例1挡',
+    bet_money_2 double not null comment '投注额2挡',
+    coupon_rate_2 double not null comment '加奖比例2挡',
+    bet_money_3 double not null comment '投注额3挡',
+    coupon_rate_3 double not null comment '加奖比例3挡',
+    audit_rate double not null comment '活动稽核倍数',
+    primary key(layer_id)
+) comment '每日加奖设置';;
+
+drop table if exists coupon_upgrade_setting;;
+create table coupon_upgrade_setting(
+    layer_id int unsigned not null comment '层级id',
+    layer_type tinyint unsigned not null comment '层级类型：2-自动会员，102-自动代理',
+    coupon_money double not null comment '晋级彩金',
+    audit_rate double not null comment '活动稽核倍数',
+    primary key(layer_id)
+) comment '晋级奖励设置';;
+
+drop table if exists coupon_deposit_setting;;
+create table coupon_deposit_setting(
+    deposit_money double not null comment '充值金额',
+    coupon_money double not null comment '送彩金',
+    audit_rate double not null comment '活动稽核倍数',
+    primary key(deposit_money)
+) comment '充值送彩金设置';;
+
+drop table if exists subsidy_setting;;
+create table subsidy_setting(
+    layer_id int unsigned not null comment '会员层级id',
+    auto_deliver tinyint not null default 0 comment '自动派发',
+    deliver_time int not null default 0 comment '派发时间',
+    primary key(layer_id)
+) comment '反水设置';;
+
+drop table if exists subsidy_game_setting;;
+create table subsidy_game_setting(
+    layer_id int unsigned not null comment '会员层级id',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    game_key varchar(20) not null comment '彩种或外接口key',
+    min_bet double not null comment '打码量',
+    subsidy_rate double not null comment '反水比例%',
+    max_subsidy double not null comment '反水上限',
+    primary key(layer_id,game_key)
+) comment '反水分彩种设定';;
+
+drop table if exists bank_info;;
+create table bank_info(
+    user_id int unsigned not null comment '用户id',
+    bank_name varchar(20) not null comment '银行名称',
+    bank_branch varchar(20) not null comment '开户网点',
+    account_number varchar(20) not null comment '银行账号',
+    account_name varchar(20) not null comment '真实姓名',
+    withdraw_count int not null comment '累计出款单数',
+    withdraw_amount double not null comment '累计出款金额',
+    password_salt varchar(40) not null comment '出款密码hash盐',
+    password_hash varchar(40) not null comment '出款密码的hash',
+    start_time int unsigned not null comment '添加时间',
+    primary key(user_id)
+) comment '出款银行信息';;
+
+drop table if exists bank_history;;
+create table bank_history(
+    user_id int unsigned not null comment '用户id',
+    bank_name varchar(20) not null comment '银行名称',
+    bank_branch varchar(20) not null comment '开户网点',
+    account_number varchar(20) not null comment '银行账号',
+    account_name varchar(20) not null comment '真实姓名',
+    withdraw_count int not null comment '累计出款单数',
+    withdraw_amount double not null comment '累计出款金额',
+    start_time int unsigned not null comment '添加时间',
+    stop_time int unsigned not null comment '停用时间',
+    primary key(user_id,start_time)
+) comment '出款银行历史';;
+
+drop table if exists brokerage_setting;;
+create table brokerage_setting(
+    layer_id int unsigned not null comment '代理层级id',
+    min_bet_amount double not null comment '活跃会员最低投注额',
+    min_deposit double not null comment '活跃会员最低充值金额',
+    auto_deliver tinyint not null default 0 comment '自动派发',
+    deliver_time int not null default 0 comment '派发时间',
+    primary key(layer_id)
+) comment '代理佣金设置';;
+
+drop table if exists brokerage_rate;;
+create table brokerage_rate(
+    layer_id int unsigned not null comment '代理层级id',
+    vigor_count int unsigned not null comment '活跃会员个数',
+    broker_1_rate double not null comment '一级下线佣金比例',
+    broker_2_rate double not null comment '二级下线佣金比例',
+    broker_3_rate double not null comment '三级下线佣金比例',
+    primary key(layer_id,vigor_count)
+) comment '代理佣金比例';;
+
+drop procedure if exists user_session_lose;;
+create procedure user_session_lose(
+    _client_id varchar(32)
+)
+begin
+    update user_session set lose_time=unix_timestamp() where client_id=_client_id;
+end;;
+
+drop procedure if exists user_auth_verify;;
+create procedure user_auth_verify(
+    _user_key varchar(40),
+    _password varchar(40)
+) comment '验证管理员密码'
+begin
+    select user_id
+        from user_auth
+        where user_key=_user_key and password_hash = sha1(concat(password_salt,sha1(_password)));
+end;;
+
+drop trigger if exists layer_message_insert;;
+create trigger layer_message_insert before insert on layer_message for each row
+begin
+end;;
+
+drop trigger if exists layer_message_update;;
+create trigger layer_message_update before update on layer_message for each row
+begin
+end;;
+
+drop trigger if exists layer_message_delete;;
+create trigger layer_message_delete before delete on layer_message for each row
+begin
+end;;
+
+drop trigger if exists user_message_insert;;
+create trigger user_message_insert before insert on user_message for each row
+begin
+end;;
+
+drop trigger if exists user_message_update;;
+create trigger user_message_update before update on user_message for each row
+begin
+end;;
+
+drop trigger if exists user_message_delete;;
+create trigger user_message_delete before delete on user_message for each row
+begin
+end;;
+
+drop trigger if exists user_session_insert;;
+create trigger user_session_insert before insert on user_session for each row
+begin
+    set new.resume_key=sha1(random_bytes(40));
+    set new.login_time=unix_timestamp();
+end;;
+
+drop trigger if exists user_session_delete;;
+create trigger user_session_delete before delete on user_session for each row
+begin
+end;;
+
+drop trigger if exists user_info_insert;;
+create trigger user_info_insert before insert on user_info for each row
+begin
+end;;
+
+drop trigger if exists user_info_update;;
+create trigger user_info_update before update on user_info for each row
+begin
+    if new.user_id != old.user_id then
+        signal sqlstate 'UIU01' set message_text='user_info_update: 禁止修改 user_id';
+    end if;
+end;;
+
+drop trigger if exists user_auth_insert;;
+create trigger user_auth_insert before insert on user_auth for each row
+begin
+    set new.password_salt=sha1(random_bytes(40));
+    set new.password_hash=sha1(concat(new.password_salt,sha1(new.password_hash)));
+end;;
+
+drop trigger if exists user_auth_update;;
+create trigger user_auth_update before update on user_auth for each row
+begin
+    if new.user_id != old.user_id then
+        signal sqlstate 'UAU01' set message_text='user_auth_update: 禁止修改 user_id';
+    end if;
+    if new.password_hash != old.password_hash then
+        set new.password_salt=sha1(random_bytes(40));
+        set new.password_hash=sha1(concat(new.password_salt,sha1(new.password_hash)));
+    end if;
+end;;
+
+drop trigger if exists user_auth_delete;;
+create trigger user_auth_delete before delete on user_auth for each row
+begin
+end;;
+
+drop trigger if exists layer_info_insert;;
+create trigger layer_info_insert after insert on layer_info for each row
+begin
+    if new.layer_type between 101 and 199 then
+        insert into brokerage_setting set layer_id=new.layer_id,min_bet_amount=500,min_deposit=100;
+        insert into brokerage_rate(layer_id,vigor_count,broker_1_rate,broker_2_rate,broker_3_rate) values
+            (new.layer_id,1,0.10,0.03,0.01),
+            (new.layer_id,2,0.15,0.06,0.02),
+            (new.layer_id,3,0.20,0.09,0.03),
+            (new.layer_id,4,0.25,0.12,0.04),
+            (new.layer_id,5,0.30,0.15,0.05);
+    end if;
+end;;
+
+drop trigger if exists layer_info_update;;
+create trigger layer_info_update before update on layer_info for each row
+begin
+    if new.layer_id != old.layer_id then
+        signal sqlstate 'LIU01' set message_text='layer_info_update: 禁止修改 layer_id';
+    end if;
+    if new.layer_type != old.layer_type then
+        signal sqlstate 'LIU02' set message_text='layer_info_update: 禁止修改 layer_type';
+    end if;
+end;;
+
+drop trigger if exists layer_info_delete;;
+create trigger layer_info_delete before delete on layer_info for each row
+begin
+end;;
+
+drop trigger if exists layer_permit_insert;;
+create trigger layer_permit_insert before insert on layer_permit for each row
+begin
+end;;
+
+drop trigger if exists layer_permit_delete;;
+create trigger layer_permit_delete before delete on layer_permit for each row
+begin
+end;;
+
+drop trigger if exists invite_info_insert;;
+create trigger invite_info_insert before insert on invite_info for each row
+begin
+    set new.start_time=unix_timestamp();
+end;;
+
+drop trigger if exists invite_info_delete;;
+create trigger invite_info_delete before delete on invite_info for each row
+begin
+end;;
+
+drop trigger if exists operate_log_insert;;
+create trigger operate_log_insert before insert on operate_log for each row
+begin
+    set new.log_time=unix_timestamp();
+end;;
+
+drop trigger if exists coupon_daily_setting_insert;;
+create trigger coupon_daily_setting_insert before insert on coupon_daily_setting for each row
+begin
+end;;
+
+drop trigger if exists coupon_daily_setting_update;;
+create trigger coupon_daily_setting_update before update on coupon_daily_setting for each row
+begin
+end;;
+
+drop trigger if exists coupon_daily_setting_delete;;
+create trigger coupon_daily_setting_delete before delete on coupon_daily_setting for each row
+begin
+end;;
+
+drop trigger if exists coupon_upgrade_setting_insert;;
+create trigger coupon_upgrade_setting_insert before insert on coupon_upgrade_setting for each row
+begin
+end;;
+
+drop trigger if exists coupon_upgrade_setting_update;;
+create trigger coupon_upgrade_setting_update before update on coupon_upgrade_setting for each row
+begin
+end;;
+
+drop trigger if exists coupon_upgrade_setting_delete;;
+create trigger coupon_upgrade_setting_delete before delete on coupon_upgrade_setting for each row
+begin
+end;;
+
+drop trigger if exists coupon_deposit_setting_insert;;
+create trigger coupon_deposit_setting_insert before insert on coupon_deposit_setting for each row
+begin
+end;;
+
+drop trigger if exists coupon_deposit_setting_update;;
+create trigger coupon_deposit_setting_update before update on coupon_deposit_setting for each row
+begin
+end;;
+
+drop trigger if exists coupon_deposit_setting_delete;;
+create trigger coupon_deposit_setting_delete before delete on coupon_deposit_setting for each row
+begin
+end;;
+
+drop trigger if exists subsidy_setting_insert;;
+create trigger subsidy_setting_insert before insert on subsidy_setting for each row
+begin
+end;;
+
+drop trigger if exists subsidy_setting_update;;
+create trigger subsidy_setting_update before update on subsidy_setting for each row
+begin
+end;;
+
+drop trigger if exists subsidy_setting_delete;;
+create trigger subsidy_setting_delete before delete on subsidy_setting for each row
+begin
+end;;
+
+drop trigger if exists subsidy_game_setting_insert;;
+create trigger subsidy_game_setting_insert before insert on subsidy_game_setting for each row
+begin
+end;;
+
+drop trigger if exists subsidy_game_setting_update;;
+create trigger subsidy_game_setting_update before update on subsidy_game_setting for each row
+begin
+end;;
+
+drop trigger if exists subsidy_game_setting_delete;;
+create trigger subsidy_game_setting_delete before delete on subsidy_game_setting for each row
+begin
+end;;
+
+drop trigger if exists bank_info_insert;;
+create trigger bank_info_insert before insert on bank_info for each row
+begin
+    set new.password_salt=sha1(random_bytes(40));
+    set new.password_hash=sha1(concat(new.password_salt,sha1(new.password_hash)));
+    set new.start_time=unix_timestamp();
+end;;
+
+drop trigger if exists bank_info_update;;
+create trigger bank_info_update before update on bank_info for each row
+begin
+    if (old.password_salt,old.password_hash) != (new.password_salt,new.password_hash) then
+        set new.password_salt=sha1(random_bytes(40));
+        set new.password_hash=sha1(concat(new.password_salt,sha1(new.password_hash)));
+    end if;
+    if (old.bank_name,old.bank_branch,old.account_number,old.account_name) != (new.bank_name,new.bank_branch,new.account_number,new.account_name) then
+        insert into bank_history set user_id=old.user_id,
+            bank_name=old.bank_name,bank_branch=old.bank_branch,
+            account_number=old.account_number,account_name=old.account_name,
+            withdraw_count=old.withdraw_count,withdraw_amount=old.withdraw_amount,
+            start_time=old.start_time,stop_time=unix_timestamp();
+        set new.withdraw_count=0,new.withdraw_amount=0,new.start_time=unix_timestamp();
+    end if;
+end;;
+
+drop trigger if exists brokerage_setting_update;;
+create trigger brokerage_setting_update before update on brokerage_setting for each row
+begin
+    if new.layer_id != old.layer_id then
+        signal sqlstate 'BSU01' set message_text='brokerage_setting_update: 禁止修改 layer_id';
+    end if;
+end;;
+
+drop trigger if exists brokerage_rate_update;;
+create trigger brokerage_rate_update before update on brokerage_rate for each row
+begin
+    if new.layer_id != old.layer_id then
+        signal sqlstate 'BRU01' set message_text='subsidy_setting_update: 禁止修改 layer_id';
+    end if;
+    if new.vigor_count != old.vigor_count then
+        signal sqlstate 'BRU02' set message_text='subsidy_setting_update: 禁止修改 vigor_count';
+    end if;
+end;;
+
+drop view if exists user_info_intact;;
+create view user_info_intact as
+    select i.user_id,a.user_key,bk.account_name,i.deal_key,i.layer_id,l.layer_name,i.agent_id,inv.invite_code,
+        i.broker_1_id,b1.user_key as broker_1_key,
+        i.broker_2_id,b2.user_key as broker_2_key,
+        i.broker_3_id,b3.user_key as broker_3_key,
+        i.register_invite,i.register_time,i.register_ip,i.register_device,
+        i.login_time,i.login_ip,i.login_device,i.phone_number,i.memo
+    from user_info i inner join user_auth a on i.user_id=a.user_id
+        inner join layer_info l on i.layer_id=l.layer_id
+        left outer join bank_info bk on i.user_id=bk.user_id
+        left outer join user_auth b1 on i.broker_1_id=b1.user_id
+        left outer join user_auth b2 on i.broker_2_id=b2.user_id
+        left outer join user_auth b3 on i.broker_3_id=b3.user_id
+        left outer join invite_info inv on i.user_id=inv.user_id;;
+
+insert into layer_info(layer_name,layer_type,min_deposit_amount,min_bet_amount,min_deposit_user,max_day)values
+('新会员',2,0,0,0,0),
+('普通会员',2,10,100,0,0),
+('青铜会员',2,100,1000,0,0),
+('白银会员',2,1000,10000,0,0),
+('黄金会员',2,10000,100000,0,0),
+('铂金会员',2,100000,1000000,0,0),
+('钻石会员',2,1000000,10000000,0,0),
+('超级VIP',1,0,0,0,0),
+('大客户',1,0,0,0,0),
+('黑名单',1,0,0,0,0),
+('新代理',103,0,0,0,60),
+('一级代理',102,0,0,0,0),
+('二级代理',102,100,1000,5,0),
+('三级代理',102,1000,10000,20,0),
+('四级代理',102,10000,100000,100,0),
+('五级代理',102,100000,1000000,1000,0),
+('特约代理',101,0,0,0,0),
+('黑名单代理',101,0,0,0,0);;
+
+insert into operate(operate_key,operate_name,require_permit,record_log)values
+('self_login','登录',0,1),
+('self_logout','退出',0,1),
+('self_password','修改密码',0,1),
+('withdraw_absolve_review','提现免审核',1,1),
+('brokerage_stop','停止反佣金',2,1),
+('invite_invalid','无效邀请码',2,1),
+('subsidy_stop','停止返水',3,1),
+('rebate_prohibit','禁止返点',3,1),
+('account_freeze','冻结账号',3,1),
+('balance_freeze','冻结余额',3,1),
+('bet_stop','停止投注',3,1),
+('promotion_stop','停止优惠活动',3,1);;
+

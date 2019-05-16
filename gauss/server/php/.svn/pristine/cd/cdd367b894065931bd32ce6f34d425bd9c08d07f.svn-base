@@ -1,0 +1,75 @@
+<?php
+
+namespace Plat\Websocket\LotteryTicket\LotteryRateSetting;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 玩法赔率设置列表
+ * LotteryTicket/LotteryRateSetting/PlayRateSetting   {"status":"1","site_name":""}
+ * game_key:彩种
+ * */
+
+class PlayRateSetting extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("lottery_win_select", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        //0213
+        $data = $context->getData();
+        $admin_mysql = $config->data_admin;
+        $analysis_mysql = $config->data_analysis;
+        $site_name = !empty($data['site_name']) ? $data['site_name'] : '';
+        $status = !empty($data['status']) ? $data['status'] : '';
+        $month_time = date('Ym', strtotime(date('Y-m', time()) . '-01 00:00:00')); //本月
+        $monthly_site_sql = "select site_key, site_name,sum(bet_all) as bet_all,sum(bonus_all) as bonus_all from monthly_site where monthly='$month_time'  ";
+        $sites = '';
+        $last_data = [];
+        $site_sql = "select site_key,site_name from site where 1=1";
+        if (!empty($status)) {
+            if (!in_array($status, [0, 1, 2, 3])) {
+                $context->reply(["status" => 202, "msg" => "状态选择错误"]);
+                return;
+            }
+            $site_sql .= " and  status ='$status'";
+        }
+        $site_list = iterator_to_array($admin_mysql->query($site_sql));
+        if (!empty($site_name)) {
+            $monthly_site_sql .= " and site_name='$site_name' ";
+        }
+        
+
+        if (!empty($site_list)) {
+            foreach ($site_list as $value) {
+                $keyTranslation = $value['site_key'];
+                $monthly_site_sql .= " and  site_key='$keyTranslation'";
+                $site_bet_data = iterator_to_array($analysis_mysql->query($monthly_site_sql));
+                if (!empty($site_bet_data)) {
+                    foreach ($site_bet_data as $v) {
+                        $last_data[] = [
+                            "site_key" => $keyTranslation,
+                            "site_name" =>$value['site_name'],
+                            "bet_all" => $v['bet_all']?$v['bet_all']:0,
+                            "bonus_all" => $v['bonus_all']?:0,
+                            "monthIncome" => $v['bet_all'] - $v['bonus_all']
+                        ];
+                    }
+                }
+            }
+        }
+
+        $context->reply([
+            "status" => 200,
+            "msg" => "获取成功",
+            "site_status" => $status,
+            "list" => $last_data
+        ]);
+    }
+
+}

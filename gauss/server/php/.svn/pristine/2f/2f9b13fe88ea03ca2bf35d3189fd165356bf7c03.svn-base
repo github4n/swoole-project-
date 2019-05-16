@@ -1,0 +1,84 @@
+<?php
+
+namespace Plat\Websocket\Website\SiteLottery;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 修改站点彩票开关
+ * Website/SiteLottery/SiteLotterySave   {"site":["site1","site2"],"gameSettings":{"dice":[{"dice_ah":"on"},{"dice_fast":"on"},{"dice_js":"on"},{"dice_three":"on"}],"eleven":[{"eleven_fast":"on"},{"eleven_gd":"off"},{"eleven_three":"off"}],"ladder":[{"ladder_fast":"on"},{"ladder_five":"off"},{"ladder_three":"off"}],"lucky":[{"lucky_cq":"on"},{"lucky_fast":"off"},{"lucky_gd":"on"},{"lucky_three":"off"}],"racer":[{"racer_bj":"on"},{"racer_fast":"off"},{"racer_malta":"off"},{"racer_three":"off"}],"six":[{"six_fast":"on"},{"six_hk":"off"},{"six_ten":"off"},{"six_three":"on"}],"tiktok":[{"tiktok_cq":"on"},{"tiktok_fast":"on"},{"tiktok_three":"off"}]}}
+ *
+ * */
+
+class SiteLotterySave extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("site_lottery_update", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $admin_mysql = $config->data_admin;
+        $site = !empty($data['site']) ? $data['site'] : '';
+        $gameSettings = !empty($data['gameSettings']) ? $data['gameSettings'] : '';
+        if (empty($site)) {
+            $context->reply(["status" => 203, "msg" => "站点参数不可为空"]);
+            return;
+        }
+        if (empty($gameSettings)) {
+            $context->reply(["status" => 203, "msg" => "彩票设置参数不可为空"]);
+            return;
+        }
+        foreach ($site as $site_detail) {
+            $site_sql = "select *  from site  where site_key='$site_detail' ";
+            $site_data = iterator_to_array($admin_mysql->query($site_sql));
+            if (empty($site_data)) {
+                $context->reply(["status" => 203, "msg" => "输入的站点不存在"]);
+                return;
+            }
+            if ($site_data[0]['status'] != 2) {
+                $context->reply(["status" => 203, "msg" => $site_detail . "站点未关闭无法修改彩票开关"]);
+                return;
+            }
+            $siteStaff_mysql = $config->__get('data_' . $site_detail . '_staff');
+            foreach ($gameSettings as $model_key => $game_detail) {
+                foreach ($game_detail as $acceptablDetail) {
+                    foreach ($acceptablDetail as $game_key => $acceptable) {
+                        if (!in_array($acceptable, ['on', 'off'])) {
+                            $context->reply(["status" => 203, "msg" => "开关参数错误"]);
+                            return;
+                        }
+                        if ($acceptable == 'on') {
+                            $accept = 1;
+                        } else {
+                            $accept = 0;
+                        }
+                        $edit_site_sql = "update lottery_game set acceptable='$accept' where model_key='$model_key' and game_key ='$game_key' ";
+                        $edit_sql = "update site_game set acceptable='$accept' where site_key='$site_detail' and model_key='$model_key' and game_key ='$game_key' ";
+                        try {
+                            $admin_mysql->execute($edit_sql);
+                            $siteStaff_mysql->execute($edit_site_sql);
+                        } catch (\PDOException $e) {
+                            $context->reply(["status" => 400, "msg" => "修改站点" . ':' . $site_detail . "彩种" . $model_key . ':' . "玩法" . $game_key . "的开关失败"]);
+                            throw new \PDOException($e);
+                        }
+                    }
+                }
+            }
+        }
+        $mysqls = $config->data_admin;
+        $sqlss = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+        $param = [
+            ':admin_id' => $context->getInfo('adminId'),
+            ':operate_key' => "site_lottery_update",
+            ':detail' => "修改了站点彩票开关"
+        ];
+        $mysqls->execute($sqlss, $param);
+        $context->reply(["status" => 200, "msg" => "修改成功"]);
+    }
+
+}

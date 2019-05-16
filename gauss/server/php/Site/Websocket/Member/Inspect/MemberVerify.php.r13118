@@ -1,0 +1,399 @@
+<?php
+
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 18-12-21
+ * Time: 下午6:30
+ */
+
+namespace Site\Websocket\Member\Inspect;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * Member/Inspect/MemberVerify  {"user_key":"账号名","start_time":"2019-01-10 10:32:25","end_time":"","deal_type":"deposit_finish,withdraw,staff_deposit,staff_withdraw,bet_settle,bet_set","broker_type":"1/2/3/4"}
+ */
+
+class MemberVerify extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("user_audit", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+
+        $dealType = [
+            'bet_set' => '投注',
+            'bet_settle' => '彩票结算',
+            'deposit_finish' => '入款',
+            'withdraw_finish' => '出款',
+            'staff_deposit' => '手工入款',
+            'staff_withdraw' => '手工出款',
+            'subsidy_deliver' => '投注反水',
+            'brokerage_deliver' => '代理佣金',
+            'external_fg_settle' => 'FG平台结算'
+        ];
+
+        $param = $context->getData();
+        $user_key = isset($param['user_key']) ? $param['user_key'] : '';
+        if (empty($user_key)) {
+            $context->reply(['status' => 404, 'msg' => '请输入您要搜索的会员账号']);
+            return;
+        }
+        $userMysql = $config->data_user;
+        $agentMysql = $config->data_staff;
+        $mysqlReport = $config->data_report;
+        $staffId = $context->getInfo('StaffId');
+        //1个人,2一级下线,3二级下线,4三级下线
+        $broker_type = isset($param['broker_type']) ? $param['broker_type'] : 1;
+        $start_time = isset($param['start_time']) ? $param['start_time'] : '';
+        $deal_typeTranslation = isset($param['deal_type']) ? $param['deal_type'] : '';
+        $end_time = isset($param['end_time']) ? $param['end_time'] : '';
+        $deal_type = " and 1=1 ";
+        $user_key = " AND user_key = '" . $user_key . "'";
+
+        if (!empty($deal_typeTranslation)) {
+            if (strpos($deal_typeTranslation, 'external_fg_settle') !== false) {
+                $deal_type = " AND (deal_type = 'external_import_success' OR deal_type = 'external_import_launch' OR deal_type = 'external_import_fungaming'"
+                        . " OR deal_type = 'external_import_failure' OR deal_type = 'external_export_success' OR deal_type = 'external_export_launch'"
+                        . " OR deal_type = 'external_export_fungaming' OR deal_type = 'external_export_failure' OR deal_type = 'external_audit_fungaming' OR deal_type = 'external_audit')";
+            } elseif (strpos($deal_typeTranslation, 'bet_settle') !== false) {
+                $deal_type = " AND (deal_type = 'bet_settle')";
+            } elseif (strpos($deal_typeTranslation, 'bet_set') !== false) {
+                $deal_type = " AND (deal_type = 'bet_normal' OR deal_type = 'bet_chase')";
+            } elseif (strpos($deal_typeTranslation, 'deposit_finish') !== false) {
+                $deal_type = " AND (deal_type = 'deposit_finish'  OR deal_type = 'deposit_launch' OR deal_type = 'deposit_simple' OR deal_type = 'deposit_gateway')";
+            } elseif (strpos($deal_typeTranslation, 'withdraw_finish') !== false) {
+                $deal_type = " AND (deal_type = 'withdraw_finish' OR deal_type = 'withdraw_cancel' OR deal_type = 'withdraw_accept' OR  deal_type = 'withdraw_launch' )";
+            } elseif (strpos($deal_typeTranslation, 'staff_deposit') !== false) {
+                $deal_type = " AND (deal_type = 'staff_deposit')";
+            } elseif (strpos($deal_typeTranslation, 'staff_withdraw') !== false) {
+                $deal_type = " AND (deal_type = 'staff_withdraw')";
+            } elseif (strpos($deal_typeTranslation, 'subsidy_deliver') !== false) {
+                $deal_type = " AND (deal_type = 'subsidy_deliver')";
+            } elseif (strpos($deal_typeTranslation, 'brokerage_deliver') !== false) {
+                $deal_type = " AND (deal_type = 'brokerage_deliver')";
+            }
+        }
+        //求账号下及会员
+
+        $agent_id = [];
+        switch ($StaffGrade) {
+            case 1:
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE major_id='$staffId'";
+                foreach ($agentMysql->query($sql) as $row) {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 2:
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE minor_id='$staffId'";
+                foreach ($agentMysql->query($sql) as $row) {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 3:
+                $agent_id[] = $staffId;
+                break;
+            default:
+                $sql = 'SELECT agent_id FROM staff_struct_agent';
+                foreach ($agentMysql->query($sql) as $row) {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+        }
+
+        //根据总代理id查询下属的所有账号id以及所属的数据库
+
+        $user_id = '';
+        foreach ($agent_id as $row) {
+            $sql = "SELECT user_id,deal_key FROM user_info WHERE agent_id='$row'";
+            foreach ($userMysql->query($sql) as $item) {
+                $user_id .= $item['user_id'] . ',';
+            }
+        }
+
+        //去除重复的数据，拼接id字段作为in的查询条件
+        $ids = rtrim($user_id, ',');
+        if (empty($ids)) {
+            $ids = 0;
+        }
+        $user_info = [];
+        $user_info_sql = "select user_id,invite_code,deal_key from user_info_intact where 1=1 " . $user_key;
+        foreach ($userMysql->query($user_info_sql) as $item) {
+            $user_info = $item;
+        }
+        if (empty($user_info)) {
+            $context->reply(['status' => 404, 'msg' => '未查询到该会员相关信息']);
+            return;
+        }
+
+        //会员统计数据
+        $count_data = [];
+        if (!in_array($user_info['user_id'], explode(',', $ids))) {
+            $context->reply(['status' => 405, 'msg' => '未查询到该会员相关信息或权限问题']);
+            return;
+        }
+
+        $user_id = $user_info['user_id'];
+        $time_report = '';
+        $time = '';
+        $regist_time ='';
+        if ($start_time && $end_time) {
+            $start = strtotime($start_time);
+            $end = strtotime($end_time);
+            $time = " AND deal_time BETWEEN " . $start . " AND " . $end;
+            $time_report = " AND daily BETWEEN " . date('Ymd', $start) . " AND " . date('Ymd', $end);
+            $regist_time = " AND register_time<".$start;
+        }
+        $count_deal_sql = "select sum(wager_amount) as wager_amount,sum(bonus_amount) as bonus_amount,sum(deposit_amount) as deposit_amount,sum(withdraw_amount) as withdraw_amount,sum(subsidy_amount) as subsidy_amount,sum(coupon_amount) as coupon_amount from daily_user where 1=1 " . $user_key . $time_report;
+        foreach ($mysqlReport->query($count_deal_sql) as $val) {
+            $count_data = $val;
+        }
+        //下级统计
+        $subordinate = [];
+        $is_agent = 0;
+        if (isset($user_info['invite_code']) && $user_info['invite_code']) {
+            $is_agent = 1;
+            $subordinate_sql = "select sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,sum(wager_amount) as wager_amount,sum(deposit_amount) as deposit_amount,sum(withdraw_amount) as withdraw_amount,sum(coupon_amount) as coupon_amount from daily_user where (broker_1_id = $user_id or broker_2_id = $user_id or broker_3_id = $user_id)".$time_report;
+            foreach ($mysqlReport->query($subordinate_sql) as $val) {
+                $subordinate = $val;
+            }
+            //下级人数
+            $subSql = "select user_id from user_info_intact where (broker_1_id = $user_id or broker_2_id = $user_id or broker_3_id = $user_id)" .$regist_time;
+            $user_count = $userMysql->execute($subSql);
+            $subordinate["user_count"] = $user_count;
+        }
+        $user_ids = '';
+        switch ($broker_type) {
+            //会员个人
+            case 1:
+                $user_ids = $user_id;
+                break;
+            //一级下线
+            case 2:
+                $broker_sql = "select user_id from user_info_intact where broker_1_id = '$user_id'";
+                foreach ($userMysql->query($broker_sql) as $id) {
+                    $user_ids .= $id['user_id'] . ',';
+                }
+                break;
+            //二级下线
+            case 3:
+                $broker_sql = "select user_id from user_info_intact where broker_2_id = '$user_id'";
+                foreach ($userMysql->query($broker_sql) as $id) {
+                    $user_ids .= $id['user_id'] . ',';
+                }
+                break;
+            //三级下线
+            case 4:
+                $broker_sql = "select user_id from user_info_intact where broker_3_id = '$user_id'";
+                foreach ($userMysql->query($broker_sql) as $id) {
+                    $user_ids .= $id['user_id'] . ',';
+                }
+                break;
+        }
+
+        $uids = rtrim($user_ids, ',');
+        if (empty($uids)) {
+            $uids = 0;
+        }
+
+        $dealSql = "select deal_serial,user_key,layer_id,account_name,deal_type,vary_money,new_money,summary,deal_time,deal_time from deal where user_id IN ($uids)" . $deal_type . $time . " order by deal_time desc";
+        $user_count_sql = "select count(user_id) as user_count from deal where user_id in ($uids)" . $deal_type . $time . " group by user_id";
+        //入款
+        $deposit_count_sql = "select sum(vary_money) as vary_money from deal where user_id in ($uids) and (deal_type = 'deposit_finish' or deal_type = 'staff_deposit') " . $time;
+        //投注
+        $bet_money_sql = "select sum(vary_money) as vary_money from deal where user_id in ($uids) and (deal_type = 'bet_normal' or deal_type = 'bet_chase') " . $time;
+        //反水
+        $rebate_rate_sql = "select sum(vary_money) as vary_money from deal where user_id in ($uids) and deal_type = 'subsidy_deliver'" . $time;
+        //派彩
+        $bonus_sql = "select sum(vary_money) as vary_money from deal where user_id in ($uids) and deal_type = 'bet_settle' " . $time;
+        //佣金
+        $commission_sql = "select sum(vary_money) as vary_money from deal where user_id in ($uids) and deal_type = 'brokerage_deliver'" . $time;
+        //出款
+        $withdraw_count_sql = "select sum(vary_money) as vary_money from deal where user_id in ($uids) and (deal_type = 'withdraw_finish' or deal_type = 'staff_withdraw') " . $time;
+        //统计数据定义初始值
+        $user_count = 0;
+        $deposit_count = 0;
+        $bet_money = 0;
+        $rebate_rate = 0;
+        $bonus = 0;
+        $commission = 0;
+        $withdraw_count = 0;
+
+        //定义数组接受数据
+        $data = array();
+        foreach ($config->deal_list as $deal) {
+            try {
+                $mysql = $config->__get("data_" . $deal);
+                $list = iterator_to_array($mysql->query($dealSql));
+                //统计数据
+                $user_count += $mysql->execute($user_count_sql);
+                foreach ($mysql->query($deposit_count_sql) as $val) {
+                    $deposit_count += abs($val['vary_money']);
+                }
+                foreach ($mysql->query($bet_money_sql) as $val) {
+                    $bet_money += abs($val['vary_money']);
+                }
+                foreach ($mysql->query($bonus_sql) as $val) {
+                    $bonus += $val['vary_money'];
+                }
+                foreach ($mysql->query($withdraw_count_sql) as $val) {
+                    $withdraw_count += $val['vary_money'];
+                }
+                foreach ($mysql->query($rebate_rate_sql) as $val) {
+                    $rebate_rate += $val['vary_money'];
+                }
+                foreach ($mysql->query($commission_sql) as $val) {
+                    $commission += $val['vary_money'];
+                }
+                if (!empty($list)) {
+                    foreach ($list as $item) {
+                        $type = $item['deal_type'];
+
+                        switch ($type) {
+                            case 'deposit_finish' :
+                                $tag = '入款';
+                                break;
+                            case 'withdraw_finish' :
+                                $tag = '出款';
+                                break;
+                            case 'bet_settle' :
+                                $tag = '彩票结算';
+                                break;
+                            case 'bet_normal' :
+                            case 'bet_chase' :
+                                $tag = '投注';
+                                break;
+                            case 'staff_deposit' :
+                                $tag = '手工入款';
+                                break;
+                            case 'staff_withdraw' :
+                                $tag = '手工出款';
+                                break;
+                            case 'subsidy_deliver':
+                                $tag = '投注反水';
+                                break;
+                            case 'brokerage_deliver':
+                                $tag = '代理返佣';
+                                break;
+                            case 'withdraw_launch':
+                                $tag = '申请提现';
+                                break;
+
+                            case 'withdraw_reject':
+                                $tag = '拒绝提现';
+                                break;
+
+                            case 'withdraw_lock':
+                                $tag = '入款加锁';
+                                break;
+
+                            case 'withdraw_cancel':
+                                $tag = '出款失败';
+                                break;
+
+                            case 'withdraw_accept':
+                                $tag = '允许出款';
+                                break;
+
+                            case 'external_import_success':
+                                $tag = '外接口转入成功';
+                                break;
+                            case 'external_import_launch':
+                                $tag = '从第三方转入额度';
+                                break;
+                            case 'external_import_fungaming':
+                                $tag = '从FunGaming转入';
+                                break;
+                            case 'external_import_failure':
+                                $tag = '第三方转入失败';
+                                break;
+                            case 'external_export_success':
+                                $tag = '第三方转出成功';
+                                break;
+                            case 'external_export_launch':
+                                $tag = '转出额度到第三方平台';
+                                break;
+                            case 'external_export_fungaming':
+                                $tag = '转出到FunGaming';
+                                break;
+                            case 'external_export_failure':
+                                $tag = '转出到第三方平台失败';
+                                break;
+                            case 'external_audit':
+                                $tag = '三方平台打码稽核';
+                                break;
+                            case 'external_audit_fungaming':
+                                $tag = 'FunGaming平台打码';
+                                break;
+                            case 'deposit_simple':
+                                $tag = '快捷入款';
+                                break;
+                            case 'deposit_launch':
+                                $tag = '入款申请';
+                                break;
+                            case 'deposit_gateway':
+                                $tag = '三方入款';
+                                break;
+                            default :
+                                $tag = '';
+                                break;
+                        }
+                        $layer_name = $context->getInfo($item['layer_id']);
+                        $values = [
+                            'deal_serial' => $item['deal_serial'],
+                            'user_key' => $item['user_key'],
+                            'layer_name' => $layer_name,
+                            'deal_type' => $tag,
+                            'account_name' => empty($item['account_name']) ? '' : $item['account_name'],
+                            'detail' => json_decode($item['summary']),
+                            'vary_money' => $item['vary_money'],
+                            'new_money' => $item['new_money'],
+                            'deal_time' => $item['deal_time']
+                        ];
+                        $data[] = $values;
+                    }
+                }
+            } catch (\PDOException $e) {
+                $context->reply(["status" => 400, "msg" => "获取失败"]);
+                throw new \PDOException($e);
+            }
+        }
+
+        $context->reply([
+            'status' => 200,
+            'msg' => '成功',
+            //会员统计数据
+            'count_data' => $count_data,
+            //会员下级数据
+            'subordinate' => $subordinate,
+            //是否代理
+            'is_agent' => $is_agent,
+            //交易类型下拉框数据
+            'dealType' => $dealType,
+            //所有匹配数据
+            'data' => $data,
+            //总计人数
+            'user_count' => $user_count,
+            //充值
+            'deposit_money' => $deposit_count,
+            //投注
+            'bet_money' => $bet_money,
+            //反水
+            'rebate_rate' => $rebate_rate,
+            //提现
+            'withdraw_money' => $withdraw_count,
+            //返佣
+            'commission' => $commission,
+            //中奖
+            'bonus' => $bonus,
+        ]);
+    }
+
+}

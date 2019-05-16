@@ -1,0 +1,285 @@
+<?php
+
+namespace Site\Websocket\Member\Deposits;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员出入款查询-会员入款
+ * Member/Deposits/MemberDeposit
+ * 搜索参数：user_name:会员名,user_level:会员层级id,rel_name:真实姓名,
+ * status；状态 1-入款成功 2-入款失败,3-等待入款 pay_type:支付方式  三方 银行转账 快捷支付    start_time:提交时间开始值,end_time:提交时间结束值
+ */
+
+class MemberDeposit extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+
+        //会员层级列表
+        $cache = $config->cache_site;
+        $layer_list = json_decode($cache->hget("LayerList","allLayer"));
+        $param = $context->getData();
+        $user_name = isset($param["user_name"]) ? $param['user_name'] : '';
+        $user_level = isset($param["user_level"]) ? $param['user_level'] : '';
+        $pay_type = isset($param['pay_type']) ? $param['pay_type'] : ''; //1-银行卡 2-三方 3-快捷
+        $rel_name = isset($param["rel_name"]) ? $param['rel_name'] : '';
+        $status = isset($param["status"]) ? $param['status'] : ''; //1-已入款  2-未入款
+        $start_time = isset($param["start_time"]) ? $param['start_time'] : '';
+        $end_time = isset($param["end_time"]) ? $param['end_time'] : '';
+
+        $time = '';
+        if ($user_name) {
+            $user_name = " AND user_key = '" . $user_name . "'";
+        }
+
+        if ($rel_name) {
+            $rel_name = " AND account_name = '" . $rel_name . "'";
+        }
+
+        if ($user_level) {
+            $user_level = " AND layer_id = '" . $user_level . "'";
+        }
+
+        if ($status) {
+
+            if ($status == 1) {
+                $status = " AND finish_time > 0 ";
+            } elseif($status == 2) {
+                $status = " AND cancel_time >0";
+            } elseif($status == 3) {
+                $status = " AND launch_time > 0 AND finish_time is null AND cancel_time is null";
+            }
+        }
+
+        if ($start_time && $end_time) {
+            $start = strtotime($start_time);
+            $end = strtotime($end_time);
+            $time = " AND deal_time BETWEEN " . $start . " AND " . $end;
+        }
+
+
+        $data = [];
+        //银行入款sql
+        $bank_sql = "SELECT user_key,layer_id,launch_money,account_name,launch_time,finish_time,cancel_time FROM deposit_bank_intact WHERE 1 = 1" . $user_name . $rel_name . $user_level . $status . $time . " ORDER BY launch_time DESC";
+        //三方入款sql
+        $gateway_sql = "SELECT user_key,layer_id,account_name,launch_money,launch_time,finish_time,cancel_time FROM deposit_gateway_intact WHERE 1=1 " . $user_name . $rel_name . $user_level . $status . $time . " ORDER BY launch_time DESC";
+        //快捷入款sql
+        $simple_sql = "SELECT user_key,layer_id,account_name,launch_money,launch_time,finish_time,cancel_time FROM deposit_simple_intact WHERE 1=1 " . $user_name . $rel_name . $user_level . $status . $time . " ORDER BY launch_time DESC";;
+
+        switch ($pay_type) {
+            case 1:
+                foreach ($config->deal_list as $deal) {
+                    $mysql = $config->__get("data_" . $deal);
+                    try {
+                        $list = iterator_to_array($mysql->query($bank_sql));
+
+                        if (!empty($list)) {
+                            foreach ($list as $key => $value) {
+                                $layer = $context->getInfo($value['layer_id']);
+                                if (!empty($value['finish_time'])) {
+                                    $status = '入款成功';
+                                    $times = date("Y-m-d H:i:s", $value['finish_time']);
+                                }
+                                if(!empty($value['cancel_time'])){
+                                    $status = '入款失败';
+                                    $times = date("Y-m-d H:i:s", $value['cancel_time']);
+                                }
+                                if(!empty($value["launch_time"]) && empty($value["finish_time"]) && empty($value["cancel_time"])){
+                                    $status = '等待入款';
+                                    $times = '';
+                                }
+                                $tag = [
+                                    'user_key' => $value['user_key'],
+                                    'account_name' => $value['account_name'],
+                                    'layer_name' => $layer,
+                                    'launch_money' => $value['launch_money'],
+                                    'launch_time' => $value['launch_time'],
+                                    'platform' => '银行转账',
+                                    'status' => $status,
+                                    'finish_time' => $times,
+                                ];
+                                $data[] = $tag;
+                            }
+                        }
+                    } catch (\PDOException $e) {
+                        $context->reply(["status" => 400, "msg" => "获取失败"]);
+                        throw new \PDOException($e);
+                    }
+
+                }
+                break;
+            case 2:
+                foreach ($config->deal_list as $deal) {
+                    $mysql = $config->__get("data_" . $deal);
+                    try {
+                        $list = iterator_to_array($mysql->query($gateway_sql));
+                        if (!empty($list)) {
+                            foreach ($list as $key => $value) {
+                                $layer = $context->getInfo($value['layer_id']);
+                                if (!empty($value['finish_time'])) {
+                                    $status = '已入款';
+                                    $times = date("Y-m-d H:i:s", $value['finish_time']);
+                                } else {
+                                    $status = '未入款';
+                                    $times = '';
+                                }
+                                $tag = [
+                                    'user_key' => $value['user_key'],
+                                    'account_name' => $value['account_name'],
+                                    'layer_name' => $layer,
+                                    'launch_money' => $value['launch_money'],
+                                    'launch_time' => $value['launch_time'],
+                                    'platform' => '三方入款',
+                                    'status' => $status,
+                                    'finish_time' => $times
+                                ];
+                                $data[] = $tag;
+                            }
+                        }
+                    } catch (\PDOException $e) {
+                        $context->reply(["status" => 400, "msg" => "获取失败"]);
+                        throw new \PDOException($e);
+                    }
+                }
+                break;
+            case 3:
+                foreach ($config->deal_list as $deal) {
+                    $mysql = $config->__get("data_" . $deal);
+                    try {
+                        $list = iterator_to_array($mysql->query($simple_sql));
+                        if (!empty($list)) {
+                            foreach ($list as $key => $value) {
+                                $layer = $context->getInfo($value['layer_id']);
+                                if (!empty($value['finish_time'])) {
+                                    $status = '已入款';
+                                    $times = date("Y-m-d H:i:s", $value['finish_time']);
+                                } else {
+                                    $status = '未入款';
+                                    $times = '';
+                                }
+                                $tag = [
+                                    'user_key' => $value['user_key'],
+                                    'account_name' => $value['account_name'],
+                                    'layer_name' => $layer,
+                                    'launch_money' => $value['launch_money'],
+                                    'launch_time' => $value['launch_time'],
+                                    'platform' => '快捷入款',
+                                    'status' => $status,
+                                    'finish_time' => $times
+                                ];
+                                $data[] = $tag;
+                            }
+                        }
+                    } catch (\PDOException $e) {
+                        $context->reply(["status" => 400, "msg" => "获取失败"]);
+                        throw new \PDOException($e);
+                    }
+                }
+                break;
+            default:
+                foreach ($config->deal_list as $deal) {
+                    $mysql = $config->__get("data_" . $deal);
+                    try {
+                        $list = iterator_to_array($mysql->query($bank_sql));
+
+                        if (!empty($list)) {
+                            foreach ($list as $key => $value) {
+                                $layer = $context->getInfo($value['layer_id']);
+                                if (!empty($value['finish_time'])) {
+                                    $status = '已入款';
+                                    $times = date("Y-m-d H:i:s", $value['finish_time']);
+                                } else {
+                                    $status = '未入款';
+                                    $times = '';
+                                }
+                                $tag = [
+                                    'user_key' => $value['user_key'],
+                                    'account_name' => $value['account_name'],
+                                    'layer_name' => $layer,
+                                    'launch_money' => $value['launch_money'],
+                                    'launch_time' => $value['launch_time'],
+                                    'platform' => '银行转账',
+                                    'status' => $status,
+                                    'finish_time' => $times,
+                                ];
+                                $data[] = $tag;
+                            }
+                        }
+                    } catch (\PDOException $e) {
+                        $context->reply(["status" => 400, "msg" => "获取失败"]);
+                        throw new \PDOException($e);
+                    }
+
+                    try {
+                        $list = iterator_to_array($mysql->query($gateway_sql));
+                        if (!empty($list)) {
+                            foreach ($list as $key => $value) {
+                                $layer = $context->getInfo($value['layer_id']);
+                                if (!empty($value['finish_time'])) {
+                                    $status = '已入款';
+                                    $times = date("Y-m-d H:i:s", $value['finish_time']);
+                                } else {
+                                    $status = '未入款';
+                                    $times = '';
+                                }
+                                $tag = [
+                                    'user_key' => $value['user_key'],
+                                    'account_name' => $value['account_name'],
+                                    'layer_name' => $layer,
+                                    'launch_money' => $value['launch_money'],
+                                    'launch_time' => $value['launch_time'],
+                                    'platform' => '三方入款',
+                                    'status' => $status,
+                                    'finish_time' => $times
+                                ];
+                                $data[] = $tag;
+                            }
+                        }
+                    } catch (\PDOException $e) {
+                        $context->reply(["status" => 400, "msg" => "获取失败"]);
+                        throw new \PDOException($e);
+                    }
+
+                    try {
+                        $list = iterator_to_array($mysql->query($simple_sql));
+                        if (!empty($list)) {
+                            foreach ($list as $key => $value) {
+                                $layer = $context->getInfo($value['layer_id']);
+                                if (!empty($value['finish_time'])) {
+                                    $status = '已入款';
+                                    $times = date("Y-m-d H:i:s", $value['finish_time']);
+                                } else {
+                                    $status = '未入款';
+                                    $times = '';
+                                }
+                                $tag = [
+                                    'user_key' => $value['user_key'],
+                                    'account_name' => $value['account_name'],
+                                    'layer_name' => $layer,
+                                    'launch_money' => $value['launch_money'],
+                                    'launch_time' => $value['launch_time'],
+                                    'platform' => '快捷入款',
+                                    'status' => $status,
+                                    'finish_time' => $times
+                                ];
+                                $data[] = $tag;
+                            }
+                        }
+                    } catch (\PDOException $e) {
+                        $context->reply(["status" => 400, "msg" => "获取失败"]);
+                        throw new \PDOException($e);
+                    }
+
+                }
+
+                break;
+        }
+
+        $total = count($data);
+        $context->reply(["status" => 200, "msg" => "获取成功", "total" => $total, "data" => $data, 'layer_list' => $layer_list]);
+
+    }
+}

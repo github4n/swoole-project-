@@ -1,0 +1,86 @@
+<?php
+namespace Plat\Websocket\Website\GameCommission;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 游戏提成比例设置
+ * 参数：site_key:站点,
+ * */
+
+class CommissionList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("website_tax_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        //获取站点信息
+        $sitelist = json_decode($context->getInfo("SiteList"));
+        if (empty($sitelist)) {
+            $sitelist = $this->getallsite($context, $config);
+        }
+        $data = $context->getData();
+        $site_key = $data["site_key"]?:"site1";
+        $mysql = $config->data_admin;
+        $sql = "SELECT * FROM site_tax_config WHERE site_key=:site_key";
+        $param = [":site_key" => $site_key];
+        foreach ($mysql->query($sql, $param) as $rows) {
+            $list[] = $rows;
+        }
+        $lotterys = array();
+        $videos = array();
+        $sports = array();
+        $games = array();
+        $cards = array();
+        if(!empty($list)){
+            foreach ($list as $key=>$val) {
+                if($val['category'] == "lottery"){
+                    $lottery['category'] = $val['category'];
+                    $lottery['range_max'] = $val['range_max'];
+                    $lottery['tax_rate'] = $val['tax_rate'];
+                    array_push($lotterys,$lottery) ;
+                }
+                if($val['category'] == "video"){
+                    $video['category'] = $val['category'];
+                    $video['range_max'] = $val['range_max'];
+                    $video['tax_rate'] = $val['tax_rate'];
+                    array_push($videos,$video) ;
+                }
+                if($val['category'] == "sports"){
+                    $sport['category'] = $val['category'];
+                    $sport['range_max'] = $val['range_max'];
+                    $sport['tax_rate'] = $val['tax_rate'];
+                    array_push($sports,$sport) ;
+                }
+                if($val['category'] == "game"){
+                    $game['category'] = $val['category'];
+                    $game['range_max'] = $val['range_max'];
+                    $game['tax_rate'] = $val['tax_rate'];
+                    array_push($games,$game) ;
+                }
+                if($val['category'] == "cards"){
+                    $card['category'] = $val['category'];
+                    $card['range_max'] = $val['range_max'];
+                    $card['tax_rate'] = $val['tax_rate'];
+                    array_push($cards,$card) ;
+                }
+            }
+        }
+        $context->reply([
+            'status' => 200,
+            'msg' => '获取成功',
+            'sitelist' => $sitelist,
+            "lottery"=>$lotterys,
+            "video"=>$videos,
+            "sports"=>$sports,
+            "game"=>$games,
+            "cards"=>$cards,
+        ]);
+    }
+}

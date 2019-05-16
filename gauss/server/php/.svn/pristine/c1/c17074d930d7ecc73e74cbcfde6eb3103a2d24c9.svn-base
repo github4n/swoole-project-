@@ -1,0 +1,130 @@
+<?php
+
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-1-2
+ * Time: 下午5:13
+ */
+
+namespace Site\Task\Report;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class UserGameSubsidy implements IHandler {
+
+    public function onTask(Context $context, Config $config) {
+        ['time' => $time] = $context->getData();
+        $adapter = $context->getAdapter();
+        $daily = intval(date('Ymd', $time));
+        $start_time = strtotime($daily . ' 00:00:00');
+        $end_time = strtotime($daily . ' 23:59:59');
+        $mysqlReport = $config->data_report;
+        $mysqlUser = $config->data_user;
+
+        //检测数据是否锁定
+        $dailyInfo = [];
+        $sql = "select daily from daily_status where daily=:daily and frozen=1";
+        foreach ($mysqlReport->query($sql, [":daily" => $daily]) as $row) {
+            $dailyInfo = $row;
+        }
+        if (!empty($dailyInfo)) {
+            $adapter->plan('Report/UserGameSubsidy', ['time' => $time + 86400], time() + 600, 9);
+            return;
+        }
+
+        $allrow = [];
+        foreach ($config->deal_list as $deal) {
+            $mysqlDeal = $config->__get('data_' . $deal);
+            $sql = "SELECT sum(bet) as bet,user_id,user_key,account_name,layer_id,game_key" .
+                    "  FROM bet_form where launch_time between '$start_time' and '$end_time' group by game_key,user_id,user_key,account_name,layer_id";
+            $userBet = iterator_to_array($mysqlDeal->query($sql));
+
+            if (!empty($userBet)) {
+                foreach ($userBet as $key => $val) {
+                    $layer_id = $val['layer_id'];
+                    $game_key = $val['game_key'];
+                    $user_id = $val['user_id'];
+                    $subSql = "SELECT category_key,min_bet,subsidy_rate,max_subsidy " .
+                            "FROM subsidy_game_setting WHERE layer_id='$layer_id' AND game_key='$game_key'";
+                    //取反水比例
+                    foreach ($mysqlUser->query($subSql) as $subrow) {
+                        $subInfo = $subrow;
+                    }
+                    $category_key = isset($subInfo['category_key']) ? $subInfo['category_key'] : '';
+                    $subsidy = 0;
+                    if (!empty($subInfo)) {
+                        if ($val['bet'] >= $subInfo['min_bet'])
+                            $subsidy = ($val['bet'] * $subInfo['subsidy_rate']) / 100;
+
+                        if ($subsidy > $subInfo['max_subsidy'])
+                            $subsidy = $subInfo['max_subsidy'];
+                    }
+                    $user_sql = "select layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name from user_cumulate where user_id = '$user_id'";
+                    $userInfo = [];
+                    foreach ($mysqlReport->query($user_sql) as $v) {
+                        $userInfo = $v;
+                    }
+
+                    $row = [
+                        "daily" => $daily,
+                        "user_id" => $val['user_id'],
+                        "user_key" => $val['user_key'],
+                        "user_name" => $val['account_name'],
+                        "layer_id" => $val['layer_id'],
+                        "layer_name" => isset($userInfo['layer_name']) ? $userInfo['layer_name'] : '',
+                        "major_id" => isset($userInfo['major_id']) ? $userInfo['major_id'] : 0,
+                        "major_name" => isset($userInfo['major_name']) ? $userInfo['major_name'] : '',
+                        "minor_id" => isset($userInfo['minor_id']) ? $userInfo['minor_id'] : 0,
+                        "minor_name" => isset($userInfo['minor_name']) ? $userInfo['minor_name'] : '',
+                        "agent_id" => isset($userInfo['agent_id']) ? $userInfo['agent_id'] : 0,
+                        "agent_name" => isset($userInfo['agent_name']) ? $userInfo['agent_name'] : '',
+                        "game_key" => $val["game_key"],
+                        "bet_amount" => $val['bet'],
+                        "subsidy" => $subsidy,
+                        "category_key" => $category_key
+                    ];
+                    if (!empty($category_key)) {
+                        $allrow[] = $row; //  没有设置反水　不统计入库
+                    }
+                }
+            }
+        }
+
+        $mysqlReport->daily_user_game_subsidy->load($allrow, [], 'replace');
+
+        $weekly = intval(date("oW", $time));
+        $first_day = intval(date('Ymd', strtotime("-1 week Monday", $time)));
+        $last_day = intval(date('Ymd', strtotime("+0 week Sunday", $time)));
+        $sql = "select user_id,user_key,game_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,category_key,sum(bet_amount) as bet_amount ,sum(subsidy) as subsidy " .
+                "from daily_user_game_subsidy where daily between '$first_day' and '$last_day' group by game_key,user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,category_key";
+        $generator = $mysqlReport->query($sql);
+        if (!empty($generator)) {
+            $mysqlReport->weekly_user_game_subsidy->import($generator, [
+                'weekly' => $weekly,
+                    ], 'replace');
+        }
+
+        $monthly = intval(date("Ym", $time));
+        $first_day = date('Ym01', $time);
+        $last_day = date('Ymd', strtotime(date('Y-m-01', $time) . ' +1 month -1 day'));
+
+        $sql = "select user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,game_key, category_key,sum(bet_amount) as bet_amount ,sum(subsidy) as subsidy" .
+                " from daily_user_game_subsidy where daily between '$first_day' and '$last_day' group by game_key,user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,category_key";
+        $generator = $mysqlReport->query($sql);
+        if (!empty($generator)) {
+            $mysqlReport->monthly_user_game_subsidy->import($generator, [
+                'monthly' => $monthly,
+                    ], 'replace');
+        }
+        if (time() > $time + 86400) {
+            $adapter->plan('Report/UserGameSubsidy', ['time' => $time + 86400], time(), 9);
+        }
+        if (time() < $time + 86400 + 3600) {
+            $adapter->plan('Report/UserGameSubsidy', ['time' => $time], time() + 600, 9);
+        }
+    }
+
+}

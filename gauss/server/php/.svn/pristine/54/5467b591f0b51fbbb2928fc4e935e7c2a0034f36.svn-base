@@ -1,0 +1,48 @@
+<?php
+namespace Site\Websocket\System\SystemPersonnel;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 体系人员-人员信息
+ *  System/SystemPersonnel/PersonnelEdit {"staff_id":7}
+ * */
+
+class PersonnelEdit extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $data = $context->getData();
+        $staff_id = $data["staff_id"];
+        $staff_info = array();
+        if(!is_numeric($staff_id)){
+            $context->reply(["status"=>202,"msg"=>"要删除人员的唯一值正确"]);
+            return;
+        }
+        $mysql = $config->data_staff;
+        //查找用户的基本信息
+        $sql = "SELECT staff_name,staff_id,staff_key,staff_grade FROM staff_info_intact WHERE staff_id=:staff_id";
+        $param= [":staff_id"=>$staff_id];
+        try{
+            foreach ($mysql->query($sql,$param) as $row){
+                $staff_info = $row;
+            }
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"查询失败"]);
+            throw new \PDOException('select staff_info  sql run error'.$e);
+        }
+        if(empty($staff_info)){
+            $context->reply(["status"=>203,"msg"=>"提交的账户的有误"]);
+            return;
+        }
+        if($StaffGrade >= $staff_info["staff_grade"]){
+            $context->reply(["status"=>204,"msg"=>"当前登录账号等级不够"]);
+            return;
+        }
+        
+        $context->reply(["status"=>200,"msg"=>"删除成功","info"=>$staff_info]);
+
+    }
+}

@@ -1,0 +1,107 @@
+<?php
+namespace Site\Websocket\System\SystemReport;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 体系分红报表-个人分红列表
+ * 参数staff_name:用户名,start_time:开始时间,end_time:结束时间,distribute:派发(1为已派发，2为待派发),page:当前显示页数,num:每页显示的数量,gonum:跳转的页数
+ * {"staff_name":"name","start_time":"2018-10-24","end_time":"2018-10-28","distribute":2,"page":1,"num":10,"gonum":1}
+ * */
+
+class PersonalBonus extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade == 0){
+            $context->reply(["status"=>209,"msg"=>"当前登录账号是站长，不需要查看个人分红"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $page = $data["page"] ?: 1;
+        $num = $data["num"] ?: 10;
+        $go_num = $data["go_num"];
+        $staff_name = $data["staff_name"];
+        $start_time = $data["start_time"];
+        $end_time = $data["end_time"];
+        $distribute = $data["distribute"];
+        if(!is_numeric($page) && $page <= 0){
+            $context->reply(["status"=>202,"msg"=>"当前页数不正确"]);
+            return;
+        }
+        if(!is_numeric($num)){
+            $context->reply(["status"=>203,"msg"=>"每页显示的数量不正确"]);
+            return;
+        }
+        $limit = " LIMIT ".($page-1)*$num.",".$num;
+        if(!empty($go_num) && !is_numeric($go_num)){
+            if($go_num <= 0){
+                $context->reply(["status"=>204,"msg"=>"跳转的页数不正确"]);
+                return;
+            }
+            $limit = " LIMIT ".($go_num-1)*$num.",".$num;
+        }
+        if(!empty($staff_name)) {
+            $staff_name = " AND staff_key = '".$staff_name."'";
+        }
+        if(!empty($distribute)){
+            //已派发
+            if($distribute == 1){
+                $distribute = " AND deliver_time > 0";
+            } elseif($distribute == 2){
+                $distribute = " AND deliver_time = 0";
+            }else{
+                $context->reply(["status"=>205,"msg"=>"派发额搜索条件错误"]);
+                return;
+            }
+        }
+        if(!empty($start_time) && !empty($end_time)){
+            $start_time = strtotime($start_time." 00:00:00");
+            $end_time = strtotime($end_time." 23:59:59");
+            $time = " AND settle_time > ".$start_time." AND	settle_time < ".$end_time;
+        }
+        if($StaffGrade == 1){
+            $sql = "SELECT major_name as staff_name,major_id as staff_id,bet_amount,bet_rate,profit_amount,profit_rate,fee_rate,tax_rate,dividend_tax,dividend_fee,dividend_result,deliver_time,settle_time FROM dividend_settle_major WHERE major_id = :major_id".$staff_name.$distribute.$time.$limit;
+            $total_sql = "SELECT staff_key FROM dividend_settle_major WHERE major_id = :major_id".$staff_name.$distribute.$time;
+            $param = [":major_id"=>$staffId];
+        }
+        if($StaffGrade == 2){
+            $sql = "SELECT minor_name as staff_name, minor_id as staff_id bet_amount,bet_rate,profit_amount,profit_rate,fee_rate,tax_rate,dividend_tax,dividend_fee,dividend_result,deliver_time,settle_time FROM dividend_settle_minor WHERE minor_id = :minor_id".$staff_name.$distribute.$time.$limit;
+            $total_sql = "SELECT staff_key FROM dividend_settle_minor WHERE minor_id = :minor_id".$staff_name.$distribute.$time;
+            $param = [":minor_id"=>$staffId];
+        }
+        if($StaffGrade == 3){
+            $sql = "SELECT agent_name as staff_name,agent_id as staff_id,bet_amount,bet_rate,profit_amount,profit_rate,fee_rate,tax_rate,dividend_tax,dividend_fee,dividend_result,deliver_time,settle_time FROM dividend_settle_agent WHERE agent_id = :agent_id".$staff_name.$distribute.$time.$limit;
+            $total_sql = "SELECT staff_key FROM dividend_settle_agent WHERE agent_id = :agent_id".$staff_name.$distribute.$time;
+            $param = [":minor_id"=>$staffId];
+        }
+        $lists = array();
+        try{
+            foreach ($mysql->query($sql,$param) as $rows){
+                $lists[] = $rows;
+            }
+            $total = $mysql->execute($total_sql,$param);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取列表失败"]);
+            return;
+        }
+        if(!empty($lists)){
+            foreach ($lists as $key=>$val){
+                $lists[$key]["settle_time"] = date("Y-m-d H:i:s",$val["staff_name"]);
+                $lists[$key]["deliver_time"] = empty($val["deliver_time"]) ? 0 : 1;
+            }
+        }
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "total"=>$total,
+            "totalpage"=>ceil($total/$num),
+            "list"=>$lists
+        ]);
+
+    }
+}

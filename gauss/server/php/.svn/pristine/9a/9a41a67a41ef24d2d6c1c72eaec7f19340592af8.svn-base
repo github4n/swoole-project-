@@ -1,0 +1,74 @@
+<?php
+namespace Plat\Websocket\Website\ExternalGame;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ *Website\ExternalGame\SiteLotterySave {"site_list":["site1","site2"],"game_list":[{"game_key":"game_fish","acceptable":"0"},{"game_key":"game_mg","acceptable":"0"},{"game_key":"sports_sb","acceptable":"0"},{"game_key":"video_ag","acceptable":"0"},{"game_key":"video_mo","acceptable":"0"}]}
+ * site_key 站点
+ * game_key 外接口key
+ * acceptable 0(关)or 1(开)
+ * */
+
+class SiteLotterySave extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("site_external_update", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $site_list = $data['site_list'] ;
+        $game_list = $data['game_list'];
+        if (empty($site_list)){
+            $context->reply(["status" => 202, "msg" => "站点不能为空"]);
+            return;
+        }
+
+        foreach ($site_list as $k =>$v) {
+            $sitemysql = $config->data_admin;
+            $sitesql = "select status from site where site_key = '$v' ";
+            $sitedata = iterator_to_array($sitemysql->query($sitesql));
+            foreach ($sitedata as $row){
+                if ($row == 2 || $row == 3){
+                    $context->reply(["status" => 203, "msg" => "站点状态非关闭状态不能修改"]);
+                    return;
+                }
+            }
+            foreach ($game_list as $item){
+                $game_key = $item['game_key'];
+                $acceptable = $item['acceptable'];
+                if (empty($game_key)){
+                    $context->reply(["status" => 204, "msg" => "外接口不能为空"]);
+                    return;
+                }
+                if (!is_numeric($acceptable)){
+                    $context->reply(["status" => 205, "msg" => "游戏开关类型不正确"]);
+                    return;
+                }
+                $mysql = $config->data_admin;
+                $sql = "update site_external_game set acceptable = '$acceptable' where game_key ='$game_key' and site_key = '$v'";
+                try{
+                    $mysql->execute($sql);
+                }catch (\PDOException $e){
+                    $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                    throw new \PDOException($e);
+                }
+                //记录修改日志
+                $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+                $params = [
+                    ':admin_id' => $context->getInfo('adminId'),
+                    ':operate_key' => "site_external_update",
+                    ':detail' => "修改了第三方游戏.".$v."的开关"
+                ];
+                $mysql->execute($sql,$params);
+            }
+        }
+
+
+        $context->reply(['status'=>200, 'msg'=>'修改成功']);
+    }
+}

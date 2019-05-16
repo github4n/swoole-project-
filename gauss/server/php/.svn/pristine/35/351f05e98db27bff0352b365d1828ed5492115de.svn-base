@@ -1,0 +1,35 @@
+<?php
+
+
+namespace App\Websocket\ExternalGame\FG;
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+use App\Websocket\ExternalGame\FG\FgApi;
+
+class FgGameStart extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $param = $context->getData();
+        $fgAPI = new FgApi();
+        $member_code = $context->getInfo('memberCode');
+        $game_code = isset($param['game_code']) ? $param['game_code'] : '';
+        $game_type = isset($param['game_type']) ? $param['game_type'] : '';
+        $language = isset($param['language']) ? $param['language'] : '';
+        $ip = isset($param['ip']) ? $param['ip'] : '';
+        $return_url = isset($param['return_url']) ? $param['return_url'] : '';
+        $owner_id = isset($param['owner_id']) ? $param['owner_id'] : 0;
+        if (empty($game_code) || empty($game_type) || empty($language) || empty($ip) || empty($return_url) || empty($member_code)) {
+            $context->reply(['status' => 400,'msg'=>'启动游戏失败']);
+            return;
+        }
+        $res = $fgAPI->launch_game($member_code,$game_code,$game_type,$language,$ip,$return_url,$owner_id);
+
+        if (isset($res['res']->error_code)) {
+            $context->reply(['status' => $res['res']->error_code,'msg'=>'启动游戏失败']);
+            return;
+        }
+        $context->reply(['status' => 200,'data' => $res['res'],'msg'=>'成功']);
+    }
+}

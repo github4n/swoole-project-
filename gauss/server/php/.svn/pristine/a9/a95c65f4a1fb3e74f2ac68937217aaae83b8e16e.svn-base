@@ -1,0 +1,146 @@
+<?php
+
+namespace Site\Websocket\Rebate\RebateSetting;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 返水比例列表
+ * Rebate/RebateSetting/RebateList {"layer_id":"3"}
+ * */
+
+class RebateList extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        //会员层级列表可以直接从缓存里面取
+        $mysql = $config->data_user;
+        $data = $context->getData();
+        $cache = $config->cache_site;
+        $layer_list = json_decode($cache->hget("LayerList", "allLayer"));
+        $layer_id = !empty($data["layer_id"]) ? $data["layer_id"] : 1;
+        if (!is_numeric($layer_id)) {
+            $context->reply(["status" => 204, "msg" => "参数错误"]);
+            return;
+        }
+        //获取所有类型
+        $category = [];
+        $data_list = [];
+        $all_list = [];
+        $interface_translation = [];
+        $public_mysql = $config->data_public;
+        $external_sql = "SELECT category_key,interface_key,game_key, game_name  FROM external_game";
+        $category_list = iterator_to_array($public_mysql->query($external_sql));
+        foreach ($category_list as $categorys) {
+            $interface_translation += [$categorys['game_key'] => $categorys['interface_key']];
+        }
+
+        $categoryTranslation = ["category_key" => "lottery", "interface_key" => ''];
+        array_push($category_list, $categoryTranslation);
+        $game_list = json_decode($context->getInfo("GameList"));
+
+        foreach ($game_list as $value) {
+            $game_key = $value->game_key;
+            $data_list['lottery'][$game_key] = ['game_key' => $value->game_key, 'game_name' => $value->game_name, 'layer_id' => $layer_id, 'category_key' => "lottery", 'min_bet' => 0, 'subsidy_rate' => 0, 'max_subsidy' => 0];
+        }
+
+        foreach ($category_list as $val) {
+            $val_category = $val["category_key"];
+            $category_nameTranslation = '';
+            $val_interface_key = $val["interface_key"]; //category 和interface 各单独设定 ag-棋牌游戏
+            $game_key = $val["game_key"];
+            if (!in_array($val_category . '-' . $val_interface_key, $category)) {
+                if ($val_category != "lottery") {
+                    switch ($val_category) {
+                        case 'video';
+                            $category_name = "真人视讯";
+                            break;
+                        case 'game';
+                            $category_name = "电子游戏";
+                            break;
+                        case 'cards';
+                            $category_name = "棋牌";
+                            break;
+                        case 'hunter';
+                            $category_name = "捕猎";
+                            break;
+                        case 'sports';
+                            $category_name = "体育";
+                            break;
+                    }
+                    switch ($val_interface_key) {
+                        case 'fg';
+                            $category_nameTranslation = 'FunGaming';
+                            break;
+                        case 'ky';
+                            $category_nameTranslation = '开元棋牌';
+                            break;
+                        case 'lb';
+                            $category_nameTranslation = 'Lebo体育';
+                            break;
+                        case 'ag';
+                            $category_nameTranslation = 'AsiaGaming';
+                            break;
+                    }
+//TODO 数据库分类目前只有这么多，只能暂时设定game_name，后期加第三方玩法还需增加对应的game_name
+                    $data_list['interface'][$val_category . '-' . $val_interface_key] = ['game_key' => $val_interface_key, 'game_name' => $category_name . '-' . $category_nameTranslation, 'layer_id' => $layer_id, 'category_key' => $val_category, 'min_bet' => 0, 'subsidy_rate' => 0, 'max_subsidy' => 0];
+                }
+
+                $category[] = $val_category . '-' . $val_interface_key;
+                $sql = "SELECT * FROM subsidy_game_setting WHERE layer_id=:layer_id AND category_key = :category_key";
+                $param = [
+                    ":layer_id" => $layer_id,
+                    ":category_key" => $val_category,
+                ];
+                $list = iterator_to_array($mysql->query($sql, $param));
+                if (!empty($list)) {
+                    foreach ($list as $value) {
+                        if ($value["category_key"] == 'lottery') {
+                            $val_category = $value["category_key"];
+                            $game_key = $value["game_key"];
+                            $data_list[$val_category][$game_key]['min_bet'] = $value['min_bet'];
+                            $data_list[$val_category][$game_key]['subsidy_rate'] = $value['subsidy_rate'];
+                            $data_list[$val_category][$game_key]['max_subsidy'] = $value['max_subsidy'];
+                        } else {
+                            $game_key = $value["game_key"];
+                            $get_interface = $interface_translation[$game_key];
+                            $val_category = $value["category_key"];
+                            $data_list['interface'][$val_category . '-' . $get_interface]['min_bet'] = $value['min_bet'];
+                            $data_list['interface'][$val_category . '-' . $get_interface]['subsidy_rate'] = $value['subsidy_rate'];
+                            $data_list['interface'][$val_category . '-' . $get_interface]['max_subsidy'] = $value['max_subsidy'];
+                        }
+                    }
+                }
+            }
+        }
+        foreach ($data_list as $key => $value) {
+            foreach ($value as $reason) {
+                $all_list[$key][] = $reason;
+            }
+        }//降层数调返回据数据结构
+
+        $subsidy_setting = "select layer_id , deliver_time from subsidy_setting where auto_deliver=0 and deliver_time >0";
+        $subsidy_list = iterator_to_array($mysql->query($subsidy_setting));
+        $subsidys = [];
+        $subsidysTranslation = [];
+        if (!empty($subsidy_list)) {
+            foreach ($subsidy_list as $value) {
+                $layer = $value['layer_id'];
+                $subsidys[] = $layer;
+                if (strlen($value['deliver_time']) == 3) {
+                    $timeTranslation = substr_replace($value['deliver_time'], ':', 1, 0);
+                } else {
+                    $timeTranslation = substr_replace($value['deliver_time'], ':', 2, 0);
+                }
+                $subsidysTranslation[$layer] = $timeTranslation;
+            }
+        }
+        $automatic = ['is_automatic' => 1, 'deliver_time' => ''];
+        if (in_array($layer_id, $subsidys)) {
+            $automatic = ['is_automatic' => 0, 'deliver_time' => $subsidysTranslation[$layer_id]];
+        }
+        $context->reply(["status" => 200, "msg" => "获取成功", "deliver_data" => $automatic, "layer_list" => $layer_list, "list" => $all_list]);
+    }
+
+}

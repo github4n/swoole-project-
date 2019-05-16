@@ -1,0 +1,14 @@
+<?php
+namespace App\Http;
+
+use Lib\Config;
+use Lib\Http\Context;
+use Lib\Http\Handler;
+
+class Ping extends Handler
+{
+    public function onRequest(Context $context, Config $config)
+    {
+        $this->responseJson($context, ['time' => time()]);
+    }
+}

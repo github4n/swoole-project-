@@ -1,0 +1,239 @@
+<?php
+
+namespace Site\Websocket\ReportQuery;
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/**
+ * 报表查询 - 经营统计报表
+ * ReportQuery/OperatingReport {"start_time": "2019-02-09", "stop_time": "2019-03-19"}
+ * 搜索参数：start_time：开始时间，stop_time：结束时间
+ */
+class OperatingReport extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config) {
+        $staffId = $context->getInfo('StaffId'); // 员工Id
+        $masterId = $context->getInfo('MasterId'); // 主帐号Id
+        $staffGrade = $context->getInfo('StaffGrade'); // 员工等级
+
+        // 检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array('report_money', $auth) || $staffGrade == 3) {
+            $context->reply(['status' => 202, 'msg' => '你还没有操作权限']);
+            return;
+        }
+
+        // 接收参数，若没有传入时间参数则查询近七天的统计数据
+        $masterId = $masterId > 0 ? $masterId : $staffId;
+        $data = $context->getData();
+        $timeStamp = strtotime('today');
+        $timeStampStart = empty($data['start_time']) ? strtotime('-7 day') : strtotime($data['start_time']);
+        $timeStampStop = (empty($data['stop_time']) ? $timeStamp : strtotime($data['stop_time'])) + 86399;
+        $timeStart = date('Ymd', $timeStampStart);
+        $timeStop = date('Ymd', $timeStampStop);
+
+        $mysqlStaff = $config->data_staff;
+        $mysqlUser = $config->data_user;
+        $mysqlReport = $config->data_report;
+
+        // 为空时的数据
+        $array = [
+            'bet' => '0',
+            'bet_amount' => '0',
+            'bet_count' => '0',
+            'bet_user' => '0',
+            'bonus_amount' => '0',
+            'brokerage_amount' => '0',
+            'coupon_amount' => '0',
+            'profit_amount' => '0',
+            'subsidy_amount' => '0'
+        ];
+
+        // 登录用户的所有子帐号与主帐号
+        $leader = [$masterId];
+        $time = ' between ' . $timeStampStart . ' and ' . $timeStampStop;
+        $sqlLeader = 'select group_concat(staff_id) as staff_id from staff_info where master_id = ' . $masterId . ' and add_time < ' . $timeStampStop;
+        foreach($mysqlStaff->query($sqlLeader) as $v) {
+            if($v['staff_id']) $leader[] = $v['staff_id'];
+        }
+        $leaderId = implode($leader, ',');
+        // 下级用户及其所有子帐号
+        $staff = $this->next($mysqlStaff, $leaderId, $timeStampStop, true);
+        if(empty($staff)) {
+            $context->reply(['status' => 203, 'list' => [], 'msg' => '无数据']);
+            return;
+        }
+        // 如果为站长或大股东则继续向下取下级所有用户及其子帐号
+        $leaderId = [];
+        if($staffGrade < 2) {
+            $num = 2 - $staffGrade;
+            foreach($staff as $k => $v) {
+                $staff[$k]['agent'] = $v['agent'];
+                for($z = 0; $z < $num; $z++) {
+                    $result = $this->next($mysqlStaff, $staff[$k]['agent'], $timeStampStop);
+                    if(!empty($result)) {
+                        $staff[$k]['agent'] .= ',' . implode(array_column($result, 'agent'), ',');
+                        $staff[$k]['agent'] = implode(array_unique(explode(',', $staff[$k]['agent'])), ',');
+                    }
+                }
+            }
+        }
+        $staffId = implode(array_column($staff, 'staff_id'), ',');
+
+        // 所有总代理下的会员人数
+        $sqlUser = 'select count(user_id) as user_all,agent_id from user_info where register_time < ' . $timeStampStop . ' group by agent_id';
+        $staff_2 = $staff;
+        foreach($mysqlUser->query($sqlUser) as $v) {
+            $user[$v['agent_id']] = $v;
+            foreach($staff_2 as $k => $v_2) {
+                $agent = explode(',', $v_2['agent']);
+                if(in_array($v['agent_id'], $agent)) {
+                    $staff[$k]['user_all'] += $v['user_all'];
+                    break;
+                }
+            }
+        }
+
+        // 总报表数据
+        $menber = $staffGrade == 0 ? 'major_id' : ($staffGrade == 1 ? 'minor_id' : 'agent_id');
+        $sqlReport = 'select ' . $menber . ' as staff_id from daily_staff where daily between ' . $timeStart . ' and ' . $timeStop . ' and ' . $menber . ' in (' . $staffId . ') group by ' . $menber;
+        foreach($mysqlReport->query($sqlReport) as $v) {
+            $report[$v['staff_id']] = $v;
+            $report[$v['staff_id']]['bet'] = 0;
+            $report[$v['staff_id']]['bet_amount'] = 0;
+            $report[$v['staff_id']]['bet_count'] = 0;
+            $report[$v['staff_id']]['bet_user'] = 0;
+            $report[$v['staff_id']]['bonus_amount'] = 0;
+            $report[$v['staff_id']]['brokerage_amount'] = 0;
+            $report[$v['staff_id']]['coupon_amount'] = 0;
+            $report[$v['staff_id']]['profit_amount'] = 0;
+            $report[$v['staff_id']]['subsidy_amount'] = 0;
+        }
+
+        // 彩票报表数据
+        $sqlLottery = 'select d.' . $menber . ' as staff_id,sum(d.bet_count) as bet_count,sum(d.bet_amount) as bet_amount,sum(d.wager_amount) as bet,sum(d.bonus_amount) as bonus_amount,0 as coupon_amount,0 as brokerage_amount,sum(d.subsidy_amount) as subsidy_amount,sum(d.wager_amount - d.bonus_amount) as profit_amount, l.bet_user from daily_staff_lottery as d left join (select u.' . $menber . ',count(distinct u.user_id) as bet_user from daily_user_lottery as u where u.daily between ' . $timeStart . ' and ' . $timeStop . ' group by u.' . $menber . ') as l on l.' . $menber . ' = d.' . $menber . ' where d.daily between ' . $timeStart . ' and ' . $timeStop . ' and d.' . $menber . ' in (' . $staffId . ') group by d.' . $menber;
+        foreach($mysqlReport->query($sqlLottery) as $v) {
+            $lottery[$v['staff_id']] = $v;
+            $report[$v['staff_id']]['bet'] += $v['bet'];
+            $report[$v['staff_id']]['bet_amount'] += $v['bet_amount'];
+            $report[$v['staff_id']]['bet_count'] += $v['bet_count'];
+            $report[$v['staff_id']]['bet_user'] += $v['bet_user'];
+            $report[$v['staff_id']]['bonus_amount'] += $v['bonus_amount'];
+            $report[$v['staff_id']]['brokerage_amount'] += $v['brokerage_amount'];
+            $report[$v['staff_id']]['coupon_amount'] += $v['coupon_amount'];
+            $report[$v['staff_id']]['profit_amount'] = $report[$v['staff_id']]['bet'] - $v['bonus_amount'];
+            $report[$v['staff_id']]['subsidy_amount'] += $v['subsidy_amount'];
+        }
+        
+        // 第三方报表数据
+        $sqlExternal = 'select d.' . $menber . ' as staff_id,sum(d.bet_count) as bet_count,sum(d.bet_amount) as bet_amount,sum(d.wager_amount) as bet,sum(d.bonus_amount) as bonus_amount,0 as coupon_amount,0 as brokerage_amount,sum(d.subsidy_amount) as subsidy_amount,sum(d.wager_amount - d.bonus_amount) as profit_amount,d.interface_key,e.bet_user from daily_user_external as d left join (select u.' . $menber . ',u.interface_key,count(distinct u.user_id) as bet_user from daily_user_external as u where u.daily between ' . $timeStart . ' and ' . $timeStop . ' group by u.' . $menber . ',u.interface_key) as e on e.' . $menber . ' = d.' . $menber . ' and e.interface_key = d.interface_key where d.daily between ' . $timeStart . ' and ' . $timeStop . ' and d.' . $menber . ' in (' . $staffId . ') group by d.' . $menber . ',d.interface_key';
+        foreach($mysqlReport->query($sqlExternal) as $v) {
+            $external[$v['interface_key']][] = $v;
+        }
+        // 组合报表数据
+        $data = ['fg' => [], 'ag' => [], 'lb' => [], 'ky' => []];
+        foreach($data as $k => $v) {
+            foreach($staff as $v_2) {
+                $tempStaffId = $v_2['staff_id'];
+                // 删除不需要的数据
+                unset($v_2['agent']);
+                unset($v_2['staff_id']);
+                $merge = array_merge($v_2, $array);
+                if(!empty($external[$k])) {
+                    foreach($external[$k] as $v_7) {
+                        if($tempStaffId == $v_7['staff_id']) {
+                            $report[$v_7['staff_id']]['bet'] += $v_7['bet'];
+                            $report[$v_7['staff_id']]['bet_amount'] += $v_7['bet_amount'];
+                            $report[$v_7['staff_id']]['bet_count'] += $v_7['bet_count'];
+                            $report[$v_7['staff_id']]['bet_user'] += $v_7['bet_user'];
+                            $report[$v_7['staff_id']]['bonus_amount'] += $v_7['bonus_amount'];
+                            $report[$v_7['staff_id']]['brokerage_amount'] += $v_7['brokerage_amount'];
+                            $report[$v_7['staff_id']]['coupon_amount'] += $v_7['coupon_amount'];
+                            $report[$v_7['staff_id']]['profit_amount'] = $report[$v_7['staff_id']]['bet'] - $report[$v_7['staff_id']]['bonus_amount'];
+                            $report[$v_7['staff_id']]['subsidy_amount'] += $v_7['subsidy_amount'];
+                            unset($v_7['interface_key']);
+                            unset($v_7['staff_id']);
+                            $merge = array_merge($v_2, $v_7);
+                            break;
+                        }
+                    }
+                }
+                $data[$k][] = $merge;
+            }
+        }
+
+        foreach($staff as $v) {
+            $staffId = $v['staff_id'];
+            // 删除不需要的数据
+            unset($v['agent']);
+            unset($v['staff_id']);
+            if(isset($report[$staffId])) $total[] = array_merge($v, $report[$staffId]);
+                else $total[] = array_merge($v, $array);
+            if(isset($lottery[$staffId])) $dataLottery[] = array_merge($v, $lottery[$staffId]);
+                else $dataLottery[] = array_merge($v, $array);
+        }
+
+        $context->reply(['status' => 200, 'msg' => '获取数据成功', 'list' => [
+            [
+                'list_data' => $total,
+                'list_key' => 'total',
+                'list_name' => '全站',
+                'start_time' => date('Y-m-d', $timeStampStart),
+                'stop_time' => date('Y-m-d', $timeStampStop),
+            ],
+            [
+                'list_data' => $dataLottery,
+                'list_key' => 'lottery',
+                'list_name' => '共赢彩票',
+                'start_time' => date('Y-m-d', $timeStampStart),
+                'stop_time' => date('Y-m-d', $timeStampStop),
+            ],
+            [
+                'list_data' => $data['fg'],
+                'list_key' => 'fg',
+                'list_name' => 'FG电子',
+                'start_time' => date('Y-m-d', $timeStampStart),
+                'stop_time' => date('Y-m-d', $timeStampStop),
+            ],
+            [
+                'list_data' => $data['ag'],
+                'list_key' => 'ag',
+                'list_name' => 'AG视讯',
+                'start_time' => date('Y-m-d', $timeStampStart),
+                'stop_time' => date('Y-m-d', $timeStampStop),
+            ],
+            [
+                'list_data' => $data['ky'],
+                'list_key' => 'ky',
+                'list_name' => '开元棋牌',
+                'start_time' => date('Y-m-d', $timeStampStart),
+                'stop_time' => date('Y-m-d', $timeStampStop),
+            ],
+            [
+                'list_data' => $data['lb'],
+                'list_key' => 'lb',
+                'list_name' => 'lebo体育',
+                'start_time' => date('Y-m-d', $timeStampStart),
+                'stop_time' => date('Y-m-d', $timeStampStop),
+            ]
+        ]]);
+        return;
+    }
+
+    /**
+     * 查询下级用户及其子帐号
+     * @param $mysqlStaff 数据库
+     * @param $leaderId 上级Id组
+     * @param $time 时间查询条件
+     * @param $boolean 是否为第一次查询
+     * @return array
+     */
+    public function next($mysqlStaff, $leaderId, $time, $boolean = false) {
+        $sqlStaff = 'select a.staff_id,a.staff_name,0 as user_all,concat_ws(",", a.staff_id, group_concat(b.staff_id)) as agent from staff_info as a left join staff_info as b on b.master_id = a.staff_id and b.add_time < ' . $time . ' where ' . ($boolean ? 'a.master_id = 0 and ' : '') . 'a.leader_id in (' . $leaderId . ') and a.add_time < ' . $time . ' group by a.staff_id';
+        $data = [];
+        foreach($mysqlStaff->query($sqlStaff) as $v) {
+            $data[$v['staff_id']] = $v;
+        }
+        return $data;
+    }
+}

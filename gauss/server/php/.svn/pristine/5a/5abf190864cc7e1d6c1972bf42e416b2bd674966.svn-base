@@ -1,0 +1,18 @@
+<?php
+namespace App\Task\Lottery;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Game implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ["id"=>$id] = $context->getData();
+        $cache = $config->cache_app;
+        $websocketAdapter = new \Lib\Websocket\Adapter($config->cache_app);
+        $Game_list = json_decode($cache->hget("LotteryList","GameList"));
+        $websocketAdapter->send($id,'Lottery/Game', $Game_list);
+    }
+}

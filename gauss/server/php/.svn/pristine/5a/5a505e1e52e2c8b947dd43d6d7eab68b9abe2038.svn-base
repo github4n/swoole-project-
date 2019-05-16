@@ -1,0 +1,126 @@
+<?php
+
+namespace Site\Websocket\Cash\DepositAccount;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 现金系统-入款账户管理-保存便捷支付修改的信息
+ * 参数： Cash/DepositAccount/DepositSimpleUpdate {"passage_id":1,"passage_name":"修改测试","pay_url":"145511","acceptable":1}
+ *
+ * */
+
+class DepositSimpleUpdate extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo('StaffGrade');
+        if ($StaffGrade != 0) {
+            $context->reply(['status' => 203, '当前账号没有操作权限']);
+
+            return;
+        }
+
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array('money_deposit_passage', $auth)) {
+            $context->reply(['status' => 202, 'msg' => '你还没有操作权限']);
+
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $passage_id = $data['passage_id'];
+        $passage_name = $data['passage_name'];
+        $acceptable = $data['acceptable'];
+        $pay_url = $data['pay_url'];
+        $risk_control = $data['risk_control'];   // 风控金额
+        if (empty($passage_name)) {
+            $context->reply(['status' => 203, 'msg' => '请输入入款通道名称']);
+
+            return;
+        }
+        // 验证规则
+        $preg = '/^[\x{4e00}-\x{9fa5}A-Za-z0-9]{4,20}$/u';
+        if (!preg_match($preg, $passage_name)) {
+            $context->reply(['status' => 205, 'msg' => '入款通道名称,请介于4-20位之间']);
+
+            return;
+        }
+
+        if (empty($risk_control)) {
+            $context->reply(['status' => 207, 'msg' => '请输入金额']);
+
+            return;
+        }
+        if (!is_numeric($risk_control)) {
+            $context->reply(['status' => 206, 'msg' => '请输入正确金额']);
+
+            return;
+        }
+        if (empty($pay_url)) {
+            $context->reply(['status' => 208, 'msg' => '请输入支付网址']);
+
+            return;
+        }
+
+        if ($acceptable == 1) {
+            $acceptable = 1;
+        } elseif ($acceptable == 0) {
+            $acceptable = 0;
+        } else {
+            $acceptable = 1;
+        }
+        //查找通道名称
+        $sql = 'SELECT passage_id FROM deposit_passage WHERE passage_name=:passage_name AND passage_id!=:passage_id';
+        $param = [':passage_name' => $passage_name, ':passage_id' => $passage_id];
+        $infos = array();
+        foreach ($mysql->query($sql, $param) as $row) {
+            $infos = $row;
+        }
+        if (!empty($infos)) {
+            $context->reply(['status' => 214, 'msg' => '通道名称已存在']);
+
+            return;
+        }
+        //更新通道信息
+        $sql = 'UPDATE deposit_passage SET passage_name = :passage_name, risk_control=:risk_control, acceptable=:acceptable WHERE passage_id=:passage_id';
+        $param = [
+            ':passage_name' => $passage_name,
+            ':risk_control' => empty($risk_control) ? 0 : $risk_control,
+            ':acceptable' => $acceptable,
+            ':passage_id' => $passage_id,
+        ];
+        try {
+            $mysql->execute($sql, $param);
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 400, 'msg' => '修改失败']);
+            throw new \PDOException($e);
+        }
+        //更新便捷
+        $sql = 'UPDATE deposit_passage_simple SET pay_url=:pay_url WHERE passage_id=:passage_id';
+        $param = [
+            ':pay_url' => $pay_url,
+            ':passage_id' => $passage_id,
+        ];
+        try {
+            $mysql->execute($sql, $param);
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 400, 'msg' => '修改失败']);
+            throw new \PDOException($e);
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'money_deposit_passage',
+            ':detail' => '修改便捷入款的信息'.$passage_id,
+        ];
+        $mysql->execute($sql, $params);
+        $context->reply(['status' => 200, 'msg' => '修改成功']);
+    }
+}

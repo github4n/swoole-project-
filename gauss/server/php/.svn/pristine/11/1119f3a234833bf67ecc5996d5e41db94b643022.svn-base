@@ -1,0 +1,113 @@
+<?php
+namespace App\Websocket\User\Recharge;
+
+use App\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 微信充值
+ *    gate_key,gate_name,way_key,way_name
+ * User/Recharge/WechatPay {"lunch_money":100,"route_id":"2"}
+ *
+ * */
+
+class WechatPay extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $guest_id = $context->getInfo("GuestId");
+        if(!empty($guest_id)){
+            $context->reply(["status"=>500,"msg"=>"游客身份，没有访问权限"]);
+            return;
+        }
+        
+        $deal_key = $context->getInfo("DealKey");
+        $mysql = $config->__get("data_".$deal_key);
+        $data = $context->getData();
+        $lunch_money = $data["lunch_money"];
+        $route_id = $data["route_id"];
+        $passage_name = $data["passage_name"];
+        $account_number = $data["account_number"];
+        $account_name = $data["account_name"];//商户名称
+        $gate_key = $data["gate_key"];
+        $gate_name = $data["gate_name"];
+        $way_key = $data["way_key"];
+        $way_name = $data["way_name"];
+        //数据判断
+        if(!is_numeric($lunch_money)){
+            $context->reply(["status"=>204,"msg"=>"充值金额参数错误"]);
+            return;
+        }
+        if(!is_numeric($passage_id)){
+            $context->reply(["status"=>205,"msg"=>"通道参数错误"]);
+            return;
+        }
+        if(empty($passage_name)){
+            $context->reply(["status"=>206,"msg"=>"通道名称不能为空"]);
+            return;
+        }
+        if(!is_numeric($account_number)){
+            $context->reply(["status"=>207,"msg"=>"商户号不能为空"]);
+            return;
+        }
+        if(empty($account_name)){
+            $context->reply(["status"=>208,"msg"=>"商户名称不能为空"]);
+            return;
+        }
+        if(empty($gate_key)){
+            $context->reply(["status"=>209,"msg"=>"三方支付key不能为空"]);
+            return;
+        }
+        if(empty($gate_name)){
+            $context->reply(["status"=>210,"msg"=>"三方名字不能为空"]);
+            return;
+        }
+        //获取用户的真实姓名
+        $sql = "SELECT account_name FROM bank_info WHERE user_id=:user_id";
+        $param = [":user_id"=>$context->getInfo("UserId")];
+        $mysql_user = $config->data_user;
+        foreach ($mysql_user->query($sql,$param) as $row){
+            $account_name =  $row["account_name"];
+        }
+        $sql = "INSERT INTO deposit_launch SET user_id=:user_id,user_key=:user_key,account_name=:account_name,passage_id=:passage_id,passage_name=:passage_name,layer_id=:layer_id,launch_money=:launch_money,launch_device=:launch_device";
+        $params = [
+             ":user_id"=>$context->getInfo("UserId"),
+             ":user_key"=>$context->getInfo("UserKey"),
+             ":account_name"=>$account_name,
+             ":passage_id"=>$passage_id,
+             ":passage_name"=>$passage_name,
+             ":layer_id"=>$context->getInfo("LayerId"),
+             ":launch_money"=>$lunch_money,
+             ":launch_device"=>$context->getInfo("LoginDevice"),
+        ];
+        $deposit_serial = '';
+        try{
+            $mysql->execute($sql,$params);
+            $sql = 'SELECT serial_last("deposit") as deposit_serial';
+            foreach ($mysql->query($sql) as $row){
+                $deposit_serial = $row['deposit_serial'];
+            }
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        $sqls = "INSERT INTO deposit_gateway SET deposit_serial=:deposit_serial, gate_key=:gate_key, gate_name=:gate_name, way_key=:way_key, way_name=:way_name, to_account_number=:to_account_number, to_account_name=:to_account_name";
+        $param = [
+            ":deposit_serial"=>$deposit_serial,
+            ":gate_key"=>$gate_key,
+            ":gate_name"=>$gate_name,
+            ":way_key"=>$way_key,
+            ":way_name"=>$way_name,
+            ":to_account_number"=>$account_number,
+            ":to_account_name"=>$account_name,
+        ];
+        try{
+            $mysql->execute($sqls,$param);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        $context->reply(["status"=>200,"msg"=>"成功","data"=>"abc.com"]);
+    }
+}

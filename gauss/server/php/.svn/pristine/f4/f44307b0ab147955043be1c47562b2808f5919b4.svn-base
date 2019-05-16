@@ -1,0 +1,186 @@
+<?php
+namespace App\Websocket\User\Agent;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use App\Websocket\CheckLogin;
+/*
+ * 我的--代理中心--代理报表
+ * User/Agent/AgentReport {"date":"this_week"}
+ * yesterday,this_week,last_week,this_month,last_month
+ * */
+
+class AgentReport extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $guest_id = $context->getInfo("GuestId");
+        if(!empty($guest_id)){
+            $context->reply(["status"=>500,"msg"=>"游客身份，没有访问权限"]);
+            return;
+        }
+
+        $invite_code = $context->getInfo('InviteCode');
+        if(empty($invite_code)){
+            $context->reply(["status"=>204,"msg"=>"当前登录账号不是代理账号"]);
+            return;
+        }
+        $data = $context->getData();
+        $user_id = $context->getInfo("UserId");
+        $mysql = $config->data_report;
+        
+        $date = isset($data["date"]) ? $data["date"] : "";
+        $list = [];
+        $brokerage = [];
+        if($date == "today"){
+            $day = intval(date("Ymd",strtotime('today')));
+            $sql = "select sum(is_today_register) as first_register,count(user_id) as sub_user,sum(bonus_amount) as bonus,".
+                "sum(coupon_amount) as coupon,sum(withdraw_amount) as withdraw,sum(deposit_amount) as deposit,".
+                "sum(bet_amount) as bet,sum(is_first_deposit>0) as first_deposit,sum(bet_amount>0) as user_count ".
+                "from daily_user where broker_1_id=:user_id and daily=:daily";
+            foreach ($mysql->query($sql,[':user_id'=>$user_id,":daily"=>$day]) as $rows){
+                $list = $rows;
+            }
+            //下级佣金
+
+            $sql = "SELECT brokerage FROM daily_user_brokerage WHERE user_id=:user_id AND daily=:daily";
+            foreach ($mysql->query($sql,[":daily"=>$day,":user_id"=>$user_id]) as $row){
+                $brokerage = $row;
+            }
+        }elseif($date == "yesterday"){
+            $day = intval(date("Ymd",strtotime('yesterday')));
+            $sql = "select sum(is_today_register) as first_register,count(user_id) as sub_user,sum(bonus_amount) as bonus,".
+                "sum(coupon_amount) as coupon,sum(withdraw_amount) as withdraw,sum(deposit_amount) as deposit,".
+                "sum(bet_amount) as bet,sum(is_first_deposit>0) as first_deposit,sum(bet_amount>0) as user_count ".
+                "from daily_user where broker_1_id=:user_id and daily=:daily";
+            foreach ($mysql->query($sql,[':user_id'=>$user_id,":daily"=>$day]) as $rows){
+                $list = $rows;
+            }
+            //下级佣金
+
+            $sql = "SELECT brokerage FROM daily_user_brokerage WHERE user_id=:user_id AND daily=:daily";
+            foreach ($mysql->query($sql,[":daily"=>$day,":user_id"=>$user_id]) as $row){
+                $brokerage = $row;
+            }
+
+        }
+        elseif($date == "this_week"){
+            $weekly = intval(date("oW",time()));
+            $start = intval(date('Ymd',strtotime(' -1 monday')));
+            $end =  intval(date("Ymd",strtotime("today")));
+            $sql = "select count(user_id) as sub_user,sum(bonus_amount) as bonus,".
+                "sum(coupon_amount) as coupon,sum(withdraw_amount) as withdraw,sum(deposit_amount) as deposit,".
+                "sum(bet_amount) as bet,sum(bet_amount>0) as user_count ".
+                "from weekly_user where broker_1_id=:user_id and weekly=:weekly";
+            foreach ($mysql->query($sql,[':user_id'=>$user_id,":weekly"=>$weekly]) as $rows){
+                $list = $rows;
+            }
+            //下级佣金
+            $sql = "SELECT brokerage FROM weekly_user_brokerage WHERE user_id=:user_id AND weekly=:weekly";
+            foreach ($mysql->query($sql,[":weekly"=>$weekly,":user_id"=>$user_id]) as $row){
+                $brokerage = $row;
+            }
+            //本周注册人数
+            $sql = "select sum(is_today_register) as first_register,sum(is_first_deposit>0) as first_deposit "."from daily_user where user_id=:user_id and daily between $start and $end";
+           foreach ($mysql->query($sql,[":user_id"=>$user_id]) as $row){
+               $list["first_register"] = $row["first_register"];
+               $list["first_deposit"] = $row["first_deposit"];
+           }
+        }
+        elseif ($date == "last_week"){
+            //上周日
+            $last_week = intval(date("oW",strtotime("last week")));
+            $start = intval(date('Ymd',strtotime(' -2 monday')));
+            $end =  intval(date("Ymd",strtotime("-1 sunday")));
+            $sql = "select count(user_id) as sub_user,sum(bonus_amount) as bonus,".
+                "sum(coupon_amount) as coupon,sum(withdraw_amount) as withdraw,sum(deposit_amount) as deposit,".
+                "sum(bet_amount) as bet,sum(bet_amount>0) as user_count ".
+                "from weekly_user where broker_1_id=:user_id and weekly=:weekly";
+            foreach ($mysql->query($sql,[':user_id'=>$user_id,":weekly"=>$last_week]) as $rows){
+                $list = $rows;
+            }
+            //下级佣金
+            $sql = "SELECT brokerage FROM weekly_user_brokerage WHERE user_id=:user_id AND weekly=:weekly";
+            foreach ($mysql->query($sql,[":weekly"=>$last_week,":user_id"=>$user_id]) as $row){
+                $brokerage = $row;
+            }
+            //本周注册人数
+            $sql = "select sum(is_today_register) as first_register,sum(is_first_deposit>0) as first_deposit "."from daily_user where user_id=:user_id and daily between $start and $end";
+            foreach ($mysql->query($sql,[":user_id"=>$user_id]) as $row){
+                $list["first_register"] = $row["first_register"];
+                $list["first_deposit"] = $row["first_deposit"];
+            }
+
+        }elseif ($date == "this_month"){
+            $start = intval(date('Ym01',strtotime(' today')));
+            $end =  intval(date("Ymd",strtotime("today")));
+            $monthly = intval(date("Ym",strtotime("today")));
+            $sql = "select count(user_id) as sub_user,sum(bonus_amount) as bonus,".
+                "sum(coupon_amount) as coupon,sum(withdraw_amount) as withdraw,sum(deposit_amount) as deposit,".
+                "sum(bet_amount) as bet,sum(bet_amount>0) as user_count ".
+                "from monthly_user where broker_1_id=:user_id and monthly=:monthly";
+            foreach ($mysql->query($sql,[':user_id'=>$user_id,":monthly"=>$monthly]) as $rows){
+                $list = $rows;
+            }
+            //下级佣金
+            $sql = "SELECT brokerage FROM monthly_user_brokerage WHERE user_id=:user_id AND monthly=:monthly";
+            foreach ($mysql->query($sql,[":monthly"=>$monthly,":user_id"=>$user_id]) as $row){
+                $brokerage = $row;
+            }
+            //本月注册人数
+            $sql = "select sum(is_today_register) as first_register,sum(is_first_deposit>0) as first_deposit "."from daily_user where user_id=:user_id and daily between $start and $end";
+            foreach ($mysql->query($sql,[":user_id"=>$user_id]) as $row){
+                $list["first_register"] = $row["first_register"];
+                $list["first_deposit"] = $row["first_deposit"];
+            }
+            
+        }elseif($date == "last_month"){
+            $monthly = intval(date("Ym",strtotime(" -1 month")));
+            $start = intval(date('Ym01',strtotime(' -1 month')));
+            $end =  intval(date("Ymt",strtotime("-1 month")));
+            $sql = "select count(user_id) as sub_user,sum(bonus_amount) as bonus,".
+                "sum(coupon_amount) as coupon,sum(withdraw_amount) as withdraw,sum(deposit_amount) as deposit,".
+                "sum(bet_amount) as bet,sum(bet_amount>0) as user_count ".
+                "from monthly_user where broker_1_id=:user_id and monthly=:monthly";
+            foreach ($mysql->query($sql,[':user_id'=>$user_id,":monthly"=>$monthly]) as $rows){
+                $list = $rows;
+            }
+            //下级佣金
+            $sql = "SELECT brokerage FROM monthly_user_brokerage WHERE user_id=:user_id AND monthly=:monthly";
+            foreach ($mysql->query($sql,[":monthly"=>$monthly,":user_id"=>$user_id]) as $row){
+                $brokerage = $row;
+            }
+            //上月注册人数
+            $sql = "select sum(is_today_register) as first_register,sum(is_first_deposit>0) as first_deposit "."from daily_user where user_id=:user_id and daily between $start and $end";
+            foreach ($mysql->query($sql,[":user_id"=>$user_id]) as $row){
+                $list["first_register"] = $row["first_register"];
+                $list["first_deposit"] = $row["first_deposit"];
+            }
+        }else{
+            $context->reply(["status"=>203,"msg"=>"参数错误"]);
+            return;
+        }
+        if(!empty($list)){
+            $data_list = [
+                "yesterday_user_new"=>!empty($list["first_register"]) ? $list["first_register"] : 0,
+                "yesterday_user"=>!empty($list["user_count"]) ? $list["user_count"] : 0,
+                "bet_count"=>!empty($list["bet"]) ? $list["bet"] : 0,
+                "bonus"=>!empty($list["bonus"]) ? $list["bonus"] : 0,
+                "coupon"=>!empty($list["coupon"]) ? $list["coupon"] : 0,
+                "withdraw"=>!empty($list["withdraw"]) ? $list["withdraw"] : 0,
+                "deposit"=>!empty($list["deposit"]) ? $list["deposit"] : 0,
+                "bet"=>!empty($list["bet"]) ? $list["bet"] : 0,
+                "first_deposit"=>!empty($list["first_deposit"]) ? $list["first_deposit"] : 0,
+                "user_count"=>!empty($list["user_count"]) ? $list["user_count"] : 0];
+        }else{
+            $data_list = ["yesterday_user_new"=>0,"yesterday_user"=>0,"bet_count"=>0,"bonus"=>0,"coupon"=>0,"withdraw"=>0,"deposit"=>0,"bet"=>0,"first_deposit"=>0,"user_count"=>0];
+        }
+        if(!empty($brokerage)){
+            $data_list += ["brokerage"=>$brokerage["brokerage"]];
+        }else{
+            $data_list += ["brokerage"=>0];
+        }
+
+        $context->reply(["status"=>200,"msg"=>"获取成功","data"=>$data_list]);
+    }
+}

@@ -1,0 +1,44 @@
+<?php
+namespace Site\Websocket\Cash\ManualDeposit;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-根据会员账号查找会员余额和真实姓名
+ * 参数：Cash/ManualDeposit/MemberSearch
+ *
+ * */
+
+class MemberSearch extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config){
+        $data = $context->getData();
+        $user_key = $data["user_key"];
+        if(empty($user_key)) {
+            $context->reply(["status"=>203,"msg"=>"请输入会员账户"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("money_manual",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $mysql = $config->data_report;
+        $sql = "SELECT user_id,user_name,money as user_money FROM user_cumulate WHERE user_key=:user_key";
+        $param = [":user_key"=>$user_key];
+        try{
+            foreach ($mysql->query($sql,$param) as $row){
+                $info = $row;
+            }
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        if(empty($info)){
+            $context->reply(["status"=>204,"msg"=>"获取失败暂无此账号信息"]);
+            return;
+        }
+        $context->reply(["status"=>200,"msg"=>"查找成功","info"=>$info]);
+    }
+}

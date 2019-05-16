@@ -1,0 +1,26 @@
+<?php
+namespace Site\Websocket\Cash\Publics;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-出款记录-未出款
+ * 参数：Cash/Publics/SimplePassageList
+ * status 1等待入款 2入款成功 3入款失败
+ * */
+
+class SimplePassageList extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $mysql = $config->data_staff;
+        $sql = "SELECT passage_id,passage_name FROM deposit_passage_simple_intact";
+        $passage_list = iterator_to_array($mysql->query($sql));
+        $context->reply(["status"=>200,"msg"=>"获取成功","passage_list"=>$passage_list]);
+    }
+}

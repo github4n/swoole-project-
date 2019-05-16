@@ -1,0 +1,66 @@
+<?php
+
+namespace Site\Websocket\Staff;
+
+use Lib\Websocket\IHandler;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 负责人---leo
+ * 负责开始时间--2019-04-08
+ * */
+
+/*
+ * 登录接口
+ * 参数：staff_key:登录名,staff_password:登录密码
+ * Staff/Login {"staff_key":"admin123","staff_password":"admin123456"}
+ * 登录账号为6-20位的数字和字母的组合
+ * 登录密码为6-40位的数字和字母的组合
+ *
+ * */
+
+class StaffInfo implements IHandler
+{
+    public function onReceive(Context $context, Config $config)
+    {
+        $status = 0;
+        $mysqlStaff = $config->data_staff;
+        $cache = $config->cache_site;
+        $websocketAdapter = new \Lib\Websocket\Adapter($config->cache_site);
+        $sql = "select int_value from site_setting where setting_key = 'site_status'";
+        foreach ($mysqlStaff->query($sql) as $row) {
+            $status = $row['int_value'];
+        }
+        if ($status == 3) {
+            $context->reply(['status' => 500, 'msg' => '维护中']);
+
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $staff_sql = 'SELECT staff_key,staff_id,staff_name,staff_grade,master_id,add_time,leader_id FROM staff_info_intact WHERE staff_id=:staff_id';
+        $param = [':staff_id' => $staffId];
+        $staffInfo = [];
+        foreach ($mysqlStaff->query($staff_sql, $param) as $rows) {
+            $staffInfo = $rows;
+        }
+        $staff_info = [];
+        $staff_info['staff_key'] = $staffInfo['staff_key'];
+        $staff_info['staff_name'] = $staffInfo['staff_name'];
+        $staff_info['staff_grade'] = $staffInfo['staff_grade'];
+        $staff_info['add_time'] = $staffInfo['add_time'] ? date('Y-m-d', $staffInfo['add_time']) : '';
+        if ($staffInfo['staff_grade'] == 0) {
+            $staff_info['grade_name'] = '站长';
+        }
+        if ($staffInfo['staff_grade'] == 1) {
+            $staff_info['grade_name'] = '大股东';
+        }
+        if ($staffInfo['staff_grade'] == 2) {
+            $staff_info['grade_name'] = '股东';
+        }
+        if ($staffInfo['staff_grade'] == 3) {
+            $staff_info['grade_name'] = '总代理';
+        }
+        $context->reply(['status' => 200, 'msg' => '获取成功', 'data' => $staff_info]);
+    }
+}

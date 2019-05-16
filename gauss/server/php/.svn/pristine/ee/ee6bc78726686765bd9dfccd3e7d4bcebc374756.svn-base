@@ -1,0 +1,71 @@
+<?php
+
+namespace Plat\Websocket\LotteryTicket\Setting;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 玩法赔率设置列表
+ * LotteryTicket/Setting/PlayRateSetting   {"status":"1","site_name":""}
+ * game_key:彩种
+ * */
+
+class PlayRateSetting extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("lottery_win_select", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        //0213
+        $data = $context->getData();
+
+        $amdin_mysql = $config->data_admin;
+        $analysis_mysql = $config->data_analysis;
+        $site_name = !empty($data['site_name']) ? $data['site_name'] : '';
+        $status = !empty($data['status']) ? $data['status'] : '';
+        $month_time = date('Ym', strtotime(date('Y-m', time()) . '-01 00:00:00')); //本月
+        $monthly_site_sql = "select site_key, site_name,sum(bet_all) as bet_all,sum(bonus_all) as bonus_all from monthly_site where monthly='$month_time'  ";
+        $sites = '';
+        if (!empty($status) || $status == 0) {
+            if (!in_array($status, [0, 1, 2, 3])) {
+                $context->reply(["status" => 202, "msg" => "状态选择错误"]);
+                return;
+            }
+
+            $site_sql = "select site_key from site where status ='$status'";
+            $site_list = iterator_to_array($amdin_mysql->query($site_sql));
+            if (!empty($site_list)) {
+                foreach ($site_list as $value) {
+                    $sites .= "'" . $value['site_key'] . "'" . ",";
+                }
+                $sites = rtrim($sites, ',');
+                $monthly_site_sql .= " and site_key in ($sites) ";
+            } else {
+                $monthly_site_sql .= " and site_key ='' ";
+            }
+        }
+        if (!empty($site_name)) {
+            $monthly_site_sql .= " and site_name='$site_name' ";
+        }
+        $monthly_site_sql .= " group by site_key,site_name";
+        $site_list = iterator_to_array($analysis_mysql->query($monthly_site_sql));
+        if (!empty($site_list)) {
+            foreach ($site_list as $key => $value) {
+                $site_list[$key]['monthIncome'] = $value['bet_all'] - $value['bonus_all'];
+            }
+        }
+
+        $context->reply([
+            "status" => 200,
+            "msg" => "获取成功",
+            "site_status" => $status,
+            "list" => $site_list
+        ]);
+    }
+
+}

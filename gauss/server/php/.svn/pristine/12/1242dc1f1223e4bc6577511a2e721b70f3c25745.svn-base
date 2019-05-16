@@ -1,0 +1,20 @@
+<?php
+namespace App\Task\Lottery;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Game implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['pushData' => $pushData] = $context->getData();
+        $adapter = $context->getAdapter();
+        $cache = $config->cache_app;
+        $json = json_encode($pushData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $cache->hset('LotteryList', "GameList", $json);
+        $adapter->plan('NotifyClient', ['path' => 'Lottery/Game', 'data' => $pushData]);
+
+    }
+}

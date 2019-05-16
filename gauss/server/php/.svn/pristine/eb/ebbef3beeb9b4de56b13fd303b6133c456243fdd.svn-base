@@ -1,0 +1,188 @@
+<?php
+namespace Site\Websocket\Cash\DepositRecord;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-入款记录-第三方入款
+ * 参数：Cash/DepositRecord/DepositGateList
+ * status 1等待入款 2入款成功 3入款失败 
+ * */
+
+class DepositGateList extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("money_deposit_deal",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $masterId = $context->getInfo("MasterId");
+        $staffId = $context->getInfo('StaffId');
+        $mysqlStaff = $config->data_staff;
+        $cache = $config->cache_site;
+        
+        $data = $context->getData();
+        $user_key = isset($data["user_key"]) ? $data["user_key"] : '';
+        $deal_serial = isset($data["deal_serial"]) ? $data["deal_serial"] : '';
+        $passage_name = isset($data["passage_id"]) ? $data["passage_id"] : '';
+        $layer_id = isset($data["layer_id"]) ? $data["layer_id"] : '';
+        $start_launch_time = isset($data["start_launch_time"]) ? $data["start_launch_time"] : '';
+        $end_launch_time = isset($data["end_launch_time"]) ? $data["end_launch_time"] : '';
+        $min_money = isset($data["min_money"]) ? $data["min_money"] :'';
+        $max_money = isset($data["max_money"]) ? $data["max_money"] : '';
+        $start_finish_time = isset($data["start_finish_time"]) ? $data["start_finish_time"] : '';
+        $end_finish_time = isset($data["end_finish_time"]) ? $data["end_finish_time"] : '';
+        $status = isset($data["status"]) ? $data["status"] : '';
+        $way_key = isset($data["wey_key"]) ? $data["wey_key"] : '';
+        $launch_time = '';
+        $finish_time = '';
+        $launch_money = '';
+        if(!empty($user_key)){
+            $user_key = " AND user_key = '".$user_key."'";
+        }
+        if(!empty($deal_serial)){
+            $deal_serial = " AND deposit_serial = '".$deal_serial."'";
+        }
+        if(!empty($layer_id)){
+            $layer_id = " AND layer_id =".$layer_id;
+        }
+        if(!empty($passage_name)){
+            $passage_name = " AND passage_id = '".$passage_name."'";
+        }
+        if(!empty($start_launch_time) && !empty($end_launch_time)){
+            $launch_time = " AND launch_time BETWEEN ".$start_launch_time." AND ".$end_launch_time;
+        }
+        if(!empty($start_finish_time) && !empty($end_finish_time)){
+            $finish_time = " AND finish_time BETWEEN ".$start_finish_time." AND ".$end_finish_time;
+        }
+        if(!empty($min_money)){
+            if(!is_numeric($min_money)){
+                $context->reply(["status"=>204,"msg"=>"到账金额参数错误"]);
+                return;
+            }
+            $launch_money = " AND launch_money >=".$min_money;
+        }
+        if(!empty($max_money)){
+            if(!is_numeric($max_money)){
+                $context->reply(["status"=>204,"msg"=>"到账金额参数错误"]);
+                return;
+            }
+            $launch_money = " AND launch_money <=".$max_money;
+        }
+        if(!empty($min_money) && !empty($max_money)){
+            $launch_money = " AND launch_money BETWEEN ".$min_money." AND ".$max_money;
+        }
+        if(!empty($status)){
+            if($status == 1){
+                $status = " AND launch_time > 0 AND finish_time is null AND cancel_time is null";
+            }elseif ($status ==2){
+                $status = " AND finish_time > 0";
+            }elseif ($status == 3){
+                $status = " AND cancel_time > 0";
+            }else{
+                $status = '';
+            }
+        }
+        if(!empty($way_key)){
+            $way_key = " AND way_key = '".$way_key."'";
+        }
+        $order = " ORDER BY deposit_serial DESC";
+        $limit = " LIMIT 100";
+        if($masterId != 0){
+            $sql = "select deposit_limit,layer_id_list from staff_info_intact where staff_id=:staff_id";
+            $deposit_info = [];
+            foreach ($mysqlStaff->query($sql,[":staff_id"=>$staffId]) as $row){
+                $deposit_info =  $row;
+            }
+            $deposit_limit = $deposit_info["deposit_limit"];
+            $layerLists = implode(",",json_decode($deposit_info["layer_id_list"],true));
+        }
+        if($masterId == 0){
+            $sql = "SELECT user_id,deposit_serial,user_key,layer_id,launch_money,launch_time,to_account_number,gate_name,way_name,finish_money,finish_time,launch_device,passage_name FROM deposit_gateway_intact WHERE 1=1".$user_key.$deal_serial.$layer_id.$passage_name.$launch_time.$finish_time.$launch_money.$status.$way_key.$order.$limit;
+            $total_sql = "SELECT deposit_serial FROM deposit_gateway_intact WHERE 1=1".$user_key.$deal_serial.$layer_id.$passage_name.$launch_time.$finish_time.$launch_money.$status.$way_key.$limit;
+            $count_sql = "SELECT sum(finish_money) as count FROM deposit_gateway_intact WHERE 1=1".$user_key.$deal_serial.$layer_id.$passage_name.$launch_time.$finish_time.$launch_money.$status.$way_key.$limit;
+        }else{
+            $sql = "SELECT user_id,deposit_serial,user_key,layer_id,launch_money,launch_time,to_account_number,gate_name,way_name,finish_money,finish_time,launch_device,passage_name FROM deposit_gateway_intact WHERE layer_id in ($layerLists) and launch_money <= ".$deposit_limit.$user_key.$deal_serial.$layer_id.$passage_name.$launch_time.$finish_time.$launch_money.$status.$way_key.$order.$limit;
+            $total_sql = "SELECT deposit_serial FROM deposit_gateway_intact WHERE layer_id in ($layerLists) and launch_money <= ".$deposit_limit.$user_key.$deal_serial.$layer_id.$passage_name.$launch_time.$finish_time.$launch_money.$status.$way_key.$limit;
+            $count_sql = "SELECT sum(finish_money) as count FROM deposit_gateway_intact WHERE layer_id in ($layerLists) and launch_money <= ".$deposit_limit.$user_key.$deal_serial.$layer_id.$passage_name.$launch_time.$finish_time.$launch_money.$status.$way_key.$limit;
+        }
+
+        $total = 0;
+        $count = 0;
+        $deposit_list = [];
+        foreach ($config->deal_list as $deal) {
+            $mysql = $config->__get("data_".$deal);
+            $total += $mysql->execute($total_sql);
+            foreach ($mysql->query($count_sql) as $row){
+                $count += $row["count"];
+            }
+            $list = iterator_to_array($mysql->query($sql));
+            if(!empty($list)){
+                foreach ($list as $key=>$val){
+                    $sqls = "SELECT * FROM deposit_launch WHERE user_id=:user_id";
+                    $param = [":user_id"=>$val["user_id"]];
+                    $result = $mysql->execute($sqls,$param);
+                    $deposit["user_id"] = $val["user_id"];
+                    $deposit["deposit_serial"] = $val["deposit_serial"];
+                    $deposit["user_key"] = $val["user_key"];
+                    $deposit["layer_id"] = $val["layer_id"];
+                    $deposit["layer_name"] = $context->getInfo($val["layer_id"]);
+                    $deposit["to_account_number"] = $val["to_account_number"];
+                    $deposit["passage_name"] = $val["passage_name"];
+                    $deposit["gate_name"] = $val["gate_name"];
+                    $deposit["way_name"] = $val["way_name"];
+                    $deposit["launch_money"] = $val["launch_money"];
+                    $deposit["launch_time"] = !empty($val["launch_time"]) ? date("Y-m-d H:i:s",$val["launch_time"]) : '';
+                    $deposit["finish_money"] = empty($val["finish_money"]) ? 0 : $val["finish_money"];
+                    $deposit["finish_time"] = !empty($val["finish_time"]) ? date("Y-m-d H:i:s",$val["finish_time"]) : '';
+                    $deposit["is_first"] = $result==1?"是":"否";
+                    if(!empty($val["launch_time"]) && empty($val["finish_time"]) && empty($val["cancel_time"]) && empty($val["deal_time"])){
+                        $deposit["status"] = "等待";
+                    }
+                    if(!empty($val["finish_time"]) || empty($val["deal_time"])){
+                        $deposit["status"] = "已入款";
+                    }
+                    if(!empty($val["cancel_time"])){
+                        $deposit["status"] = "入款失败";
+                    }
+                    if($val["launch_device"]==0){
+                        $deposit["launch_device"] = "PC";
+                    }
+                    if($val["launch_device"]==1){
+                        $deposit["launch_device"] = "WEB";
+                    }
+                    if($val["launch_device"]==2){
+                        $deposit["launch_device"] = "IOS APP";
+                    }
+                    if($val["launch_device"]==3){
+                        $deposit["launch_device"] = "Android APP";
+                    }
+                    $deposit["deal_key"] = $deal;
+                    $deposit_list[] =  $deposit;
+                }
+            }  
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'money_deposit_deal',
+            ':detail' =>'查看入款记录的三方的入款记录',
+        ];
+        $staff_mysql = $config->data_staff;
+        $staff_mysql->execute($sql, $params);
+        $layer_list = $this->LayerManage($context,$config);
+        $gate_list = json_decode($cache->hget("PayWayList","payGateList"));
+        $way_list = json_decode($cache->hget("PayWayList","payWayList"));
+        $context->reply(["status"=>200,"msg"=>"获取成功","total"=>$total,"count"=>$count,"list"=>$deposit_list,"layer_list"=>$layer_list,"gate_list"=>$gate_list,"way_list"=>$way_list]);
+    }
+}

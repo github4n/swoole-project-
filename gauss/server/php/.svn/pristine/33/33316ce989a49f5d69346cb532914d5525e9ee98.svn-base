@@ -1,0 +1,123 @@
+<?php
+namespace Site\Websocket\Account\Staff;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 员工修改信息
+ *   Account/Staff/StaffEdit {"staff_id":302}
+ * */
+
+class StaffEdit extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("slave_list_update",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        if(empty($data)){
+            $context->reply(["status"=>211,"msg"=>"参数错误"]);
+            return;
+        }
+        $staff_id = $data['staff_id'];
+        if(!is_numeric($staff_id)){
+            $context->reply(["status"=>203,"msg"=>"参数错误"]);
+            return;
+        }
+        $info = array();
+        $operate_info = array();
+        $mysql = $config->data_staff;
+        $user_mysql = $config->data_user;
+        $cache = $config->cache_site;
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo("MasterId");
+        //获取当前修改的账号的基本信息
+        $sql = "SELECT staff_name,staff_key,deposit_limit,withdraw_limit,notify_status,layer_id_list FROM staff_info_intact WHERE staff_id=:staff_id";
+        $param = [":staff_id"=>$staff_id];
+        try{
+            foreach ($mysql->query($sql,$param) as $row){
+                $info = $row;
+            }
+        }catch(\PDOException $e){
+            $context->reply(["status"=>402,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        $info["layer_id_list"] = json_decode($info["layer_id_list"],true);
+        //需要修改的用户的操作权限
+        $sql = "SELECT operate_key FROM staff_permit WHERE staff_id = :staff_id";
+        try{
+            foreach ($mysql->query($sql,$param) as $row){
+                $operate_info[] = $row['operate_key'];
+            }
+        }catch(\PDOException $e){
+            $context->reply(["status"=>401,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        if(!empty($MasterId)){
+            //当前账号管理会员的信息
+            $sql = "SELECT layer_id FROM staff_layer WHERE staff_id=:staff_id";
+            $param = [":staff_id"=>$staffId];
+            foreach ($mysql->query($sql,$param) as $rows){
+                $layer_list[] = $rows;
+            }
+            $user_layer = array();
+            $agent_layer = array();
+            if(!empty($layer_list)){
+                foreach ($layer_list as $key=>$val){
+                    $sql = "SELECT layer_id,layer_name,layer_type FROM layer_info WHERE layer_id=:layer_id";
+                    $param = [":layer_id"=>$val["layer_id"]];
+                    foreach ($user_mysql->query($sql,$param) as $row){
+                        if($row["layer_type"]<3){
+                            $user_layer[$key]["layer_name"] = $row["layer_name"];
+                            $user_layer[$key]["layer_id"] = $row["layer_id"];
+                        }
+                        if($row["layer_type"]>100){
+                            $agent_layer[$key]["layer_name"] = $row["layer_name"];
+                            $agent_layer[$key]["layer_id"] = $row["layer_id"];
+                        }
+                    }
+                }
+            }
+            sort($agent_layer,1);
+            sort($user_layer,1);
+        } else{
+            //会员层级
+            $user_layer = json_decode($cache->hget("LayerList","userLayer"));
+            //代理层级
+            $agent_layer = json_decode($cache->hget("LayerList","agentLayer"));
+        }
+        //权限分配
+        $sql = "SELECT * FROM staff_permit WHERE staff_id = :staff_id";
+        $param = [":staff_id"=>$staffId];
+        foreach ($mysql->query($sql,$param) as $row){
+            $operate[] = $row;
+        }
+        if(!empty($operate)){
+            foreach ($operate as $k=>$v){
+                $sql = "SELECT operate_name,operate_key FROM operate WHERE operate_key=:operate_key ";
+                $param = [":operate_key"=>$v["operate_key"]];
+                foreach ($mysql->query($sql,$param) as $rows){
+                    $operates = $rows;
+                }
+                $operate_list[$k]["operate_key"] = $operates["operate_key"];
+                $operate_list[$k]["operate_name"] = $operates["operate_name"];
+            }
+        }
+        $info["operate_list"] = $operate_info;
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "info"=>$info,
+            "user_layer" => $user_layer,
+            "agent_layer" => $agent_layer,
+            "operate_list" => $operate_list,
+
+        ]);
+
+    }
+}

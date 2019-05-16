@@ -1,0 +1,30 @@
+<?php
+namespace App\Websocket\ExternalGame\Fg;
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+/*
+ * 获取游戏列表
+ * ExternalGame/Fg/FgGameList  {"interface_key":"fg"}
+ *
+ */
+class FgGameList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $param = $context->getData();
+        $interface_key = isset($param['interface_key']) ? $param['interface_key'] : '';
+        if (empty($interface_key)) {
+            $context->reply(['status' => 401,'msg' => '平台key不能为空,请选择游戏三方平台']);
+        }
+        $mysqlStaff = $config->data_staff;
+        $sql = "select game_key from external_game where interface_key = '$interface_key' and acceptable = 1";
+        $game_list = [];
+        foreach ($mysqlStaff->query($sql) as $value) {
+            $game_list[] = $value;
+        }
+        $context->reply(['status' => 200,'msg' => '成功','data' => $game_list]);
+
+    }
+}

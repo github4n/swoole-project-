@@ -1,0 +1,105 @@
+<?php
+
+namespace Site\Websocket\Member\BetRecord;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use function PHPSTORM_META\type;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员管理-FG注单
+ * Member/BetRecord/FgBetRecord {"bet_serial":"","user_key":"user123","start_time":"2018-12-18","end_time":"2018-12-20"}
+ */
+class FgBetRecord extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo("StaffId");
+        $masterId = $context->getInfo("MasterId");
+        $staffGrade = $context->getInfo('StaffGrade');
+        $data = $context->getData();
+        $bet_serial = isset($data["bet_serial"]) ? $data["bet_serial"] : "";
+        $user_key = isset($data["user_key"]) ? $data["user_key"] : "";
+        $start_time = isset($data["start_time"]) ? $data["start_time"] : "";
+        $end_time = isset($data["end_time"]) ? $data["end_time"] : "";
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if ($masterId != 0) {
+            $staffId =$masterId;
+        }
+        if (!in_array("user_bet", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $mysql = $config->data_staff;
+        $sql = "SELECT agent_id FROM staff_struct_agent ";
+        $agent_id = [];
+        if($staffGrade == 0){
+            $sql .= "where 1=1";
+        }elseif($staffGrade == 1){
+            $sql .= "WHERE major_id = $staffId";
+        }elseif($staffGrade == 2){
+            $sql .= "WHERE minor_id = $staffId";
+        }elseif($staffGrade == 3){
+            $sql .= "WHERE agent_id = $staffId";
+        }
+        foreach ($mysql->query($sql) as $row)
+        {
+            $agent_id[] = $row['agent_id'];
+        }
+        $usermysql = $config -> data_user;
+        $user_id = [];
+        foreach ($agent_id as $k => $v){
+            $usersql = "SELECT user_id FROM user_info WHERE agent_id = $v";
+            foreach ($usermysql->query($usersql) as $item){
+                $user_id[] = $item['user_id'];
+            }
+        }
+        $fgsql = "select fg_gt,fg_game_id,audit_serial,user_key,audit_amount,fg_data,fg_time from external_audit_fungaming_intact where 1=1 ";
+        if (!empty($bet_serial)){
+            $fgsql .= " AND audit_serial = $bet_serial";
+        }
+        if (!empty($user_key)){
+            $fgsql .= " AND user_key = '$user_key'";
+        }
+        if (!empty($start_time)){
+            $start_time = strtotime($start_time);
+            $fgsql .= " AND fg_time > $start_time";
+        }
+        if (!empty($end_time)){
+            $end_time = strtotime($end_time);
+            $fgsql .= " AND fg_time < $end_time";
+        }
+        $deal_list = $config->deal_list;
+        $fglist = [];
+        $list = [];
+        if (!empty($user_id)){
+            foreach ($user_id as $k => $v){
+                $fgsqlTranalation = $fgsql;
+                $fgsqlTranalation .= " AND user_id = '$v' ORDER BY fg_time,audit_serial DESC LIMIT 200";
+                foreach ($deal_list as $deal){
+                    $mysql = $config->__get("data_" . $deal);
+                    foreach ($mysql->query($fgsqlTranalation) as $row){
+                        $fglist[] = $row;
+                    }
+                    if (!empty($fglist)){
+                        foreach ($fglist as $key => $val){
+                            $list[$key]['game_key'] = substr_replace($val["fg_game_id"],"fg_",0,0);
+                            $list[$key]['audit_serial'] = $val['audit_serial'];
+                            $list[$key]['user_key'] = $val['user_key'];
+                            $list[$key]['audit_amount'] = $val['audit_amount'];
+                            $fgdata = json_decode($val['fg_data'],true);
+                            $list[$key]['resultamount'] = $fgdata['result'];
+                            if ($val['fg_gt'] == 'fish'){
+                                $list[$key]['resultamount'] = $fgdata['fish_dead_chips'] - $fgdata['bullet_chips'];
+                            }
+                            $list[$key]['fg_time'] = date("Y-m-d H:i:s",$val['fg_time']);
+
+                        }
+                    }
+                }
+            }
+        }
+        $context->reply(['status' => 200, 'msg' => '获取成功','list'=>$list]);
+    }
+}

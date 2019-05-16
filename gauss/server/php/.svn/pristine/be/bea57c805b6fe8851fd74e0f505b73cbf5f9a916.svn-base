@@ -1,0 +1,180 @@
+<?php
+namespace Site\Websocket\System\SystemReport;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 体系分红报表-总代理
+ * 参数：staff_name:用户名,major:所属大股东,"shareholder":"所属股东",start_time:开始时间，end_time:结束时间 distribute:派发(1为已派发，2为待派发) page:当前页数 num：每页显示的数量 go_num：跳转的页数
+ * {"user_name":"admin","major":"admin123","shareholder":"admin253","start_time":"2018-10-24","end_time":"2018-10-29","distribute":1,"page":1,"num":20,"go_num":0}
+ * {}
+ * */
+
+class GeneraAgent extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade >2){
+            $context->reply(["status"=>208,"msg"=>"当前登录账号没有访问的权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $page = $data["page"] ?: 1;
+        $num = $data["num"] ?: 10;
+        $go_num = $data["go_num"];
+        $staff_name = isset($data["staff_name"]) ? $data["staff_name"] : '';
+        $major = isset($data["major_name"]) ? $data["major_name"] : '';
+        $minor_name = isset($data["minor_name"]) ? $data["minor_name"] : '';
+        $start_time = isset($data["start_time"]) ? $data["start_time"] : '';
+        $end_time = isset($data["end_time"]) ? $data["end_time"] : '';
+        $distribute = isset($data["distribute"]) ? $data["distribute"] : '';
+        $time = '';
+        $dis ='';
+        if(!is_numeric($page) && $page <= 0){
+            $context->reply(["status"=>202,"msg"=>"当前页数不正确"]);
+            return;
+        }
+        if(!is_numeric($num)){
+            $context->reply(["status"=>203,"msg"=>"每页显示的数量不正确"]);
+            return;
+        }
+        $limit = " LIMIT ".($page-1)*$num.",".$num;
+        if(!empty($go_num) && !is_numeric($go_num)){
+            if($go_num <= 0){
+                $context->reply(["status"=>204,"msg"=>"跳转的页数不正确"]);
+                return;
+            }
+            $limit = " LIMIT ".($go_num-1)*$num.",".$num;
+        }
+        if($StaffGrade == 1 || $StaffGrade == 2){
+            if(!empty($staff_name)){
+                $staff_name = " AND staff_key = '".$staff_name."'";
+            }
+            if(!empty($major)){
+                $major = " AND major_name = '".$major."'";
+            }
+            if(!empty($minor_name)){
+                $minor_name = " AND minor_name = '".$minor_name."'";
+            }
+            if(!empty($distribute)){
+                //已派发
+                if($distribute == 1){
+                    $dis = " AND deliver_time > 0";
+                } elseif($distribute == 2){
+                    $dis = " AND deliver_time = 0";
+                }else{
+                    $context->reply(["status"=>205,"msg"=>"派发额搜索条件错误"]);
+                    return;
+                }
+            }
+            if(!empty($start_time) && !empty($end_time)){
+                $start_time = strtotime($start_time." 00:00:00");
+                $end_time = strtotime($end_time." 23:59:59");
+                $time = " AND settle_time > ".$start_time." AND	settle_time < ".$end_time;
+            }
+        } else{
+            if(!empty($staff_name)){
+                $staff_name = " AND staff_key = '".$staff_name."'";
+            }
+            if(!empty($major)){
+                $major = " AND major_name = '".$major."'";
+            }
+            if(!empty($minor_name)){
+                $minor_name = " AND minor_name = '".$minor_name."'";
+            }
+            if(!empty($distribute)){
+                //已派发
+                if($distribute == 1){
+                    $dis = " AND deliver_time > 0";
+                } elseif($distribute == 2){
+                    $dis = " AND deliver_time = 0";
+                }else{
+                    $context->reply(["status"=>205,"msg"=>"派发额搜索条件错误"]);
+                    return;
+                }
+            }
+            if(!empty($start_time) && !empty($end_time)){
+                $start_time = strtotime($start_time." 00:00:00");
+                $end_time = strtotime($end_time." 23:59:59");
+                $time = "AND settle_time > ".$start_time." AND	settle_time < ".$end_time;
+            }
+
+        }
+        if(!empty($staff_name))
+        $list = array();
+        if($StaffGrade == 0){
+            $sql = "SELECT * FROM dividend_settle_agent".$staff_name.$major.$minor_name.$dis.$time.$limit;
+            $total_sql = "SELECT staff_key FROM dividend_settle_agent".$staff_name.$major.$minor_name.$dis.$time;
+            try{
+                foreach ($mysql->query($sql) as $rows){
+                    $list[] = $rows;
+                }
+                $total = $mysql->execute($total_sql);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"获取列表失败"]);
+                throw new \PDOException($e);
+            }
+        }
+        if($StaffGrade == 1){
+            $sql = "SELECT * FROM dividend_settle_agent WHERE major_id = :major_id".$staff_name.$major.$minor_name.$dis.$time.$limit;
+            $total_sql = "SELECT staff_key FROM dividend_settle_agent WHERE major_id=:major_id".$staff_name.$major.$minor_name.$dis.$time;
+            $param = [":major_id"=>$staffId];
+            try{
+                foreach ($mysql->query($sql,$param) as $rows){
+                    $list[] = $rows;
+                }
+                $total = $mysql->execute($total_sql,$param);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"获取列表失败"]);
+                throw new \PDOException($e);
+            }
+        }
+        if($StaffGrade == 2){
+            $sql = "SELECT * FROM dividend_settle_agent WHERE minor_id = :minor_id".$staff_name.$major.$minor_name.$dis.$time.$limit;
+            $total_sql = "SELECT staff_key FROM dividend_settle_agent WHERE minor_id = :minor_id".$staff_name.$major.$minor_name.$dis.$time;
+            $param = [":minor_id"=>$staffId];
+            try{
+                foreach ($mysql->query($sql,$param) as $rows){
+                    $list[] = $rows;
+                }
+                $total = $mysql->execute($total_sql,$param);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"获取列表失败"]);
+                throw new \PDOException($e);
+            }
+        }
+        $agent_list = array();
+        if(!empty($list)){
+            foreach ($list as $key=>$val){
+                $agent_list[$key]["staff_name"] = $val["agent_name"];
+                $agent_list[$key]["staff_id"] = $val["agent_id"];
+                $agent_list[$key]["agent_grade"] = "总代理";
+                $agent_list[$key]["major_name"] = $val["major_name"];
+                $agent_list[$key]["minor_name"] = $val["minor_name"];
+                $agent_list[$key]["bet_amount"] = $val["bet_amount"];
+                $agent_list[$key]["bet_rate"] = $val["bet_rate"];
+                $agent_list[$key]["profit_amount"] = $val["profit_amount"];
+                $agent_list[$key]["profit_rate"] = $val["profit_rate"];
+                $agent_list[$key]["fee_rate"] = $val["fee_rate"];
+                $agent_list[$key]["tax_rate"] = $val["tax_rate"];
+                $agent_list[$key]["dividend_fee"] = $val["dividend_fee"];
+                $agent_list[$key]["dividend_tax"] = $val["dividend_tax"];
+                $agent_list[$key]["dividend_result"] = $val["dividend_result"];
+                $agent_list[$key]["deliver_time"] = empty($val["deliver_time"]) ? 0 : 1;
+                $agent_list[$key]["settle_time"] = date("Y-m-d H:i:s",$val["settle_time"]);
+            }
+        }
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "total"=>$total,
+            "total_page"=>ceil($total/$num),
+            "list"=>$agent_list
+        ]);
+
+    }
+}

@@ -1,0 +1,218 @@
+<?php
+namespace App\Websocket\User\Withdraw;
+
+use App\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 提现
+ *  User/Withdraw/Withdraw {"launch_money":200,"withdraw_password":"123456"}
+ * 手续费计算需要调整
+ *
+ * */
+
+class Withdraw extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $guest_id = $context->getInfo("GuestId");
+        if(!empty($guest_id)){
+            $context->reply(["status"=>500,"msg"=>"游客身份，没有访问权限"]);
+            return;
+        }
+
+        $data = $context->getData();
+        $userId = $context->getInfo("UserId");
+        $layer_id = $context->getInfo("LayerId");
+        $deal_key = $context->getInfo("DealKey");
+        $deal_mysql = $config->__get("data_".$deal_key);
+        $mysql_user = $config->data_user;
+        $mysql_staff = $config->data_staff;
+        //判断该层级的用户余额是否被冻结
+        $auth = $context->getInfo("Auth");
+        if(!empty($auth)){
+            if(in_array("balance_freeze",json_decode($auth))){
+                $context->reply(["status"=>230,"msg"=>"账户余额被冻结"]);
+                return;
+            }
+        }
+
+        //判断是否定银行卡
+        $sql = "SELECT bank_name,bank_branch,account_number,account_name FROM bank_info WHERE user_id=:user_id";
+        $param = [":user_id"=>$userId];
+        foreach ($mysql_user->query($sql,$param) as $row){
+            $info = $row;
+        }
+        if(empty($info)){
+            $context->reply(["status"=>204,"msg"=>"你还没有绑定银行卡"]);
+            return;
+        }
+        $launch_money = $data["launch_money"];
+        $cash_password = isset($data["withdraw_password"]) ? $data["withdraw_password"] : "";
+        if(!is_numeric($launch_money)){
+            $context->reply(["status"=>205,"msg"=>"提现金额类型错误"]);
+            return;
+        }
+        if(empty($cash_password)){
+            $context->reply(["status"=>209,"msg"=>"提现密码不能为空"]);
+            return;
+        }
+
+        //判断该用户是否有出款未处理
+        $with_info = [];
+        $sql = "select withdraw_serial from withdraw_intact where user_id=:user_id and cancel_time is null and finish_time is null ";
+        foreach ($deal_mysql->query($sql,[":user_id"=>$userId]) as $row){
+            $with_info = $row;
+        }
+        if(!empty($with_info)){
+            $context->reply(["status"=>401,"msg"=>"你还有提现订单为完成，请勿频繁操作"]);
+            return;
+        }
+        //获取提现的数据信息
+        $sql = "SELECT * FROM site_setting ";
+        $withdraw_list = iterator_to_array($mysql_staff->query($sql));
+        if(!empty($withdraw_list)){
+            foreach ($withdraw_list as $k=>$v){
+                if($v["setting_key"] == "withdraw_min"){   //出款下限
+                    $withdraw_min = $v["dbl_value"] ;
+                }
+                if($v["setting_key"] == "withdraw_max"){    //出款上限
+                    $withdraw_max = $v["dbl_value"] ;
+                }
+                if($v["setting_key"] == "withdraw_fee_rate"){   //出款手续费比例
+                    $withdraw_fee_rate = $v["dbl_value"] ;
+                }
+                if($v["setting_key"] == "withdraw_interval"){   //重复出款时间间隔
+                    $withdraw_interval = $v["int_value"] ;
+                }
+            }
+        }
+        //检测时间间隔
+        $withdraw_infos = [];
+        $sql = "select launch_time from withdraw_intact where (finish_time is not null or cancel_time is not null) and user_id=:user_id order by launch_time desc limit 1";
+        foreach ($deal_mysql->query($sql,[":user_id"=>$userId]) as $row){
+            $withdraw_infos = $row;
+        }
+        if(!empty($withdraw_infos)){
+            if(time()-$withdraw_infos["launch_time"] < $withdraw_interval*60){
+                $context->reply(["status"=>401,"msg"=>"请勿频繁操作"]);
+                return;
+            }
+
+        }
+
+        $sql = "SELECT * FROM account WHERE user_id=:user_id";
+        $param = [":user_id"=>$userId];
+        $coupon_audit = 0;
+        $deposit_audit = 0;
+        $money = 0;
+        foreach ($deal_mysql->query($sql,$param) as $row){
+             $money = $row["money"];
+             $deposit_audit = $row["deposit_audit"];
+             $coupon_audit = $row["coupon_audit"];
+        }
+        if($coupon_audit>0){
+            $context->reply(["status"=>206,"msg"=>"你有活动稽核没用完,不能提现"]);
+            return;
+        }
+        if($launch_money>$money){
+            $context->reply(["status"=>207,"msg"=>"提现金额大于账户余额"]);
+            return;
+        }
+
+
+        if($launch_money < $withdraw_min){
+            $context->reply(["status"=>402,"msg"=>"提现金额不能小于".$withdraw_min]);
+            return;
+        }
+        if($launch_money > $withdraw_max){
+            $context->reply(["status"=>403,"msg"=>"提现金额不能大于".$withdraw_max]);
+            return;
+        }
+        //统计之前有没有提现成功
+        if($deposit_audit>0){
+            //获取出款手续费
+            $handling_fee =  $deposit_audit>$launch_money?($launch_money*$withdraw_fee_rate)/100 : ($deposit_audit*$withdraw_fee_rate)/100;
+            $deposit_audits = $deposit_audit>$launch_money?$launch_money:$deposit_audit;
+
+        }else{
+            $handling_fee = 0;
+            $deposit_audits = 0;
+        }
+        if (!empty($auth)){
+            if(in_array("withdraw_absolve_review",json_decode($auth))){
+                $must_inspect = 0;
+            }else{
+                //提现是否需要审核
+                $withdraw_audit = 0;
+                $withdraw_sql = "select withdraw_audit_first from layer_info where layer_id=:layer_id" ;
+                foreach ($mysql_user->query($withdraw_sql,[":layer_id"=>$layer_id]) as $withdraw){
+                    $withdraw_audit = $withdraw["withdraw_audit_first"] ;
+                }
+                if($withdraw_audit == 1){
+                    $must_inspect = 1;
+                }else{
+                    $must_inspect = 0;
+                }
+            }
+        }else{
+            //提现是否需要审核
+            $withdraw_audit = 0;
+            $withdraw_sql = "select withdraw_audit_first from layer_info where layer_id=:layer_id" ;
+            foreach ($mysql_user->query($withdraw_sql,[":layer_id"=>$layer_id]) as $withdraw){
+                $withdraw_audit = $withdraw["withdraw_audit_first"] ;
+            }
+            if($withdraw_audit == 1){
+                $must_inspect = 1;
+            }else{
+                $must_inspect = 0;
+            }
+        }
+
+        //提现密码验证
+        $sql = "SELECT account_number FROM bank_info WHERE user_id=:user_id AND password_hash = sha1(concat(password_salt,sha1(:password))) ";
+        foreach ($mysql_user->query($sql,[":user_id"=>$userId,":password"=>$cash_password]) as $row){
+            $password =  $row;
+        } ;
+
+        if(empty($password )){
+            $context->reply(["status"=>209,"msg"=>"提现密码错误"]);
+            return;
+        }
+        if($password["account_number"] != $info["account_number"]){
+            $context->reply(["status"=>210,"msg"=>"提现密码错误"]);
+            return;
+        }
+        $sql =  "INSERT INTO withdraw_launch SET user_id=:user_id, user_key=:user_key, layer_id=:layer_id,launch_money=:launch_money,deposit_audit=:deposit_audit, handling_fee=:handling_fee,withdraw_money=:withdraw_money,bank_name=:bank_name, bank_branch=:bank_branch,account_number=:account_number, account_name=:account_name, launch_device=:launch_device, must_inspect=:must_inspect";
+        $param = [
+            ":user_id"=> $context->getInfo("UserId"),
+            ":user_key"=> $context->getInfo("UserKey"),
+            ":layer_id"=>$context->getInfo("LayerId"),
+            ":launch_money"=>$launch_money,
+            ":deposit_audit"=>$deposit_audits,
+            ":handling_fee"=>$handling_fee,
+            ":withdraw_money"=>$launch_money-$handling_fee,
+            ":bank_name"=>$info["bank_name"],
+            ":bank_branch"=>$info["bank_branch"],
+            ":account_number"=>$info["account_number"],
+            ":account_name"=>$info["account_name"],
+            ":launch_device"=>$context->getInfo("LoginDevice"),
+            ":must_inspect"=>$must_inspect,
+        ];
+        try{
+            $deal_mysql->execute($sql,$param);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"申请失败"]);
+            throw new \PDOException($e);
+        }
+        $context->reply(["status"=>200,"msg"=>"申请成功"]);
+        //发送最新的用户余额信息
+        $id = $context->clientId();
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $taskAdapter->plan('User/Balance', ['user_id' => $userId,'deal_key'=>$deal_key,'id'=>$id]);
+        //通知站点有新的入款消息
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_app);
+        $taskAdapter->plan('User/Notice', ["data" => ["msg"=>"有新的出款消息","layer_id"=>$layer_id,"money"=>$launch_money,"type"=>2]]);
+    }
+}

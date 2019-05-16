@@ -1,0 +1,1030 @@
+<?php
+
+namespace Site\Task\Lottery\Settle;
+
+/*
+ * eleven.php
+ * @description   十一选五结算任务
+ * @Author  nathan 
+ * @date  2019-05-09
+ * @links  Lottery/Settle/eleven 
+ * @modifyAuthor   nathan
+ * @modifyTime  2019-05-09
+ */
+class eleven extends Base
+{
+    // 准备结算数据
+    private $number;
+    private $eleven_ball1;
+    private $eleven_ball2;
+    private $eleven_ball3;
+    private $eleven_ball4;
+    private $eleven_ball5;
+    private $eleven_halfsum;
+    private $eleven_poker123;
+    private $eleven_poker234;
+    private $eleven_poker345;
+    private $eleven_versus12;
+    private $eleven_versus13;
+    private $eleven_versus14;
+    private $eleven_versus15;
+    private $eleven_versus23;
+    private $eleven_versus24;
+    private $eleven_versus25;
+    private $eleven_versus34;
+    private $eleven_versus35;
+    private $eleven_versus45;
+    private $special_code;
+    private $half_smooth;
+
+    protected function loadNumber(array $number)
+    {
+        $this->number = $number;
+
+        // 计算第一球
+        $this->eleven_ball1 = $number['normal1'];
+        //第二球及两面
+        $this->eleven_ball2 = $number['normal2'];
+        //第三球及两面
+        $this->eleven_ball3 = $number['normal3'];
+        //第四球及两面
+        $this->eleven_ball4 = $number['normal4'];
+        //第五球及两面
+        $this->eleven_ball5 = $number['normal5'];
+        //计算和值两面
+        $this->eleven_halfsum = $number['normal1'] + $number['normal2'] + $number['normal3'] + $number['normal4'] + $number['normal5'];
+        //计算前三
+        $this->eleven_poker123 = [
+            $number['normal1'],
+            $number['normal2'],
+            $number['normal3'],
+        ];
+        //计算中三
+        $this->eleven_poker234 = [
+            $number['normal2'],
+            $number['normal3'],
+            $number['normal4'],
+        ];
+        //计算后三
+        $this->eleven_poker345 = [
+            $number['normal3'],
+            $number['normal4'],
+            $number['normal5'],
+        ];
+        //顺子的特殊情况
+        $this->special_code = [
+            [1, 2, 11],
+            [1, 11, 2],
+            [2, 11, 1],
+            [2, 1, 11],
+            [11, 1, 2],
+            [11, 2, 1],
+            [10, 11, 1],
+            [1, 11, 10],
+            [10, 1, 11],
+            [1, 10, 11],
+            [11, 10, 1],
+            [11, 1, 10],
+            ];
+        //半顺的特殊情况
+        $this->half_smooth = [11, 1];
+        //1V2龙虎
+        $this->eleven_versus12 = false;
+        if ($number['normal1'] > $number['normal2']) {
+            $this->eleven_versus12 = true;
+        }
+        //1v3龙虎
+        $this->eleven_versus13 = false;
+        if ($number['normal1'] > $number['normal3']) {
+            $this->eleven_versus13 = true;
+        }
+        //1v4龙虎
+        $this->eleven_versus14 = false;
+        if ($number['normal1'] > $number['normal4']) {
+            $this->eleven_versus14 = true;
+        }
+        //1v5龙虎
+        $this->eleven_versus15 = false;
+        if ($number['normal1'] > $number['normal5']) {
+            $this->eleven_versus15 = true;
+        }
+        //2v3龙虎
+        $this->eleven_versus23 = false;
+        if ($number['normal2'] > $number['normal3']) {
+            $this->eleven_versus23 = true;
+        }
+        //2v4龙虎
+        $this->eleven_versus24 = false;
+        if ($number['normal2'] > $number['normal4']) {
+            $this->eleven_versus24 = true;
+        }
+        //2v5龙虎
+        $this->eleven_versus25 = false;
+        if ($number['normal2'] > $number['normal5']) {
+            $this->eleven_versus25 = true;
+        }
+        //3v4龙虎
+        $this->eleven_versus34 = false;
+        if ($number['normal3'] > $number['normal4']) {
+            $this->eleven_versus34 = true;
+        }
+        //3v5龙虎
+        $this->eleven_versus35 = false;
+        if ($number['normal3'] > $number['normal5']) {
+            $this->eleven_versus35 = true;
+        }
+        //4v5龙虎
+        $this->eleven_versus45 = false;
+        if ($number['normal4'] > $number['normal5']) {
+            $this->eleven_versus45 = true;
+        }
+    }
+
+    /**
+     * 第一球
+     * Betting/OrdinaryBetting {"game_key":"eleven_fast","rule_list":[{"play_key":"eleven_ball1","number":["eleven_ball1_03"],"price":"10","quantity":"1","rebate_rate":"8"}],"period":"20190102909","multiple":"1"}
+     * @param array $rule
+     * @return array
+     */
+    public function eleven_ball1(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = intval(substr($n, strripos($n, '_') + 1));
+            if ($num == $this->eleven_ball1) {
+                $result = 2;
+                $bonus += $rule['price'] * $this->getRate('eleven_ball1', $n, $rule['rebate_rate']);
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //第二球
+    public function eleven_ball2(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = intval(substr($n, strripos($n, '_') + 1));
+            if ($num == $this->eleven_ball2) {
+                $result = 2;
+                $bonus += $rule['price'] * $this->getRate('eleven_ball2', $n, $rule['rebate_rate']);
+            }
+        }
+
+        return [
+                 'rule_id' => $rule['rule_id'],
+                 'result' => $result,
+                 'bet' => $rule['bet_launch'],
+                 'bonus' => $bonus,
+                 'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+                 'revert' => 0,
+             ];
+    }
+
+    //第三球
+    public function eleven_ball3(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = intval(substr($n, strripos($n, '_') + 1));
+            if ($num == $this->eleven_ball3) {
+                $result = 2;
+                $bonus += $rule['price'] * $this->getRate('eleven_ball3', $n, $rule['rebate_rate']);
+            }
+        }
+
+        return [
+             'rule_id' => $rule['rule_id'],
+             'result' => $result,
+             'bet' => $rule['bet_launch'],
+             'bonus' => $bonus,
+             'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+             'revert' => 0,
+        ];
+    }
+
+    //第四球
+    public function eleven_ball4(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = intval(substr($n, strripos($n, '_') + 1));
+            if ($num == $this->eleven_ball4) {
+                $result = 2;
+                $bonus += $rule['price'] * $this->getRate('eleven_ball4', $n, $rule['rebate_rate']);
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //第五球
+    public function eleven_ball5(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = intval(substr($n, strripos($n, '_') + 1));
+            if ($num == $this->eleven_ball5) {
+                $result = 2;
+                $bonus += $rule['price'] * $this->getRate('eleven_ball5', $n, $rule['rebate_rate']);
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //第一球两面
+    public function eleven_half1(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        $revert = 0;
+        $rebate = substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1);
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($this->eleven_ball1 == 11) {
+                $result = 3;
+                $bonus = 0;
+                $revert += $rule['price'];
+                $rebate = 0;
+            } else {
+                if ($num == 'big') {
+                    if ($this->eleven_ball1 >= 6) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half1', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'small') {
+                    if ($this->eleven_ball1 <= 5) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half1', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'odd') {
+                    if ($this->eleven_ball1 % 2 == 1) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half1', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'even') {
+                    if ($this->eleven_ball1 % 2 == 0) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half1', $n, $rule['rebate_rate']);
+                    }
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $result == 3 ? 0 : $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => $rebate,
+            'revert' => $revert,
+        ];
+    }
+
+    //第二球两面
+    public function eleven_half2(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        $revert = 0;
+        $rebate = substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] * 0.01), 0, -1);
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($this->eleven_ball2 == 11) {
+                $result = 3;
+                $bonus = 0;
+                $revert += $rule['price'];
+                $rebate = 0;
+            } else {
+                if ($num == 'big') {
+                    if ($this->eleven_ball2 >= 6) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half2', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'small') {
+                    if ($this->eleven_ball2 <= 5) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half2', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'odd') {
+                    if ($this->eleven_ball2 % 2 == 1) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half2', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'even') {
+                    if ($this->eleven_ball2 % 2 == 0) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half2', $n, $rule['rebate_rate']);
+                    }
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $result == 3 ? 0 : $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => $rebate,
+            'revert' => $revert,
+        ];
+    }
+
+    //第三球两面
+    public function eleven_half3(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        $revert = 0;
+        $rebate = substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] * 0.01), 0, -1);
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($this->eleven_ball3 == 11) {
+                $result = 3;
+                $bonus = 0;
+                $revert += $rule['price'];
+                $rebate = 0;
+            } else {
+                if ($num == 'big') {
+                    if ($this->eleven_ball3 >= 6) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half3', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'small') {
+                    if ($this->eleven_ball3 <= 5) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half3', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'odd') {
+                    if ($this->eleven_ball3 % 2 == 1) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half3', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'even') {
+                    if ($this->eleven_ball3 % 2 == 0) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half3', $n, $rule['rebate_rate']);
+                    }
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $result == 3 ? 0 : $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => $rebate,
+            'revert' => $revert,
+        ];
+    }
+
+    //第四球两面
+    public function eleven_half4(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        $revert = 0;
+        $rebate = substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] * 0.01), 0, -1);
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($this->eleven_ball4 == 11) {
+                $result = 3;
+                $bonus = 0;
+                $revert += $rule['price'];
+                $rebate = 0;
+            } else {
+                if ($num == 'big') {
+                    if ($this->eleven_ball4 >= 6) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half4', $n, $rule['rebate_rate']);
+                    }
+                }
+
+                if ($num == 'small') {
+                    if ($this->eleven_ball4 <= 5) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half4', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'odd') {
+                    if ($this->eleven_ball4 % 2 == 1) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half4', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'even') {
+                    if ($this->eleven_ball4 % 2 == 0) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half4', $n, $rule['rebate_rate']);
+                    }
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $result == 3 ? 0 : $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => $rebate,
+            'revert' => $revert,
+        ];
+    }
+
+    //第五球两面
+    public function eleven_half5(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        $revert = 0;
+        $rebate = substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] * 0.01), 0, -1);
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($this->eleven_ball5 == 11) {
+                $result = 3;
+                $bonus = 0;
+                $revert += $rule['price'];
+                $rebate = 0;
+            } else {
+                if ($num == 'big') {
+                    if ($this->eleven_ball5 >= 6) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half5', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'small') {
+                    if ($this->eleven_ball5 <= 5) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half5', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'odd') {
+                    if ($this->eleven_ball5 % 2 == 1) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half5', $n, $rule['rebate_rate']);
+                    }
+                }
+                if ($num == 'even') {
+                    if ($this->eleven_ball5 % 2 == 0) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_half5', $n, $rule['rebate_rate']);
+                    }
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $result == 3 ? 0 : $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => $rebate,
+            'revert' => $revert,
+        ];
+    }
+
+    //和值两面
+    public function eleven_halfsum(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        $revert = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if (intval($num) == 30) {
+                if ($this->eleven_halfsum == 30) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_halfsum', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'big') {
+                if ($this->eleven_halfsum >= 31) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_halfsum', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'small') {
+                if ($this->eleven_halfsum <= 29) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_halfsum', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'odd') {
+                if ($this->eleven_halfsum % 2 == 1) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_halfsum', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'even') {
+                if ($this->eleven_halfsum % 2 == 0) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_halfsum', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => $revert,
+        ];
+    }
+
+    //前三
+    public function eleven_poker123(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            $bb = 0;
+            if (abs($this->eleven_poker123[0] - $this->eleven_poker123[1]) == 1) {
+                ++$bb;
+            }
+            if (abs($this->eleven_poker123[0] - $this->eleven_poker123[2]) == 1) {
+                ++$bb;
+            }
+            if (abs($this->eleven_poker123[1] - $this->eleven_poker123[2]) == 1) {
+                ++$bb;
+            }
+            if ($num == 'abut') {   //半顺
+                if ($bb == 1 || count(array_intersect($this->half_smooth, $this->eleven_poker123)) == 2) {
+                    if (!in_array($this->eleven_poker123, $this->special_code)) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_poker123', $n, $rule['rebate_rate']);
+                    }
+                }
+            }
+            if ($num == 'mixed') {  //杂六
+                if (!in_array($this->eleven_poker123, $this->special_code) && count(array_intersect($this->half_smooth, $this->eleven_poker123)) != 2 && $bb == 0) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_poker123', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'serial') {    //顺子
+                if ($bb == 2 || in_array($this->eleven_poker123, $this->special_code)) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_poker123', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //中三
+    public function eleven_poker234(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            $bb = 0;
+            if (abs($this->eleven_poker234[0] - $this->eleven_poker234[1]) == 1) {
+                ++$bb;
+            }
+            if (abs($this->eleven_poker234[0] - $this->eleven_poker234[2]) == 1) {
+                ++$bb;
+            }
+            if (abs($this->eleven_poker234[1] - $this->eleven_poker234[2]) == 1) {
+                ++$bb;
+            }
+            if ($num == 'abut') {   //半顺
+                if ($bb == 1 || count(array_intersect($this->half_smooth, $this->eleven_poker234)) == 2) {
+                    if (!in_array($this->eleven_poker234, $this->special_code)) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_poker234', $n, $rule['rebate_rate']);
+                    }
+                }
+            }
+            if ($num == 'mixed') {  //杂六
+                if (!in_array($this->eleven_poker234, $this->special_code) && count(array_intersect($this->half_smooth, $this->eleven_poker234)) != 2 && $bb == 0) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_poker234', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'serial') {    //顺子
+                if ($bb == 2 || in_array($this->eleven_poker234, $this->special_code)) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_poker234', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //后三
+    public function eleven_poker345(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            $bb = 0;
+            if (abs($this->eleven_poker345[0] - $this->eleven_poker345[1]) == 1) {
+                ++$bb;
+            }
+            if (abs($this->eleven_poker345[0] - $this->eleven_poker345[2]) == 1) {
+                ++$bb;
+            }
+            if (abs($this->eleven_poker345[1] - $this->eleven_poker345[2]) == 1) {
+                ++$bb;
+            }
+            if ($num == 'abut') {   //半顺
+                if ($bb == 1 || count(array_intersect($this->half_smooth, $this->eleven_poker345)) == 2) {
+                    if (!in_array($this->eleven_poker345, $this->special_code)) {
+                        $result = 2;
+                        $bonus += $rule['price'] * $this->getRate('eleven_poker345', $n, $rule['rebate_rate']);
+                    }
+                }
+            }
+            if ($num == 'mixed') {  //杂六
+                if (!in_array($this->eleven_poker345, $this->special_code) && count(array_intersect($this->half_smooth, $this->eleven_poker345)) != 2 && $bb == 0) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_poker345', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'serial') {    //顺子
+                if ($bb == 2 || in_array($this->eleven_poker345, $this->special_code)) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_poker345', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //1v2龙虎
+    public function eleven_versus12(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($num == 'dragon') {
+                if ($this->eleven_versus12) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus12', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'tiger') {
+                if (!$this->eleven_versus12) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus12', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //1v3龙虎
+    public function eleven_versus13(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($num == 'dragon') {
+                if ($this->eleven_versus13) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus13', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'tiger') {
+                if (!$this->eleven_versus13) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus13', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //1v4龙虎
+    public function eleven_versus14(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($num == 'dragon') {
+                if ($this->eleven_versus14) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus14', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'tiger') {
+                if (!$this->eleven_versus14) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus14', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //1v5龙虎
+    public function eleven_versus15(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($num == 'dragon') {
+                if ($this->eleven_versus15) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus15', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'tiger') {
+                if (!$this->eleven_versus15) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus15', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //2v3龙虎
+    public function eleven_versus23(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($num == 'dragon') {
+                if ($this->eleven_versus23) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus23', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'tiger') {
+                if (!$this->eleven_versus23) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus23', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //2v4龙虎
+    public function eleven_versus24(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($num == 'dragon') {
+                if ($this->eleven_versus24) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus24', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'tiger') {
+                if (!$this->eleven_versus24) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus24', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //2v5龙虎
+    public function eleven_versus25(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($num == 'dragon') {
+                if ($this->eleven_versus25) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus25', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'tiger') {
+                if (!$this->eleven_versus25) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus25', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //3v4龙虎
+    public function eleven_versus34(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($num == 'dragon') {
+                if ($this->eleven_versus34) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus34', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'tiger') {
+                if (!$this->eleven_versus34) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus34', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //3v5龙虎
+    public function eleven_versus35(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($num == 'dragon') {
+                if ($this->eleven_versus35) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus35', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'tiger') {
+                if (!$this->eleven_versus35) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus35', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //4v5龙虎
+    public function eleven_versus45(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($num == 'dragon') {
+                if ($this->eleven_versus45) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus45', $n, $rule['rebate_rate']);
+                }
+            }
+            if ($num == 'tiger') {
+                if (!$this->eleven_versus45) {
+                    $result = 2;
+                    $bonus += $rule['price'] * $this->getRate('eleven_versus45', $n, $rule['rebate_rate']);
+                }
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+}

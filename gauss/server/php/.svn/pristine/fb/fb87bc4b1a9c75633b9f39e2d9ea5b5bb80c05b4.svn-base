@@ -1,0 +1,33 @@
+<?php
+namespace Site\Websocket\AgentRebate\AgentLayer;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 代理层级设置--代理权限
+ * 参数：AgentRebate/AgentLayer/LayerAuth 
+ *
+ */
+
+class LayerAuth extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("broker_layer",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $mysql = $config->data_user;
+        $sql = "SELECT operate_key,operate_name FROM operate WHERE require_permit=3 OR require_permit=2";
+        $agent_layer = iterator_to_array($mysql->query($sql));
+        $context->reply(["status"=>200,"msg"=>"获取成功","list"=>$agent_layer]);
+    }
+}

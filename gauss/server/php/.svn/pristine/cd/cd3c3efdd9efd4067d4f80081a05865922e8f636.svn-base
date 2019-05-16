@@ -1,0 +1,113 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-2-21
+ * Time: 下午4:19
+ */
+
+namespace Site\Task\Report;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Layer_subsidy implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['time' => $time] = $context->getData();
+        $daily = intval(date('Ymd', $time));
+        $mysqlReport = $config->data_report;
+        $adapter = $context->getAdapter();
+
+            //检测数据是否锁定
+        $dailyInfo = [];
+        $sql = "select daily from daily_status where daily=:daily and frozen=1";
+        foreach ($mysqlReport->query($sql,[":daily"=>$daily]) as $row){
+            $dailyInfo = $row;
+        }
+        if(!empty($dailyInfo)){
+            $adapter->plan('Report/Layer_subsidy', ['time' => $time + 86400], time() + 600, 9);
+            return;
+        }
+        
+        $cache = $config->cache_site;
+        $layer_list = json_decode($cache->hget("LayerList", "allLayer"));
+        $layerTranslation=[];
+        foreach ($layer_list as $layer){
+            $layerTranslation +=[$layer->layer_id=>$layer->layer_name];
+        }
+        
+        $sql = "select daily,layer_id,sum(bet_amount) as bet_amount,category_key,sum(subsidy) as subsidy from daily_user_game_subsidy where daily = '$daily' GROUP BY layer_id,category_key";
+        $subsidy_info = [];
+        $video_subsidy = 0;
+        $video_bet_amount = 0;
+        $game_subsidy = 0;
+        $game_bet_amount = 0;
+        $sports_subsidy = 0;
+        $sports_bet_amount = 0;
+        $cards_bet_amount = 0;
+        $cards_subsidy = 0;
+        $lottery_bet_amount = 0;
+        $lottery_subsidy = 0;
+        foreach ($mysqlReport->query($sql) as $k=>$v) {
+            if ($v['category_key'] == 'video') {
+                $video_subsidy = $v['subsidy'];
+                $video_bet_amount = $v['bet_amount'];
+            }
+
+            if ($v['category_key'] == 'game') {
+                $game_subsidy = $v['subsidy'];
+                $game_bet_amount = $v['bet_amount'];
+            }
+
+            if ($v['category_key'] == 'sports') {
+                $sports_subsidy = $v['subsidy'];
+                $sports_bet_amount = $v['bet_amount'];
+            }
+
+            if ($v['category_key'] == 'cards') {
+                $cards_subsidy = $v['subsidy'];
+                $cards_bet_amount = $v['bet_amount'];
+            }
+
+            if ($v['category_key'] == 'lottery') {
+                $lottery_subsidy = $v['subsidy'];
+                $lottery_bet_amount = $v['bet_amount'];
+            }
+
+            $sum_bet_amount = $video_bet_amount + $lottery_bet_amount + $cards_bet_amount + $sports_bet_amount + $game_bet_amount;
+            $sum_subsidy = $video_subsidy + $lottery_subsidy + $cards_subsidy + $sports_subsidy + $game_subsidy;
+            $subsidy_info[$k]['daily'] = $v['daily'];
+            $subsidy_info[$k]['layer_id'] = $v['layer_id'];
+            $subsidy_info[$k]['layer_name'] =$layerTranslation[$v['layer_id']];
+            $subsidy_info[$k]['bet_all'] = $sum_bet_amount;
+            $subsidy_info[$k]['subsidy_all'] = $sum_subsidy;
+            $subsidy_info[$k]['bet_lottery'] = $lottery_bet_amount;
+            $subsidy_info[$k]['subsidy_lottery'] = $lottery_subsidy;
+            $subsidy_info[$k]['bet_video'] = $video_bet_amount;
+            $subsidy_info[$k]['subsidy_video'] = $video_subsidy;
+            $subsidy_info[$k]['bet_game'] = $game_bet_amount;
+            $subsidy_info[$k]['subsidy_game'] = $game_subsidy;
+            $subsidy_info[$k]['bet_sports'] = $sports_bet_amount;
+            $subsidy_info[$k]['subsidy_sports'] = $sports_subsidy;
+            $subsidy_info[$k]['bet_cards'] = $cards_bet_amount;
+            $subsidy_info[$k]['subsidy_cards'] = $cards_subsidy;
+            $subsidy_info[$k]['auto_deliver'] = 0;
+            $subsidy_info[$k]['deliver_staff_id'] = 0;
+            $subsidy_info[$k]['deliver_staff_name'] = '';
+            $subsidy_info[$k]['deliver_launch_time'] = 0;
+            $subsidy_info[$k]['deliver_finish_time'] = 0;
+
+        }
+
+        $mysqlReport->daily_layer_subsidy->load($subsidy_info, [], 'replace');
+
+        if (time() > $time + 86400) {
+            $adapter->plan('Report/Layer_subsidy', ['time' => $time + 86400], time(), 9);
+        }
+        if (time() < $time + 86400 + 3600) {
+            $adapter->plan('Report/Layer_subsidy', ['time' => $time], time() + 600, 9);
+        }
+    }
+}

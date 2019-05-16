@@ -1,0 +1,194 @@
+<?php
+namespace Site\Websocket\Cash\DepositSearch;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-入款查询-公司入款
+ * 参数：Cash/DepositSearch/DepositBank {}
+ * status:审核状态 1已出款 2入款失败 3等待确认
+ * */
+
+class DepositBank extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("money_deposit_select",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $staff_mysql = $config->data_staff;
+        $mysqlReport = $config->data_report;
+        $cache = $config->cache_site;
+        $layer_list = json_decode($cache->hget("LayerList","allLayer"));
+
+        $passage_bank_sql = "select passage_id,bank_name,bank_branch,account_number,account_name from deposit_passage_bank";
+        $passage_bank = iterator_to_array($staff_mysql->query($passage_bank_sql));
+
+        $passage_sql = "select passage_id,passage_name from deposit_passage";
+        $passage_list = iterator_to_array($staff_mysql->query($passage_sql));
+
+        $staffId = $context->getInfo('StaffId');
+        $data = $context->getData();
+        $user_key = $data["user_key"];
+        $deposit_serial = $data["deposit_serial"];
+        $bank_name = $data["bank_nam"];
+        $status = $data["status"];
+        $layer_id = $data["layer_id"];
+        $min_money = $data["min_money"];
+        $max_money = $data["max_money"];
+        $start_time = $data["start_time"];
+        $end_time = $data["end_time"];
+        $start_finish_time = isset($data['start_finish_time']) ? $data['start_finish_time'] : '';
+        $end_finish_time = isset($data['end_finish_time']) ? $data['end_finish_time'] : '';
+        $passage_id = isset($data['passage_id']) ? $data['passage_id'] : '';
+        $time = '';
+        $money = '';
+        $finish_time = '';
+        $statu = '';
+        if ($passage_id) {
+            $passage_id = " AND passage_id = '$passage_id'";
+        }
+
+        if ($start_finish_time && $end_finish_time) {
+            $start = strtotime($start_finish_time. "00:00:00");
+            $end = strtotime($end_finish_time." 23:59:59");
+            $finish_time = " AND launch_time BETWEEN ".$start." AND ".$end;
+        }
+
+        if(!empty($user_key)){
+            $user_key = " AND user_key = '".$user_key."'";
+        }
+        if(!empty($deposit_serial)){
+            $deposit_serial = " AND deposit_serial = ".$deposit_serial;
+        }
+        if(!empty($bank_name)){
+            $bank_name = " AND to_bank_name = '".$bank_name."'";
+        }
+
+        if(!empty($status)){
+            if($status == 1){
+                $statu = " AND finish_time>0";
+            }
+            if($status == 2){
+                $statu  = " AND reject_time>0";
+            }
+            if($status == 3){
+                $statu = " AND accept_time is null AND reject_time is null";
+            }
+        }
+        if(!empty($layer_id)){
+            $layer_id = " AND layer_id = ".intval($layer_id);
+        }
+        if(!empty($min_money)){
+            if (!is_numeric($min_money)){
+                $context->reply(["status"=>204,"msg"=>"最小金额类型错误"]);
+                return;
+            }
+            $money = " AND finish_money >=".$min_money;
+        }
+        if(!empty($max_money)){
+            if(!is_numeric($max_money)){
+                $context->reply(["status"=>205,"msg"=>"最大金额类型错误"]);
+                return;
+            }
+            $money = " AND finish_money =<".$max_money;
+        }
+        if(!empty($min_money) && !empty($max_money)){
+            $money = " AND finish_money BETWEEN ".$min_money." AND ".$max_money;
+        }
+        if(!empty($start_time) && !empty($end_time)){
+            $start = strtotime($start_time. "00:00:00");
+            $end = strtotime($end_time." 23:59:59");
+            $time = " AND launch_time BETWEEN ".$start." AND ".$end;
+        }
+        $limit = " LIMIT 100";
+        $total = 0;
+        $count = 0;
+        $deposit_list = [];
+        $sql = "SELECT deposit_serial,user_id,user_key,layer_id,launch_money,launch_time,from_bank_name,from_account_name,".
+            "to_bank_name,to_bank_branch,to_account_number,to_account_name,finish_time,finish_staff_id,cancel_staff_id,"."
+            cancel_time FROM deposit_bank_intact WHERE 1=1 ".$user_key.$deposit_serial.$bank_name.$statu.$layer_id.$money.$time.$finish_time.$passage_id.$limit;
+        $total_sql = "SELECT deposit_serial FROM deposit_bank_intact WHERE 1=1 ".$user_key.$deposit_serial.$bank_name.$statu.$layer_id.$money.$time.$finish_time.$passage_id.$limit;
+        $total_count = "SELECT sum(finish_money) as money FROM deposit_bank_intact WHERE 1=1 ".$user_key.$deposit_serial.$bank_name.$statu.$layer_id.$money.$time.$finish_time.$passage_id.$limit;
+
+        foreach ($config->deal_list as $deal){
+            $mysql = $config->__get("data_".$deal);
+            try{
+                $total += $mysql->execute($total_sql);
+                $list = iterator_to_array($mysql->query($sql));
+                foreach ($mysql->query($total_count) as $row){
+                    $count += $row["money"];
+                }
+                if(!empty($list)){
+                    foreach ($list as $key=>$val){
+                        $firstChargeSql = "select first_deposit_time from user_event where user_id=:user_id";
+                        $user = [":user_id"=>$val['user_id']];
+                        $firstChargeTime = '';
+                        foreach ($mysqlReport->query($firstChargeSql,$user) as $v) {
+                            $firstChargeTime = $v['first_deposit_time'];
+                        }
+                        if ($firstChargeTime && $val['finish_time'] == $firstChargeTime) {
+                                $is_firstCharge = 1;
+                        } elseif (empty($firstChargeTime)) {
+                            $is_firstCharge = 1;
+                        } else {
+                            $is_firstCharge = 2;
+                        }
+                        $deposit['is_firstCharge'] = $is_firstCharge;
+                        $deposit["deposit_serial"] = $val["deposit_serial"];
+                        $deposit["user_key"] = $val["user_key"];
+                        $deposit["user_id"] = $val["user_id"];
+                        $deposit["layer_name"] = !empty($context->getInfo($val["layer_id"]))?:"该层级被删除".$val["layer_id"];
+                        $deposit["launch_time"] = date("Y-m-d H:i:s",$val["launch_time"]);
+                        $deposit["launch_money"] = $val["launch_money"];
+                        $deposit["from_bank_name"] = $val["from_bank_name"];
+                        $deposit["from_account_name"] = $val["from_account_name"];
+                        $deposit["launch_money"] = $val["launch_money"];
+                        $deposit["to_bank_name"] = $val["to_bank_name"];
+                        $deposit["to_bank_branch"] = $val["to_bank_branch"];
+
+
+                        $deposit["to_account_number"] = $val["to_account_number"];
+                        $deposit["to_account_name"] = $val["to_account_name"];
+                        if($val["launch_time"]>0 && empty($val["finish_time"])){
+                            $deposit["status"] = "等待确认";
+                            $deposit["staff_name"] = "";
+                        }
+                        if($val["finish_time"]>0 ){
+                            $deposit["status"] = "已入款";
+                            $deposit["staff_name"] = $val["finish_staff_id"];
+                        }
+                        if($val["cancel_time"]>0){
+                            $deposit["status"] = "入款失败";
+                            $deposit["staff_name"] = $val["finish_staff_id"];
+                        }
+                        $deposit_list[] = $deposit;
+                    }
+                }
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"获取失败"]);
+                throw new \PDOException($e);
+            }
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'money_deposit_select',
+            ':detail' =>'查看了现金系统的入款查询的公司入款',
+        ];
+
+        $staff_mysql->execute($sql,$params);
+        $context->reply(["status"=>200,"msg"=>"获取成功","total"=>$total,"count"=>$count,'passage_list'=>$passage_list,'passage_bank'=>$passage_bank,"list"=>$deposit_list,'layer_list'=>$layer_list]);
+    }
+}

@@ -1,0 +1,78 @@
+<?php
+namespace App\Http\Fg;
+use Lib\Config;
+use Lib\Http\Context;
+use Lib\Http\Handler;
+use App\Http\Fg\Common as CommonGame;
+
+class PlayerBalance extends Handler
+{
+	/**
+	 * 获取用户金额 	http://127.0.0.1:8080/2/FgW/PlayerBalance
+	 * @param $username   游戏平台存储的用户的member_code
+	 * @param $partnerId  代理商账号
+	 * @param $nonceStr   随机字符串
+	 * @param $sign  	  通过签名算法计算得出的签名值
+	 */
+	public function onRequest(Context $context, Config $config)
+	{
+		$data = $context->requestPost();
+		parse_str($data, $params);
+		$username = isset($params['username']) ? $params['username'] : '';
+		$partnerId = isset($params['partnerId']) ? $params['partnerId'] : '';
+		$nonceStr = isset($params['nonceStr']) ? $params['nonceStr'] : '';
+		$sign = isset($params['sign']) ? $params['sign'] : '';
+		if (!$username || !$partnerId || !$nonceStr || !$sign) {
+			$this->responseJson($context, ['state'=>2,'message'=>'参数异常']);
+			return;
+		}
+		//签名参数
+		$params = [
+			'nonce_str' => $nonceStr,
+			'username' => $username,
+			'partnerId' => $partnerId,
+			'sign' => $sign
+		];
+		//生成签名
+		$common = new CommonGame();
+		$makeSign = $common->MakeSign($params);
+		//校验签名
+		if ($makeSign !== $sign) {
+			$this->responseJson($context, ['state'=>108,'message'=>'签名异常']);
+			return;
+		}
+
+		//判断用户是否存在
+		$mysql = $config->data_user;
+		$sql = "SELECT user_id FROM user_fungaming WHERE fg_member_code='$username' ";
+		foreach ($mysql->query($sql) as $v) {
+			$user_id = $v['user_id'];
+		}
+		if (!$user_id) {
+			$this->responseJson($context, ['state'=>105,'message'=>'用户名不存在']);
+			return;
+		}
+		//获取关联库
+		$sql = "SELECT deal_key FROM user_info WHERE user_id='$user_id'";
+		foreach ($mysql->query($sql) as $v) {
+			$deal_key = $v['deal_key'];
+		}
+		$deal_mysql = $config->__get("data_" . $deal_key);
+		//获取用户金额
+		$sqls = "SELECT money FROM account WHERE user_id='$user_id'";
+		foreach ($deal_mysql->query($sqls) as $v) {
+			$money = $v['money'];
+		}
+		//拼接返回数据
+		$res = [
+			'state' => 0,
+			'message' => 'OK',
+			'data' => [
+				'username' => $username,
+				'balance' => $money,
+				'walletTime' => date('Y-m-d H:i:s')
+			]
+		];
+		$this->responseJson($context, $res);
+	}
+}

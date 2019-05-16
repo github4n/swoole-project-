@@ -1,0 +1,92 @@
+<?php
+
+namespace Site\Websocket\Member\Level;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * User: blake
+ * Date: 19-4-23
+ * 会员层级设置-层级列表
+ * 参数：page：当前页数,num:每页显示数量,go_num:跳转页数,type(1自动升级,2手工升级)
+ *
+ */
+
+class ManualList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo('StaffGrade');
+        /*if ($StaffGrade != 0) {
+            $context->reply(['status' => 203, 'msg'=>'当前账号没有操作权限']);
+
+            return;
+        }   */
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array('user_layer_select', $auth)) {
+            $context->reply(['status' => 202, 'msg' => '你还没有操作权限']);
+
+            return;
+        }
+        $data = $context->getData();
+        $page = $data['page'] ?: 1;
+        $num = $data['num'] ?: 10;
+        $go_num = $data['go_num'];
+        $mysql = $config->data_user;
+        if (!is_numeric($page) && $page <= 0) {
+            $context->reply(['status' => 202, 'msg' => '当前页数不正确']);
+
+            return;
+        }
+        if (!is_numeric($num)) {
+            $context->reply(['status' => 203, 'msg' => '每页显示的数量不正确']);
+
+            return;
+        }
+        $limit = ' LIMIT '.($page - 1) * $num.','.$num;
+        if (!empty($go_num) && !is_numeric($go_num)) {
+            if ($go_num <= 0) {
+                $context->reply(['status' => 204, 'msg' => '跳转的页数不正确']);
+
+                return;
+            }
+            $limit = ' LIMIT '.($go_num - 1) * $num.','.$num;
+        }
+        //手动升级会员
+        $sql = 'SELECT layer_id,layer_name FROM layer_info WHERE layer_type=1'.' order by layer_id desc '.$limit;
+        $sqls = 'SELECT layer_id FROM layer_info WHERE layer_type=1';
+        $list = array();
+        $layer_list = array();
+        try {
+            foreach ($mysql->query($sql) as $rows) {
+                $list[] = $rows;
+            }
+            $totals = $mysql->execute($sqls);
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 400, 'msg' => '获取失败']);
+            throw new \PDOException($e);
+        }
+        if (!empty($list)) {
+            foreach ($list as $key => $val) {
+                $auth_sql = 'SELECT operate_key FROM layer_permit WHERE layer_id=:layer_id';
+                $auth_list = iterator_to_array($mysql->query($auth_sql, [':layer_id' => $val['layer_id']]));
+                $sql = 'SELECT user_id FROM user_info_intact WHERE layer_id=:layer_id';
+                $param = [':layer_id' => $val['layer_id']];
+                $total = $mysql->execute($sql, $param);
+                $layer_list[$key]['auth'] = $auth_list;
+                $layer_list[$key]['level_id'] = $val['layer_id'];
+                $layer_list[$key]['level_name'] = $val['layer_name'];
+                $layer_list[$key]['user_num'] = $total;
+            }
+        }
+        $context->reply([
+            'status' => 200,
+            'msg' => '获取成功',
+            'total' => $totals, //总记录数
+            'totalpage' => ceil($totals / $num), //总页数
+            'list' => $layer_list,
+        ]);
+    }
+}

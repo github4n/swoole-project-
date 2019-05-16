@@ -1,0 +1,46 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\LotteryBetSetting;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 投注额设置列表
+ * LotteryTicket/LotteryBetSetting/BetSettingList {"site_key":"site1"}
+ * 0-开放 1-停止交易 2-关闭前台 3-关闭前后
+ * */
+class BetSettingList extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("lottery_bet_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        $data = $context->getData();
+        $mysqlAdmin = $config->data_admin;
+        $site_key = isset($data["site_key"]) ? $data["site_key"] : "";
+        if(empty($site_key)){
+            $context->reply(["status"=>205,"msg"=>"请选择站点"]);
+            return;
+        }
+        $sql = "select model_key,game_key,play_key,bet_min,bet_max from site_play where site_key=:site_key";
+        $list = iterator_to_array($mysqlAdmin->query($sql,[":site_key"=>$site_key]));
+        $lottery_list = [];
+        if(!empty($list)){
+            foreach ($list as $key=>$val){
+                $lottery_list[$val["model_key"]][$val["game_key"]][][$val["play_key"]] = [
+                    "bet_min"=>$val["bet_min"],
+                    "bet_max"=>$val["bet_max"],
+                ];
+            }
+            $context->reply(["status"=>200,"msg"=>"获取成功","list"=>$lottery_list]);
+        }else{
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+        }
+
+    }
+}

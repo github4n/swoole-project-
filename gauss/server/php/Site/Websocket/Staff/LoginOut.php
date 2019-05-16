@@ -1,0 +1,52 @@
+<?php
+namespace Site\Websocket\Staff;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/** 
+ * @description: 退出登录接口
+ * @author： leo
+ * @date：   2019-04-08   
+ * @link：   Staff/LoginOut 
+ * @modifyAuthor: 交接负责人：暂无
+ * @modifyTime:  交接时间：暂无
+ * @returnData: json;
+ */
+
+class LoginOut extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo("StaffId");
+        $sql = "DELETE FROM staff_session WHERE staff_id = :staff_id";
+        $param = [":staff_id" => $staffId];
+        try {
+            $mysql = $config->data_staff;
+            $mysql->execute($sql, $param);
+            //记录退出日志
+            $sql = 'INSERT INTO operate_log SET staff_id = :staff_id, operate_key = :operate_key, detail = :detail, client_ip = :client_ip';
+            $params = [
+                ':staff_id' => $staffId,
+                ':client_ip' => ip2long($context->getClientAddr()),
+                ':operate_key' => 'self_logout',
+                ':detail' => "退出登录",
+            ];
+            $mysql->execute($sql, $params);
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 400, 'msg' => '退出失败']);
+            throw new \PDOException($e);
+        }
+        //删除相关的redis信息
+        $cache = $config->cache_site;
+        $clientKey = 'websocket:client:' . $context->clientId();
+        $cache->hdel($clientKey, "StaffId");
+        $cache->hdel($clientKey, "StaffGrade");
+        $cache->hdel($clientKey, "MasterId");
+        $cache->hdel($clientKey, "LeaderId");
+        $cache->hdel($clientKey, "StaffKey");
+        $cache->hdel($clientKey, "StaffAuth");
+        $context->reply(['status' => 200, 'msg' => '退出成功']);
+    }
+}

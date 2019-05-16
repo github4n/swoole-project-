@@ -1,0 +1,127 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\Setting;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 投注额设置保存  type:1普通设置  2批量设置  最大投注额和最小投注额分开设置
+ * 参数：LotteryTicket/Setting/BetSettingSave {"game_key":"dice_ah","play_key":["dice_any2","dice_any3","dice_merge2"],"bet_min":10,"bet_max":"","type":2}
+ * LotteryTicket/Setting/BetSettingSave {"game_key":"dice_ah","play_list":[{"bet_min":2,"bet_max":20,"play_key":"dice_any2"}],"type":1}
+ * */
+class BetSettingSave extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("ticket_setting_bet",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql=$config->data_public;
+        if(empty($data)){
+            $context->reply(["status"=>202,"msg"=>"没有提交任何修改数据"]);
+            return;
+        }
+        $game_key = $data['game_key'];
+        if(empty($game_key)){
+            $context->reply(["status"=>203,"msg"=>"彩种不能为空"]);
+            return;
+        }
+        $canUpdate=true;
+        if($data['type'] == 1){
+            if(empty($data['play_list'])){
+                $context->reply(["status"=>204,"msg"=>"编辑提交的数据不能为空"]);
+                return;
+            }else{
+                foreach ($data['play_list'] as $key=>$val){
+                    if(!is_numeric($val['bet_min'])){
+                        $context->reply(["status"=>208,"msg"=>"最小投注额类型不正确"]);
+                        return;
+                    }
+                    if(!is_numeric($val['bet_max'])){
+                        $context->reply(["status"=>208,"msg"=>"最大投注额类型不正确"]);
+                        return;
+                    }
+                    try{
+                        $mysql=$config->data_public;
+                        $sql = "UPDATE lottery_game_play SET bet_min=:bet_min,bet_max=:bet_max WHERE play_key = :play_key AND game_key=:game_key";
+                        $param = [
+                            ":play_key"=>$val['play_key'],
+                            ":bet_min"=>$val['bet_min'],
+                            ":bet_max"=>$val['bet_max'],
+                            ":game_key"=>$game_key
+                        ];
+                        $mysql->execute($sql, $param);
+                    } catch (\PDOException $e) {
+                        $context->reply(["status"=>400,"msg"=>"设置失败"]) ;
+                        throw new \PDOException($e);
+                    }
+                }
+            }
+        }else if($data['type']==2){
+            $bet_max = $data["bet_max"] ;
+            $bet_min = $data["bet_min"] ;
+            if(empty($data['play_key'])){
+                $context->reply(["status"=>205,"msg"=>"玩法类型不能为空"]);
+                return;
+            }
+            if(!is_array($data['play_key'])){
+                $context->reply(["status"=>213,"msg"=>"玩法参数类型错误"]);
+                return;
+            }
+            if(empty($bet_max) && empty($bet_min)){
+                $context->reply(["status"=>219,"msg"=>"请提交对应的数据"]);
+                return;
+            }
+            if(!empty($bet_max) && !empty($bet_min)){
+                $context->reply(["status"=>220,"msg"=>"投注参数错误"]);
+                return;
+            }
+            foreach ($data['play_key'] as $val){
+                if(!empty($bet_max) && empty($bet_min)){
+                    $sqls = "UPDATE lottery_game_play SET bet_max=:bet_max WHERE play_key = :play_key AND game_key=:game_key";
+                    $params = [
+                        ":play_key"=>$val,
+                        ":bet_max"=>$bet_max,
+                        ":game_key"=>$game_key
+                    ];
+                }
+                if(empty($bet_max) && !empty($bet_min)){
+                    $sqls = "UPDATE lottery_game_play SET bet_min=:bet_min WHERE play_key = :play_key AND game_key=:game_key";
+                    $params = [
+                        ":play_key"=>$val,
+                        ":bet_min"=>$bet_min,
+                        ":game_key"=>$game_key
+                    ];
+                }
+                try{
+
+                    $mysql->execute($sqls, $params);
+                } catch (\PDOException $e) {
+                    $context->reply(["status"=>400,"msg"=>"设置失败"]) ;
+                    throw new \PDOException($e);
+                }
+            }
+        }else{
+            $context->reply(["status"=>206,"msg"=>"编辑类型不合法"]);
+            return;
+        }
+        if ($canUpdate){
+            //记录修改日志
+            $sqlss = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';;
+            $param = [
+                ':admin_id' => $context->getInfo('adminId'),
+                ':operate_key' => "ticket_setting_bet",
+                ':detail' => "修改了投注额"
+            ];
+            $mysqls = $config->data_admin;
+            $mysqls->execute($sqlss,$param);
+            $context->reply(['status' => 200, 'msg' => '设置成功']);
+        }
+        else
+            $context->reply(['status' => 400, 'msg' => '设置失败']);
+    }
+}

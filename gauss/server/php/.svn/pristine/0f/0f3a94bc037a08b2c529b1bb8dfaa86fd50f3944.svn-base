@@ -1,0 +1,45 @@
+<?php
+namespace Site\Websocket\Website\Message;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 网站管理--消息管理--会员私信
+ * Website/Message/PrivateDetail {"user_message_id":1}
+ * */
+
+class PrivateDetail extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $user_message_id = $data["user_message_id"];
+        if(!is_numeric($user_message_id)){
+            $context->reply(["status"=>205,"msg"=>"参数类型错误"]);
+            return;
+        }
+        $sql = "SELECT title,content FROM user_message WHERE user_message_id = :user_message_id";
+        $param = [":user_message_id"=>$user_message_id];
+        $info = array();
+        try{
+            foreach ($mysql->query($sql,$param) as $row){
+                $info = $row ;
+            }
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        if(empty($info)){
+            $context->reply(["status"=>206,"msg"=>"检查参数是否正确"]);
+            return;
+        }
+        $context->reply(["status"=>200,"msg"=>"获取成功","info"=>$info]);
+    }
+}

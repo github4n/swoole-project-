@@ -1,0 +1,77 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: lucy
+ * Date: 19-3-22
+ * Time: 上午10:03
+ */
+namespace App\Websocket\BetRecord;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+// BetRecord/BetExternalGame {"interface_key":"fg","status":0}
+class BetExternalGame extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //interface_key：选择游戏三方平台的类型
+
+        $data = $context->getData();
+        $interface_key = $data['interface_key'] ?? '';
+
+        if (empty($interface_key)) {
+            $context->reply(['status' => 201, 'msg' => '三方平台Key不能为空']);
+            return;
+        }
+        $user_id = $context->getInfo('UserId');
+
+        $deal_key = $context->getInfo('DealKey');
+        $mysql = $config->__get("data_" . $deal_key);
+        switch ($interface_key) {
+            case 'fg':
+
+                // 查询订单
+                $param = [':user_id'=>$user_id];
+                $sql = "SELECT audit_serial,user_id,audit_amount,fg_time,fg_game_id,fg_gt,fg_id,fg_data FROM external_audit_fungaming_intact WHERE user_id=:user_id ORDER BY fg_time DESC";
+
+                $result=[];
+
+                foreach ($mysql->query($sql, $param) as $row){
+                    $winloss_amount=json_decode($row['fg_data'],true);
+                    $row['fg_game_id']='fg_'.$row['fg_game_id'];
+                    unset($row['fg_data']);
+                    if($row['fg_gt']=='fish'){
+                        $winloss_amount=$winloss_amount['fish_dead_chips']-$winloss_amount['bullet_chips'];
+                    }else{
+
+                        $winloss_amount=$winloss_amount['result'];
+                    }
+                    $row['winloss_amount']=$winloss_amount;
+                    $result[]=$row;
+                }
+
+                //返回数据
+                $context->reply(['status' => 200, 'msg' => '获取成功', 'data' =>$result]);
+                break;
+            case 'ag':
+
+
+                break;
+            case 'ky':
+
+
+                break;
+            case 'lb':
+
+
+                break;
+            default:
+                $context->reply(['status'=>404,'msg'=>'非法参数']);
+                return;
+                break;
+        }
+    }
+
+}

@@ -1,0 +1,138 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 18-12-26
+ * Time: 下午1:01.
+ */
+
+namespace Site\Task\Lottery\Settle;
+
+class ladder extends Base
+{
+    //准备结算数据
+    private $number;
+    private $from;
+    private $set;
+    private $step;
+    private $to;
+
+    protected function loadNumber(array $number)
+    {
+        $this->number = $number;
+
+        // 计算数字是否出现，为检查起点做准备
+        $this->from = $number['normal1'];
+
+        // 计算组合结果
+        $this->set = $number['normal1'] * 10 + $number['special1'];
+
+        //计算步数
+        $this->step = $number['special1'];
+
+        // 计算终点
+        $this->to = [];
+        if (($number['special1'] + $number['normal1']) % 2 == 0) {
+            $to = 'even';
+        } else {
+            $to = 'odd';
+        }
+        $this->to = $to;
+    }
+
+    //起点
+    public function ladder_from(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            //截取win Key最后的号码
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($this->from == $num) {
+                $result = 2;
+                $bonus += $rule['price'] * $this->getRate('ladder_from', $n, $rule['rebate_rate']);
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //组合
+    public function ladder_set(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            //截取win Key最后的号码
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($this->set == $num) {
+                $result = 2;
+                $bonus += $rule['price'] * $this->getRate('ladder_set', $n, $rule['rebate_rate']);
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //步数
+    public function ladder_step(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            //截取win Key最后的号码
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($this->step == $num) {
+                $result = 2;
+                $bonus += $rule['price'] * $this->getRate('ladder_step', $n, $rule['rebate_rate']);
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+
+    //终点
+    public function ladder_to(array $rule): array
+    {
+        $result = 1;
+        $bonus = 0;
+        foreach ($rule['number'] as $n) {
+            //截取win Key最后的号码
+            $num = substr($n, strripos($n, '_') + 1);
+            if ($this->to == $num) {
+                $result = 2;
+                $bonus += $rule['price'] * $this->getRate('ladder_to', $n, $rule['rebate_rate']);
+            }
+        }
+
+        return [
+            'rule_id' => $rule['rule_id'],
+            'result' => $result,
+            'bet' => $rule['bet_launch'],
+            'bonus' => $bonus,
+            'rebate' => substr(sprintf('%.3f', $rule['bet_launch'] * $rule['rebate_rate'] / 100), 0, -1),
+            'revert' => 0,
+        ];
+    }
+}

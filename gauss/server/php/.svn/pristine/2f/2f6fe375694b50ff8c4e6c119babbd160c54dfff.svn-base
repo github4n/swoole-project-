@@ -1,0 +1,67 @@
+<?php
+namespace Plat\Websocket\Website\ExternalGame;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ *Website\ExternalGame\SiteLotterySave {"site_key":"site1","game_list":[{"game_key":"game_fish","acceptable":"0"},{"game_key":"game_mg","acceptable":"1"},{"game_key":"sports_sb","acceptable":"1"},{"game_key":"video_ag","acceptable":"0"},{"game_key":"video_mo","acceptable":"0"}]}
+ * site_key 站点
+ * game_key 外接口key
+ * acceptable 0(关)or 1(开)
+ * */
+
+class SiteLotterySave extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("site_lottery_select", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $adminId = $context->getInfo('adminId');
+        $data = $context->getData();
+        $site_key = $data['site_key'] ;
+        $game_list = $data['game_list'];
+
+        if(empty($site_key)) {
+            $context->reply(["status"=>202,"msg"=>"站点不能为空"]);
+            return;
+        }
+        $sitemysql = $config->data_admin;
+        $sitesql = "select status from site where site_key = '$site_key'";
+        $siteData = $sitemysql->query($sitesql);
+        if ($siteData == 0 || $siteData == 1){
+            $context->reply(["status"=>203,"msg"=>"站点非关闭状态不能修改"]);
+            return;
+        }
+        foreach ($game_list as $row){
+            $acceptable = $row['acceptable'];
+            $game_key = $row['game_key'];
+            if (!is_numeric($acceptable)) {
+                $context->reply(["status" => 204, "msg" => "第三方开关数据类型错误"]);
+                return;
+            }
+            if (empty($game_key)) {
+                $context->reply(["status" => 205, "msg" => "外接口名不能为空"]);
+                return;
+            }
+            $updatesql = "Update site_external_game SET acceptable='$acceptable' where site_key='$site_key' and game_key = '$game_key' ";
+
+            $mysql = $config->data_admin;
+
+            try{
+                $mysql->execute($updatesql);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                throw new \PDOException($e);
+            }
+        }
+
+        $context->reply([
+            'status'=>200,
+            'msg'=>'修改成功'
+        ]);
+    }
+}

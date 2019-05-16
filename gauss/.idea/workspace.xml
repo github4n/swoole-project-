@@ -1,0 +1,892 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="b395c65b-9689-4c0f-864a-b98b2dfbd80b" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/server/php/App/Http/Fg" afterDir="true" />
+      <change afterPath="$PROJECT_DIR$/server/php/App/Task/ExternalGame/Fg" afterDir="true" />
+      <change afterPath="$PROJECT_DIR$/server/php/App/Task/ExternalGame/GameAmountTransferNotify.php" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server/php/App/Websocket/ExternalGame/Test.php" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server/php/App/Websocket/User/AmountTransfer" afterDir="true" />
+      <change afterPath="$PROJECT_DIR$/server/php/App/Websocket/User/AmountTransfer/TransferList.php" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test/mysql/deal.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Http/Fg/Common.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Http/Fg/Common.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Http/Ping.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Http/Ping.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Task/ExternalGame/Fg/CreatePlayer.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Task/ExternalGame/Fg/CreatePlayer.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Task/Lottery/Game.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Task/Lottery/Game.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Task/Lottery/GamePlay.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Task/Lottery/GamePlay.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Task/Lottery/GameWin.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Task/Lottery/GameWin.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Task/Lottery/Number.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Task/Lottery/Number.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Task/Lottery/Period.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Task/Lottery/Period.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Task/Lottery/Record.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Task/Lottery/Record.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Task/Lottery/Trend.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Task/Lottery/Trend.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Task/NotifySite.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Task/NotifySite.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Websocket/BetRecord/BetAll.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Websocket/BetRecord/BetAll.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Websocket/Betting/FollowUpBetting.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Websocket/Betting/FollowUpBetting.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Websocket/ExternalGame/GameAmountTransfer.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Websocket/ExternalGame/GameAmountTransfer.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Websocket/User/Agent/AddAgent.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Websocket/User/Agent/AddAgent.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/App/Websocket/User/Withdraw/WithdrawBank.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/App/Websocket/User/Withdraw/WithdrawBank.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Lib/Data/Table.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Lib/Data/Table.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Plat/Task/ExternalGame/ky.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Plat/Task/ExternalGame/ky.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Plat/Task/ListenSite.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Plat/Task/ListenSite.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Plat/Task/NotifySite.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Plat/Task/NotifySite.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Plat/Websocket/Admin/Login.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Plat/Websocket/Admin/Login.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Plat/Websocket/Staff/StaffAddUpdate.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Plat/Websocket/Staff/StaffAddUpdate.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Task/Fg/WinLoss.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Task/Fg/WinLoss.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Task/ListenApp.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Task/ListenApp.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Task/Lottery/Lottery.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Task/Lottery/Lottery.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Task/System/Dividend.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Task/System/Dividend.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundAdd.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundAdd.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundDelete.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundDelete.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundList.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundList.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/SlaveSearch.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/SlaveSearch.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Account/Logs/LogsExport.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Account/Logs/LogsExport.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffDelete.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffDelete.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffEdit.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffEdit.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffUpdate.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffUpdate.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/AgentRebate/AgentLayer/ManualList.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/AgentRebate/AgentLayer/ManualList.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/AgentRebate/Brokerage/BrokerageSearch.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/AgentRebate/Brokerage/BrokerageSearch.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Member/Inspect/MemberVerify.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Member/Inspect/MemberVerify.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/ReportQuery/MonthlyReport.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/ReportQuery/MonthlyReport.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Staff/LoginOut.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Staff/LoginOut.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Staff/ModifyPassWord.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Staff/ModifyPassWord.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/Staff/ResumeLogin.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/Staff/ResumeLogin.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/System/Logs/LogsExport.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/System/Logs/LogsExport.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/System/Logs/LogsList.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/System/Logs/LogsList.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelList.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelList.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelMigrate.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelMigrate.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelUpdate.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelUpdate.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMajorDelete.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMajorDelete.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/FullSite.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/FullSite.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test/job/daemon.php" beforeDir="false" afterPath="$PROJECT_DIR$/test/job/daemon.php" afterDir="false" />
+    </list>
+    <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="DatabaseView">
+    <option name="SHOW_INTERMEDIATE" value="true" />
+    <option name="GROUP_DATA_SOURCES" value="true" />
+    <option name="GROUP_SCHEMA" value="true" />
+    <option name="GROUP_CONTENTS" value="false" />
+    <option name="SORT_POSITIONED" value="false" />
+    <option name="SHOW_EMPTY_GROUPS" value="false" />
+    <option name="AUTO_SCROLL_FROM_SOURCE" value="false" />
+    <option name="HIDDEN_KINDS">
+      <set />
+    </option>
+    <expand />
+    <select />
+  </component>
+  <component name="FavoritesManager">
+    <favorites_list name="gauss" />
+  </component>
+  <component name="FileEditorManager">
+    <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundAdd.php">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-567">
+              <caret line="17" column="6" selection-start-line="17" selection-start-column="6" selection-end-line="17" selection-end-column="6" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundDelete.php">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="405">
+              <caret line="17" column="6" selection-start-line="17" selection-start-column="6" selection-end-line="17" selection-end-column="6" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundList.php">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="672">
+              <caret line="45" column="13" selection-start-line="45" selection-start-column="13" selection-end-line="45" selection-end-column="13" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+    </leaf>
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="HTML File" />
+      </list>
+    </option>
+  </component>
+  <component name="FindInProjectRecents">
+    <findStrings>
+      <find>staff_grade</find>
+      <find>$staffInfo</find>
+      <find>权限</find>
+      <find>StaffAuth</find>
+      <find>$staff_level</find>
+      <find>tax_rate</find>
+      <find>operate</find>
+      <find>查看</find>
+      <find>$param</find>
+      <find>$context-&gt;reply</find>
+      <find>daily_user_lottery</find>
+      <find>$deal_key</find>
+      <find>$userinfo</find>
+      <find>user_info</find>
+      <find>staff_struct_minor</find>
+      <find>$major_id</find>
+      <find>$total</find>
+      <find>$user_num</find>
+      <find>rebate_amount</find>
+      <find>$masterId</find>
+      <find>$master_id</find>
+      <find>$mysqls</find>
+      <find>dividend_settle_major</find>
+      <find>$staffId</find>
+      <find>bet_amount</find>
+      <find>dividend_settle</find>
+      <find>$layers</find>
+      <find>$cache-&gt;hdel</find>
+      <find>支付</find>
+      <find>SELECT</find>
+    </findStrings>
+    <replaceStrings>
+      <replace />
+    </replaceStrings>
+    <dirStrings>
+      <dir>$PROJECT_DIR$/server/php/Plat</dir>
+      <dir>$PROJECT_DIR$/server/php/Site/Websocket/Cash</dir>
+      <dir>$PROJECT_DIR$/server/php/App/Websocket/User</dir>
+      <dir>$PROJECT_DIR$/server/php/App/Task</dir>
+      <dir>$PROJECT_DIR$/server/php/App</dir>
+      <dir>$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel</dir>
+      <dir>$PROJECT_DIR$/server</dir>
+      <dir>$PROJECT_DIR$/server/php/Plat/Websocket</dir>
+      <dir>$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting</dir>
+      <dir>$PROJECT_DIR$/server/php/Site/Websocket/Member</dir>
+      <dir>$PROJECT_DIR$/server/php/Site/Websocket/System</dir>
+      <dir>$PROJECT_DIR$/test/mysql</dir>
+      <dir>$PROJECT_DIR$/server/php/Site</dir>
+      <dir>$PROJECT_DIR$/server/php</dir>
+      <dir>$PROJECT_DIR$/server/php/Site/Websocket</dir>
+    </dirStrings>
+  </component>
+  <component name="IdeDocumentHistory">
+    <option name="CHANGED_PATHS">
+      <list>
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundAdd.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundDelete.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundList.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/Logs/LogsExport.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffUpdate.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffAdd.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffEdit.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Task/Lottery/Lottery.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/AgentRebate/Brokerage/BrokerageSearch.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffAddUpdate.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelEdit.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/AgentAdd.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/MajorAdd.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/MinorAdd.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendAgentEdit.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMajorEdit.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMinorEdit.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/FullSite.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/Logs/LogsList.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/SlaveSearch.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendAgentAdd.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendAgentDelete.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendAgentUpdate.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMajorAdd.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMajorDelete.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMajorUpdate.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMinorAdd.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMinorDelete.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMinorUpdate.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/StaffSearch.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/Logs/LogsList.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffList.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Task/Fg/Bet.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemReport/MajorShareholder.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemReport/Distribute.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/MajorShareholder.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/Shareholder.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/GeneraAgent.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelMigrate.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/FullSiteUpdate.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelDelete.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemReport/GeneraAgent.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/ReportQuery/MonthlyReport.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Member/MemberList/MemberList.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/ShareHolder.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/GeneraAgent.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/MajorShareHolder.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/Staff/Login.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemReport/PersonalBonus.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Task/System/Dividend.php" />
+        <option value="$PROJECT_DIR$/server/php/Site/Websocket/System/SystemReport/Shareholder.php" />
+      </list>
+    </option>
+  </component>
+  <component name="PhpServers">
+    <servers />
+  </component>
+  <component name="ProjectFrameBounds" extendedState="6">
+    <option name="x" value="473" />
+    <option name="y" value="421" />
+    <option name="width" value="1389" />
+    <option name="height" value="789" />
+  </component>
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="2" id="Add" />
+    <ConfirmationsSetting value="2" id="Remove" />
+  </component>
+  <component name="ProjectView">
+    <navigator proportions="" version="1">
+      <foldersAlwaysOnTop value="true" />
+    </navigator>
+    <panes>
+      <pane id="ProjectPane" />
+      <pane id="Scope" />
+    </panes>
+  </component>
+  <component name="PropertiesComponent">
+    <property name="DefaultHtmlFileTemplate" value="HTML File" />
+    <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="nodejs_package_manager_path" value="npm" />
+    <property name="settings.editor.selected.configurable" value="editor.preferences.fonts.default" />
+  </component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/server/php/Plat/Http" />
+    </key>
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/server/php/App/Websocket/BetRecord" />
+      <recent name="$PROJECT_DIR$/server/php/App/Websocket" />
+    </key>
+  </component>
+  <component name="RunDashboard">
+    <option name="ruleStates">
+      <list>
+        <RuleState>
+          <option name="name" value="ConfigurationTypeDashboardGroupingRule" />
+        </RuleState>
+        <RuleState>
+          <option name="name" value="StatusDashboardGroupingRule" />
+        </RuleState>
+      </list>
+    </option>
+  </component>
+  <component name="RunManager" selected="PHP Script.Common.php">
+    <configuration name="test.html" type="JavascriptDebugType" temporary="true" nameIsGenerated="true" uri="http://localhost:63342/gauss/server/php/App/Http/test.html" useBuiltInWebServerPort="true">
+      <method v="2" />
+    </configuration>
+    <configuration name="Common.php" type="PhpLocalRunConfigurationType" factoryName="PHP Console" temporary="true" path="$PROJECT_DIR$/server/php/App/Http/Fg/Common.php">
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="PHP Script.Common.php" />
+        <item itemvalue="JavaScript Debug.test.html" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SvnConfiguration" cleanupOnStartRun="true">
+    <configuration>$USER_HOME$/.subversion</configuration>
+    <supportedVersion>125</supportedVersion>
+  </component>
+  <component name="SvnFileUrlMappingImpl">
+    <option name="myMappingRoots">
+      <list>
+        <SvnCopyRootSimple>
+          <option name="myVcsRoot" value="$PROJECT_DIR$" />
+          <option name="myCopyRoot" value="$PROJECT_DIR$" />
+        </SvnCopyRootSimple>
+        <SvnCopyRootSimple>
+          <option name="myVcsRoot" value="$PROJECT_DIR$" />
+          <option name="myCopyRoot" value="$PROJECT_DIR$/server/php" />
+        </SvnCopyRootSimple>
+        <SvnCopyRootSimple>
+          <option name="myVcsRoot" value="$PROJECT_DIR$" />
+          <option name="myCopyRoot" value="$PROJECT_DIR$/test" />
+        </SvnCopyRootSimple>
+      </list>
+    </option>
+    <option name="myMoreRealMappingRoots">
+      <list>
+        <SvnCopyRootSimple>
+          <option name="myVcsRoot" value="$PROJECT_DIR$" />
+          <option name="myCopyRoot" value="$PROJECT_DIR$" />
+        </SvnCopyRootSimple>
+        <SvnCopyRootSimple>
+          <option name="myVcsRoot" value="$PROJECT_DIR$" />
+          <option name="myCopyRoot" value="$PROJECT_DIR$/server/php" />
+        </SvnCopyRootSimple>
+        <SvnCopyRootSimple>
+          <option name="myVcsRoot" value="$PROJECT_DIR$" />
+          <option name="myCopyRoot" value="$PROJECT_DIR$/test" />
+        </SvnCopyRootSimple>
+      </list>
+    </option>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="b395c65b-9689-4c0f-864a-b98b2dfbd80b" name="Default Changelist" comment="" />
+      <created>1551430311148</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1551430311148</updated>
+      <workItem from="1551430314196" duration="2501000" />
+      <workItem from="1551433953785" duration="26000" />
+      <workItem from="1551668120999" duration="1990000" />
+      <workItem from="1551780255070" duration="2507000" />
+      <workItem from="1551835023925" duration="37000" />
+      <workItem from="1551844091871" duration="2558000" />
+      <workItem from="1551847556407" duration="3734000" />
+      <workItem from="1551857515165" duration="464000" />
+      <workItem from="1551858001152" duration="910000" />
+      <workItem from="1551859841956" duration="23546000" />
+      <workItem from="1552006357145" duration="28388000" />
+      <workItem from="1552265593249" duration="23360000" />
+      <workItem from="1552351487603" duration="2870000" />
+      <workItem from="1552354391235" duration="26865000" />
+      <workItem from="1552438268393" duration="25193000" />
+      <workItem from="1552525929036" duration="17650000" />
+      <workItem from="1552610832891" duration="1185000" />
+      <workItem from="1552612583552" duration="3118000" />
+      <workItem from="1552632278251" duration="12101000" />
+      <workItem from="1552645250619" duration="2275000" />
+      <workItem from="1552869695548" duration="12253000" />
+      <workItem from="1552882587494" duration="484000" />
+      <workItem from="1552883100567" duration="3259000" />
+      <workItem from="1552894222568" duration="1890000" />
+      <workItem from="1552956541973" duration="2548000" />
+      <workItem from="1552973581003" duration="10881000" />
+      <workItem from="1553043304884" duration="63000" />
+      <workItem from="1553043494755" duration="7906000" />
+      <workItem from="1553146480620" duration="4130000" />
+      <workItem from="1553215795871" duration="12374000" />
+      <workItem from="1553251981415" duration="3011000" />
+      <workItem from="1553315829107" duration="5652000" />
+      <workItem from="1553495968376" duration="7979000" />
+      <workItem from="1553564473119" duration="14677000" />
+      <workItem from="1553648485240" duration="22887000" />
+      <workItem from="1553681332976" duration="3300000" />
+      <workItem from="1553734347788" duration="2814000" />
+      <workItem from="1553737715541" duration="3464000" />
+      <workItem from="1553742370166" duration="21613000" />
+      <workItem from="1553821250743" duration="10998000" />
+      <workItem from="1553832548777" duration="12671000" />
+      <workItem from="1553852196551" duration="5279000" />
+      <workItem from="1553911030395" duration="6411000" />
+      <workItem from="1553921043416" duration="1023000" />
+      <workItem from="1554079809019" duration="15067000" />
+      <workItem from="1554103583952" duration="9860000" />
+      <workItem from="1554166559540" duration="19436000" />
+      <workItem from="1554252690824" duration="25064000" />
+      <workItem from="1554339091538" duration="26712000" />
+      <workItem from="1554425505565" duration="11297000" />
+      <workItem from="1554684289972" duration="14032000" />
+      <workItem from="1554707501624" duration="6200000" />
+      <workItem from="1554714493902" duration="7576000" />
+      <workItem from="1554771269575" duration="25866000" />
+      <workItem from="1554808783551" duration="126000" />
+      <workItem from="1554857428753" duration="29182000" />
+      <workItem from="1554944128237" duration="14739000" />
+      <workItem from="1555030453725" duration="14229000" />
+      <workItem from="1555289105019" duration="25703000" />
+      <workItem from="1555407948700" duration="657000" />
+      <workItem from="1555489507069" duration="736000" />
+      <workItem from="1555551219980" duration="2193000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TimeTrackingManager">
+    <option name="totallyTimeSpent" value="607520000" />
+  </component>
+  <component name="ToolWindowManager">
+    <frame x="0" y="-2" width="2560" height="1442" extended-state="6" />
+    <editor active="true" />
+    <layout>
+      <window_info id="Favorites" order="0" sideWeight="0.50053936" side_tool="true" weight="0.20831025" />
+      <window_info active="true" content_ui="combo" id="Project" order="1" sideWeight="0.49946064" visible="true" weight="0.25278664" />
+      <window_info id="Structure" order="2" side_tool="true" weight="0.25" />
+      <window_info anchor="bottom" id="Terminal" order="0" weight="0.32901832" />
+      <window_info anchor="bottom" id="Database Changes" order="1" />
+      <window_info anchor="bottom" id="Event Log" order="2" side_tool="true" weight="0.32901832" />
+      <window_info anchor="bottom" id="Version Control" order="3" />
+      <window_info anchor="bottom" id="Docker" order="4" weight="0.32901832" />
+      <window_info anchor="bottom" id="Message" order="5" />
+      <window_info anchor="bottom" id="Find" order="6" weight="0.32901832" />
+      <window_info anchor="bottom" id="Run" order="7" />
+      <window_info anchor="bottom" id="Debug" order="8" weight="0.4" />
+      <window_info anchor="bottom" id="Cvs" order="9" weight="0.25" />
+      <window_info anchor="bottom" id="Inspection" order="10" weight="0.4" />
+      <window_info anchor="bottom" id="TODO" order="11" />
+      <window_info anchor="bottom" id="Messages" order="12" weight="0.32901832" />
+      <window_info anchor="right" id="Database" order="0" weight="0.32963988" />
+      <window_info anchor="right" id="Commander" internal_type="SLIDING" order="1" type="SLIDING" weight="0.4" />
+      <window_info anchor="right" id="Ant Build" order="2" weight="0.25" />
+      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="3" weight="0.25" />
+    </layout>
+    <layout-to-restore>
+      <window_info id="Favorites" order="0" sideWeight="0.50053936" side_tool="true" weight="0.20831025" />
+      <window_info active="true" content_ui="combo" id="Project" order="1" sideWeight="0.49946064" visible="true" weight="0.19501385" />
+      <window_info id="Structure" order="2" side_tool="true" weight="0.25" />
+      <window_info anchor="bottom" id="Terminal" order="0" />
+      <window_info anchor="bottom" id="Database Changes" order="1" />
+      <window_info anchor="bottom" id="Event Log" order="2" side_tool="true" weight="0.32901832" />
+      <window_info anchor="bottom" id="Version Control" order="3" />
+      <window_info anchor="bottom" id="Docker" order="4" show_stripe_button="false" />
+      <window_info anchor="bottom" id="Message" order="5" />
+      <window_info anchor="bottom" id="Find" order="6" />
+      <window_info anchor="bottom" id="Run" order="7" />
+      <window_info anchor="bottom" id="Debug" order="8" weight="0.4" />
+      <window_info anchor="bottom" id="Cvs" order="9" weight="0.25" />
+      <window_info anchor="bottom" id="Inspection" order="10" weight="0.4" />
+      <window_info anchor="bottom" id="TODO" order="11" />
+      <window_info anchor="right" id="Database" order="0" weight="0.32963988" />
+      <window_info anchor="right" id="Commander" internal_type="SLIDING" order="1" type="SLIDING" weight="0.4" />
+      <window_info anchor="right" id="Ant Build" order="2" weight="0.25" />
+      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="3" weight="0.25" />
+    </layout-to-restore>
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="1" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/App/Http/Ping.php</url>
+          <line>3</line>
+          <option name="timeStamp" value="1" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/Site/Websocket/Game/GameList.php</url>
+          <line>3</line>
+          <option name="timeStamp" value="2" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/App/Websocket/Game/GameList.php</url>
+          <line>3</line>
+          <option name="timeStamp" value="3" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/Lib/Http/Handler.php</url>
+          <line>3</line>
+          <option name="timeStamp" value="4" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/App/Websocket/ExternalGame/FG/FgGameList.php</url>
+          <line>2</line>
+          <option name="timeStamp" value="5" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/App/Http/Fg/Bet.php</url>
+          <line>2</line>
+          <option name="timeStamp" value="6" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/App/Websocket/User/Agent/AddAgent.php</url>
+          <line>3</line>
+          <option name="timeStamp" value="7" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/App/Websocket/User/AccountDetails/AccountDetails.php</url>
+          <line>110</line>
+          <option name="timeStamp" value="8" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/Plat/Task/Lottery/Period.php</url>
+          <line>210</line>
+          <option name="timeStamp" value="9" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/Plat/Task/Lottery/Period.php</url>
+          <line>289</line>
+          <option name="timeStamp" value="10" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/Site/Task/Report/UserDeal.php</url>
+          <line>15</line>
+          <option name="timeStamp" value="11" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/Plat/Task/Fg/WinLoss.php</url>
+          <line>10</line>
+          <option name="timeStamp" value="12" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="php">
+          <url>file://$PROJECT_DIR$/server/php/Plat/Task/ExternalGame/ky.php</url>
+          <line>96</line>
+          <option name="timeStamp" value="15" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
+  <component name="editorHistoryManager">
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendMajorUpdate.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="888">
+          <caret line="79" column="17" lean-forward="true" selection-start-line="79" selection-start-column="17" selection-end-line="79" selection-end-column="17" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Task/RemoveSession.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="135">
+          <caret line="7" column="6" selection-start-line="7" selection-start-column="6" selection-end-line="7" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Task/NotifyPlat.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="135">
+          <caret line="7" column="6" selection-start-line="7" selection-start-column="6" selection-end-line="7" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Task/NotifyClient.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="135">
+          <caret line="7" column="6" selection-start-line="7" selection-start-column="6" selection-end-line="7" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Lib/NameBuilder.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="81">
+          <caret line="3" column="6" selection-start-line="3" selection-start-column="6" selection-end-line="3" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Lib/Loader.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="135">
+          <caret line="5" column="6" selection-start-line="5" selection-start-column="6" selection-end-line="5" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Lib/Config.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="81">
+          <caret line="3" column="6" selection-start-line="3" selection-start-column="6" selection-end-line="3" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Lib/Calender.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="81">
+          <caret line="3" column="6" selection-start-line="3" selection-start-column="6" selection-end-line="3" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Lib/Cache.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="945">
+          <caret line="35" column="43" selection-start-line="35" selection-start-column="39" selection-end-line="35" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Lib/Data/Table.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="108">
+          <caret line="4" column="6" selection-start-line="4" selection-start-column="6" selection-end-line="4" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Lib/Data/PDOWrapper.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="135">
+          <caret line="6" column="15" selection-start-line="6" selection-start-column="15" selection-end-line="6" selection-end-column="15" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/Account/Logs/LogsList.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1053">
+          <caret line="41" column="19" lean-forward="true" selection-start-line="41" selection-start-column="19" selection-end-line="41" selection-end-column="19" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/Account/Staff/StaffList.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="41">
+          <caret line="60" column="36" lean-forward="true" selection-start-line="60" selection-start-column="36" selection-end-line="60" selection-end-column="36" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Plat/Http/Fg/Bet.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-864">
+          <caret line="7" column="6" selection-start-line="7" selection-start-column="6" selection-end-line="7" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Plat/Task/Fg/Bet.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="135">
+          <caret line="7" column="6" selection-start-line="7" selection-start-column="6" selection-end-line="7" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Plat/Task/ExternalGame/fg.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-1917">
+          <caret line="12" column="6" selection-start-line="12" selection-start-column="6" selection-end-line="12" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Plat/Task/ExternalGame/ky.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="486">
+          <caret line="89" column="69" selection-start-line="89" selection-start-column="12" selection-end-line="89" selection-end-column="77" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Task/Fg/WinLoss.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-2214">
+          <caret line="13" column="6" selection-start-line="13" selection-start-column="6" selection-end-line="13" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Task/Fg/Bet.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="291">
+          <caret line="11" column="6" selection-start-line="11" selection-start-column="6" selection-end-line="11" selection-end-column="6" />
+          <folding>
+            <element signature="e#6#86#0#PHP" expanded="true" />
+            <element signature="e#111#126#0#PHP" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/App/Websocket/Register/Register.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="767">
+          <caret line="68" column="39" lean-forward="true" selection-start-line="68" selection-start-column="39" selection-end-line="68" selection-end-column="39" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/App/Websocket/Login/Login.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="281">
+          <caret line="13" column="6" selection-start-line="13" selection-start-column="6" selection-end-line="13" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemReport/Distribute.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="821">
+          <caret line="47" column="16" lean-forward="true" selection-start-line="47" selection-start-column="16" selection-end-line="47" selection-end-column="16" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/MajorShareholder.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="642">
+          <caret line="36" column="8" selection-start-line="36" selection-start-column="8" selection-end-line="38" selection-end-column="63" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/Shareholder.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="669">
+          <caret line="38" column="63" lean-forward="true" selection-start-line="38" selection-start-column="63" selection-end-line="38" selection-end-column="63" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/GeneraAgent.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="300">
+          <caret line="38" column="63" lean-forward="true" selection-start-line="38" selection-start-column="63" selection-end-line="38" selection-end-column="63" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelMigrate.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="543">
+          <caret line="54" column="28" lean-forward="true" selection-start-line="54" selection-start-column="28" selection-end-line="54" selection-end-column="28" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendAgentDelete.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="300">
+          <caret line="16" column="6" selection-start-line="16" selection-start-column="6" selection-end-line="16" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelList.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1566">
+          <caret line="60" column="19" selection-start-line="60" selection-start-column="19" selection-end-line="60" selection-end-column="19" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/FullSite.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="972">
+          <caret line="38" column="56" selection-start-line="38" selection-start-column="41" selection-end-line="38" selection-end-column="56" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/FullSiteUpdate.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1215">
+          <caret line="47" column="73" lean-forward="true" selection-start-line="47" selection-start-column="73" selection-end-line="47" selection-end-column="73" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelDelete.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="4455">
+          <caret line="167" column="13" lean-forward="true" selection-start-line="167" selection-start-column="13" selection-end-line="167" selection-end-column="13" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/App/Websocket/ExternalGame/GameAmountTransfer.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1971">
+          <caret line="75" column="24" lean-forward="true" selection-start-line="75" selection-start-column="24" selection-end-line="75" selection-end-column="24" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemSetting/DividendAgentAdd.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="378">
+          <caret line="16" column="6" selection-start-line="16" selection-start-column="6" selection-end-line="16" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/ReportQuery/MonthlyReport.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="462">
+          <caret line="68" column="49" lean-forward="true" selection-start-line="68" selection-start-column="49" selection-end-line="68" selection-end-column="49" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/AgentAdd.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-762">
+          <caret line="16" column="6" selection-start-line="16" selection-start-column="6" selection-end-line="16" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/PersonnelUpdate.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="300">
+          <caret line="18" column="6" selection-start-line="18" selection-start-column="6" selection-end-line="18" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/Member/MemberList/MemberList.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="375">
+          <caret line="50" column="20" selection-start-line="50" selection-start-column="20" selection-end-line="50" selection-end-column="28" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/MajorShareHolder.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="119">
+          <caret line="117" column="78" selection-start-line="117" selection-start-column="78" selection-end-line="117" selection-end-column="78" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/Staff/Login.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="591">
+          <caret line="191" column="38" selection-start-line="191" selection-start-column="31" selection-end-line="191" selection-end-column="38" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemReport/MajorShareholder.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="426">
+          <caret line="74" column="67" lean-forward="true" selection-start-line="74" selection-start-column="12" selection-end-line="74" selection-end-column="67" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/GeneraAgent.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-33">
+          <caret line="14" column="37" selection-start-line="14" selection-start-column="3" selection-end-line="14" selection-end-column="37" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/test/mysql/staff.sql" />
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemReport/PersonalBonus.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1971">
+          <caret line="76" column="38" selection-start-line="76" selection-start-column="25" selection-end-line="76" selection-end-column="38" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Task/System/Dividend.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="4509">
+          <caret line="169" column="62" selection-start-line="169" selection-start-column="62" selection-end-line="169" selection-end-column="62" />
+          <folding>
+            <element signature="e#35#50#0#PHP" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemReport/Shareholder.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="5400">
+          <caret line="202" column="39" selection-start-line="202" selection-start-column="39" selection-end-line="202" selection-end-column="39" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemPersonnel/ShareHolder.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="5130">
+          <caret line="192" column="20" selection-start-line="192" selection-start-column="20" selection-end-line="192" selection-end-column="20" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/System/SystemReport/GeneraAgent.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1242">
+          <caret line="48" column="16" selection-start-line="48" selection-start-column="16" selection-end-line="48" selection-end-column="16" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/CheckLogin.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="425">
+          <caret line="44" column="9" lean-forward="true" selection-start-line="44" selection-start-column="9" selection-end-line="44" selection-end-column="9" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundAdd.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-567">
+          <caret line="17" column="6" selection-start-line="17" selection-start-column="6" selection-end-line="17" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundDelete.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="405">
+          <caret line="17" column="6" selection-start-line="17" selection-start-column="6" selection-end-line="17" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/php/Site/Websocket/Account/BoundIp/BoundList.php">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="672">
+          <caret line="45" column="13" selection-start-line="45" selection-start-column="13" selection-end-line="45" selection-end-column="13" />
+        </state>
+      </provider>
+    </entry>
+  </component>
+</project>

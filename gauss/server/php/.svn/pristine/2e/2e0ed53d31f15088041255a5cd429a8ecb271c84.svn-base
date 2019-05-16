@@ -1,0 +1,16 @@
+<?php
+namespace Site\Websocket\Lottery\OutPort;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*   外接口管理列表
+ *   Lottery/OutPort/PortList
+ * */
+
+class PortList extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $mysql = $config->data_staff;
+    }
+}

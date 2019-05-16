@@ -1,0 +1,42 @@
+<?php
+
+namespace App\Websocket\ExternalGame;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use App\Websocket\CheckLogin;
+
+/*
+ *@nathan
+ *@2019/4/18
+ * 获取游戏列表
+ * ExternalGame/GameList  {"interface_key":"fg"}
+ */
+class GameList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $param = $context->getData();
+        $interface_key = isset($param['interface_key']) ? $param['interface_key'] : '';
+        $game_list = [];
+        switch ($interface_key) {
+            case 'fg':
+            case 'ag':
+            case 'ky':
+            case 'lb':
+                $mysqlStaff = $config->data_staff;
+                $sql = 'select game_key,acceptable from external_game where interface_key = :interface_key';
+                $params = [
+                    ':interface_key' => $interface_key,
+                ];
+                foreach ($mysqlStaff->query($sql, $params) as $value) {
+                    $game_list[] = $value;
+                }
+                $context->reply(['status' => 200, 'msg' => '成功', 'data' => $game_list]);
+                break;
+            default:
+                $context->reply(['status' => 404, '获取列表信息失败']);
+                break;
+        }
+    }
+}

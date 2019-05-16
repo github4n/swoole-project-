@@ -1,0 +1,78 @@
+version: "3"
+services:
+    mysql:
+        image: mysql:8.0.13
+        volumes:
+            - ./mysql/mysqld.cnf:/etc/mysql/conf.d/gauss.cnf
+            - ./mysql:/opt/gauss/mysql:ro
+            - ./mysql/install.sh:/docker-entrypoint-initdb.d/install.sh:ro
+            - /dev/shm/gauss/mysql:/var/lib/mysql:rw
+        environment:
+            - MYSQL_ROOT_PASSWORD=eimDnJA6rl7BX6Ph
+        ports:
+            - 127.0.0.1:3306:3306
+        security_opt:
+            - seccomp:unconfined
+        restart: always
+    myadmin:
+        image: phpmyadmin/phpmyadmin:latest
+        links:
+            - mysql:db
+        environment:
+            - PMA_USER=phpmyadmin
+            - PMA_PASSWORD=o5UC95311O1silJ0
+        ports:
+            - 127.0.0.1:800:80
+        restart: always
+    redis:
+        image: redis:4.0
+        command: redis-server --save "" --databases 9 --requirepass "eMhai6u3yUSe58sw" --stop-writes-on-bgsave-error no
+        ports:
+            - 127.0.0.1:6379:6379
+        restart: always
+    redis-commander:
+        image: rediscommander/redis-commander:latest
+        links:
+            - redis
+        environment:
+            REDIS_HOSTS:
+                plat:redis:6379:0:eMhai6u3yUSe58sw
+                site1:redis:6379:1:eMhai6u3yUSe58sw
+                site1app1:redis:6379:2:eMhai6u3yUSe58sw
+                site1app2:redis:6379:3:eMhai6u3yUSe58sw
+                site1app3:redis:6379:4:eMhai6u3yUSe58sw
+                site2:redis:6379:5:eMhai6u3yUSe58sw
+                site2app1:redis:6379:6:eMhai6u3yUSe58sw
+                site2app2:redis:6379:7:eMhai6u3yUSe58sw
+                site2app3:redis:6379:8:eMhai6u3yUSe58sw
+        ports:
+            - 127.0.0.1:8081:8081
+        restart: always
+    job:
+        build: ./docker/php
+        image: gauss/php:1.0
+        volumes:
+            - ../server/php:/opt/gauss/php:ro
+            - ./job:/opt/gauss/job:ro
+            - ./job/install.php:/entrypoint.d/install.php:ro
+            - /dev/shm/gauss/job:/var/log:rw
+        links:
+            - mysql
+            - redis
+        ulimits:
+            nproc: 65535
+            nofile:
+                soft: 1048576
+                hard: 1048576
+        restart: always
+    ws:
+        image: microsoft/dotnet:2.1-runtime
+        volumes:
+            - ./proxy:/opt/gauss/proxy:ro
+            - ./proxy.xml:/opt/gauss/proxy.xml:ro
+        links:
+            - redis
+        entrypoint: dotnet /opt/gauss/proxy/proxy.dll /opt/gauss/proxy.xml
+        ports:
+            - 127.0.0.1:8080:80
+        restart: always

@@ -1,0 +1,244 @@
+<?php
+namespace Site\Websocket\System\SystemReport;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/** 
+ * @description: 体系分红报表 - 总代理列表接口 
+ * @author： leo
+ * @date：   2019-04-08   
+ * @link：   System/SystemReport/GeneraAgent {"is_settle":"0","staff_name":"","major_name":"","minor_name":"","start_time":"","end_time":""}
+ * @modifyAuthor: 交接负责人：暂无
+ * @modifyTime: 交接时间：暂无
+ * @param string staff_nam： 用户名 （可不传）
+ * @param string major_name： 大股东用户名 （可不传）
+ * @param string minor_name： 股东用户名 （可不传）
+ * @param string start_time： 开始时间 （可不传）
+ * @param string end_time： 结束时间 （可不传）
+ * @param int    is_settle: 派发(1为已结算，0为待结算)
+ * @returnData: json;
+ */
+
+class GeneraAgent extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo('StaffId');
+        $masterId = $context->getInfo('MasterId');
+        $master_id = $masterId == 0 ? $staffId : $masterId;
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if ($StaffGrade > 2) {
+            $context->reply(["status" => 208, "msg" => "当前登录账号没有访问的权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("staff_report_agent", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $cache = $config->cache_site;
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $mysqlReport = $config->data_report;
+        $staff_name = isset($data["staff_name"]) ? $data["staff_name"] : '';
+        $major = isset($data["major_name"]) ? $data["major_name"] : '';
+        $minor_name = isset($data["minor_name"]) ? $data["minor_name"] : '';
+        $start_time = isset($data["start_time"]) ? $data["start_time"] : '';
+        $end_time = isset($data["end_time"]) ? $data["end_time"] : '';
+        $isSettle = isset($data["is_settle"]) ? $data["is_settle"] : '';
+        $time = '';
+        $param = [];
+        //如果搜索数据为时间+未结算则返回空数组
+        if (!empty($start_time) && !empty($end_time) && empty($isSettle)) {
+            $context->reply([
+                "status" => 200,
+                "msg" => "获取成功",
+                "total" => 0,
+                "total_page" => 0,
+                "list" => []
+            ]);
+            return;
+        }
+        if (empty($isSettle)) {
+            $isSettle = 0; //未结算
+        } else {
+            if (!is_numeric($isSettle)) {
+                $context->reply(["status" => 300, "msg" => "请选择结算状态"]);
+                return;
+            } else {
+                $isSettle = 1;
+            }
+        }
+        if (!empty($staff_name)) {
+            $param[':agent_name'] = $staff_name;
+            $staff_name = " AND agent_name = :agent_name";
+        }
+        if (!empty($major)) {
+            $param[':major_name'] = $major;
+            $major = " AND major_name = :major_name";
+        }
+        if (!empty($minor_name)) {
+            $param[':minor_name'] = $minor_name;
+            $minor_name = " AND minor_name = :minor_name";
+        }
+        //只有开始时间的话那就查询那目前时间的数据，如果只有结束时间的话就只查询在从这个时间之前的数据，两个参数都有的话就查询之间的数据
+        if (!empty($start_time)) {
+            $start = date("Y-m-d", strtotime($start_time)) . " 00:00:00";
+            $param[':starts'] = strtotime($start);
+            if (!empty($end_time)) {
+                $end = date("Y-m-d", strtotime($end_time)) . " 23:59:59";
+                $param[':ends'] = strtotime($end);
+            } else {
+                $param[':ends'] = time();
+            }
+            $time = " AND settle_time BETWEEN :starts  AND :ends";
+        }
+        if (!empty($end_time) && empty($start_time)) {
+            $end = date("Y-m-d", strtotime($end_time)) . " 00:00:00";
+            $param[':settle_time'] = strtotime($end);
+            $time = " AND settle_time <= :settle_time ";
+        }
+        $list = array();
+        $agent_list = [];
+        if ($isSettle == 0) {  //未结算
+            $where = " AND agent_id NOT IN (SELECT agent_id FROM dividend_settle_agent WHERE 1=1) ";
+            $order = " ORDER BY agent_id DESC ";
+            //去除已结算的数据及统计条数
+            if ($StaffGrade == 0) {
+                $sql = "SELECT * FROM staff_struct_agent WHERE 1=1" . $where . $staff_name . $major . $minor_name . $order;
+            }
+            if ($StaffGrade == 1) {
+                $sql = "SELECT * FROM staff_struct_agent WHERE major_id = :major_id" . $where . $staff_name . $minor_name . $time . $order;
+                $param[':major_id'] = $master_id;
+            }
+            if ($StaffGrade == 2) {
+                $sql = "SELECT * FROM staff_struct_agent WHERE minor_id = :minor_id" . $where . $staff_name . $order;
+                $param[':minor_id'] = $master_id;
+            }
+            $agentList = iterator_to_array($mysql->query($sql, $param));
+            if (!empty($agentList)) {
+                foreach ($agentList as $key => $val) {
+                    //查询本身总代理比例
+                    //$rate = json_decode($cache->hget("SystemSetting",$val["agent_id"]),true);
+                    //获取不到缓存中已删除的分红设置
+                    $sql = "SELECT scope_staff_id,grade1_bet_rate,grade1_profit_rate,grade1_fee_rate,grade1_tax_rate,grade2_bet_rate,grade2_profit_rate,grade2_fee_rate,grade2_tax_rate,grade3_bet_rate,grade3_profit_rate,grade3_fee_rate,grade3_tax_rate 
+                        FROM dividend_setting WHERE scope_staff_id = :scope_staff_id";
+                    $param = [
+                        ":scope_staff_id" => $val["agent_id"]
+                    ];
+                    $rate = [];
+                    foreach ($mysql->query($sql, $param) as $row) {
+                        $rate = $row;
+                    }
+                    //查询股东本身的比例
+                    if (empty($rate)) {
+                        //$rate = json_decode($cache->hget("SystemSetting",$val["minor_id"]),true);
+                        $param = [
+                            ":scope_staff_id" => $val["minor_id"]
+                        ];
+                        foreach ($mysql->query($sql, $param) as $row) {
+                            $rate = $row;
+                        }
+                    }
+                    //查询上级大股东的比例
+                    if (empty($rate)) {
+                        //$rate = json_decode($cache->hget("SystemSetting",$val["major_id"]),true);
+                        $param = [
+                            ":scope_staff_id" => $val["major_id"]
+                        ];
+                        foreach ($mysql->query($sql, $param) as $row) {
+                            $rate = $row;
+                        }
+                    }
+                    //查询全站的比例
+                    if (empty($rate)) {
+                        $rate = json_decode($cache->hget("SystemSetting", 1), true);
+                    }
+                    //计算投注额
+                    $sql = "SELECT sum(wager_amount) as bet_all FROM monthly_staff 
+                        WHERE agent_id = :agent_id and monthly = :monthly";
+                    $param = [
+                        ":agent_id" => $val["agent_id"],
+                        ":monthly" => intval(date("Ym", strtotime("today")))
+                    ];
+                    foreach ($mysqlReport->query($sql, $param) as $row) {
+                        $bet_all = $row["bet_all"];
+                    }
+                    if (empty($bet_all)) {
+                        $bet_all = "0.00";
+                    }
+                    $agent["staff_name"] = $val["agent_name"];
+                    $agent["staff_id"] = $val["agent_id"];
+                    $agent["agent_grade"] = "总代理";
+                    $agent["major_name"] = $val["major_name"];
+                    $agent["minor_name"] = $val["minor_name"];
+                    $agent["bet_amount"] = $this->intercept_num($bet_all);
+                    $agent["dividend"] = "0.00";
+                    $agent["bet_rate"] = floatval($rate["grade3_bet_rate"]);
+                    $agent["profit_amount"] = "0.00";
+                    $agent["profit_rate"] = floatval($rate["grade3_profit_rate"]);
+                    $agent["fee_rate"] = floatval($rate["grade3_fee_rate"]);
+                    $agent["tax_rate"] = floatval($rate["grade3_tax_rate"]);
+                    $agent["settle_time"] = "";
+                    $agent["is_settle"] = 0;
+                    $agent_list[] = $agent;
+                }
+            }
+        }
+        if ($isSettle == 1) {
+            $order = ' ORDER BY settle_time DESC ';
+            $limit = " LIMIT 1000";
+            if ($StaffGrade == 0) {
+                $sql = "SELECT * FROM dividend_settle_agent 
+                    WHERE 1=1" . $staff_name . $major . $minor_name . $time . $order . $limit;
+            }
+            if ($StaffGrade == 1) {
+                $sql = "SELECT * FROM dividend_settle_agent 
+                    WHERE major_id = :major_id" . $staff_name . $major . $minor_name . $time . $order . $limit;
+                $param[':major_id'] = $staffId;
+            }
+            if ($StaffGrade == 2) {
+                $sql = "SELECT * FROM dividend_settle_agent 
+                    WHERE minor_id = :minor_id" . $staff_name . $major . $minor_name . $time . $order . $limit;
+                $param[':minor_id'] = $staffId;
+            }
+            $list = iterator_to_array($mysql->query($sql, $param));
+            if (!empty($list)) {
+                foreach ($list as $key => $val) {
+                    $agent_list[$key]["staff_name"] = $val["agent_name"];
+                    $agent_list[$key]["staff_id"] = $val["agent_id"];
+                    $agent_list[$key]["agent_grade"] = "总代理";
+                    $agent_list[$key]["major_name"] = $val["major_name"];
+                    $agent_list[$key]["minor_name"] = $val["minor_name"];
+                    $agent_list[$key]["bet_amount"] = $this->intercept_num($val["bet_amount"]);
+                    $agent_list[$key]["bet_rate"] = floatval($val["bet_rate"]);
+                    $agent_list[$key]["profit_amount"] = $this->intercept_num($val["profit_amount"]);
+                    $agent_list[$key]["profit_rate"] = floatval($val["profit_rate"]);
+                    $agent_list[$key]["fee_rate"] = floatval($val["fee_rate"]);
+                    $agent_list[$key]["tax_rate"] = floatval($val["tax_rate"]);
+                    $agent_list[$key]["dividend"] = $this->intercept_num($val["dividend_result"]);
+                    $agent_list[$key]["is_settle"] = 1;
+                    $agent_list[$key]["settle_time"] = date("Y-m-d H:i:s", $val["settle_time"]);
+                }
+            }
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log 
+            SET staff_id = :staff_id, operate_key = :operate_key, detail = :detail, client_ip = :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'staff_report_agent',
+            ':detail'  => '查看总代理分红',
+        ];
+        $mysql->execute($sql, $params);
+        $context->reply([
+            "status" => 200,
+            "msg" => "获取成功",
+            "list" => $agent_list
+        ]);
+    }
+}

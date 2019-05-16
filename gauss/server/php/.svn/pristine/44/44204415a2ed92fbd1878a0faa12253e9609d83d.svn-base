@@ -1,0 +1,106 @@
+<?php
+namespace App\Websocket\User\SafeCenter;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use App\Websocket\CheckLogin;
+/*
+ * 我的--安全中心--添加银行卡
+ * User/SafeCenter/BankAdd {"bank_name":"招商银行","bank_branch":"西丽支行","account_number":"7894561236501478965","account_name":"张三王","password":"012345","phone":"1376548798"}
+ * */
+
+class BankAdd extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $guest_id = $context->getInfo("GuestId");
+        if(!empty($guest_id)){
+            $context->reply(["status"=>500,"msg"=>"游客身份，没有访问权限"]);
+            return;
+        }
+        
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $bank_name = $data["bank_name"];
+        $bank_branch = $data["bank_branch"];//开户网点
+        $account_number = $data["account_number"];
+        $account_name = $data["account_name"];
+        $password = $data["password"];
+        $phone = $data["phone"];
+        if(empty($bank_name)){
+            $context->reply(["status"=>204,"msg"=>"请选择开户银行"]);
+            return;
+        }
+        if(empty($bank_branch)){
+            $context->reply(["status"=>205,"msg"=>"请输入开户银行网点"]);
+            return;
+        }
+        if(empty($account_name)){
+            $context->reply(["status"=>206,"msg"=>"请输入开户名"]);
+            return;
+        }
+        if(mb_strlen($bank_branch)>20){
+            $context->reply(["status"=>210,"msg"=>"请输入正确的开户银行网点"]);
+            return;
+        }
+        if(mb_strlen($account_name)>20){
+            $context->reply(["status"=>207,"msg"=>"请输入正确持卡人姓名"]);
+            return;
+        }
+        $preg = '/^([1-9]{1})(\d{14}|\d{18})$/';
+        if (!preg_match($preg, $account_number)) {
+            $context->reply(['status' => 211, 'msg' => '请输入银行卡号']);
+            return;
+        }
+        $preg = '/^[0-9]{6}$/';
+        if(!preg_match($preg,$password)){
+            $context->reply(['status' => 206, 'msg' => '请输入6位交易密码']);
+            return;
+        }
+        $preg = '/^\d{4,}$/';
+        if(!preg_match($preg,$phone)){
+            $context->reply(['status' => 212, 'msg' => '请输入正确手机号']);
+            return;
+        }
+
+        $sql = "INSERT INTO bank_info SET user_id=:user_id, bank_name=:bank_name, bank_branch=:bank_branch, account_number=:account_number, account_name=:account_name, withdraw_count=:withdraw_count, withdraw_amount=:withdraw_amount, password_hash=:password_hash ";
+        $param = [
+            ":user_id"=>$context->getInfo("UserId"),
+            ":bank_name"=>$bank_name,
+            ":bank_branch"=>$bank_branch,
+            ":account_number"=>$account_number,
+            ":account_name"=>$account_name,
+            ":withdraw_count"=>0,
+            ":withdraw_amount"=>0,
+            ":password_hash"=>$password,
+        ];
+        try{
+            $mysql->execute($sql,$param);
+
+            //更新手机号码至user_info表中
+            $param = [
+                ":user_id"=>$context->getInfo("UserId"),
+                ":phone_number"=>$phone,
+            ];
+
+            $sql = "UPDATE user_info SET phone_number=:phone_number WHERE user_id=:user_id";
+            $mysql->execute($sql,$param);
+
+            //更新账户名称及手机号至user_cumulate中
+            $link = $config->data_report;
+            $param = [
+                ":user_id"=>$context->getInfo("UserId"),
+                ":phone_number"=>$phone,
+                ":user_name"=> $account_name
+            ];
+            $sql = "UPDATE user_cumulate SET user_name=:user_name,phone_number=:phone_number WHERE user_id=:user_id";
+            $link->execute($sql,$param);
+
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"添加失败"]);
+            throw new \PDOException($e);
+        }
+        $context->reply(["status"=>200,"msg"=>"添加成功"]);
+
+    }
+}

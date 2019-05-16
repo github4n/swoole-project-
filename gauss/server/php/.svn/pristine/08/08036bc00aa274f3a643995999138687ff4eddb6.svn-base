@@ -1,0 +1,181 @@
+<?php
+
+namespace Site\Websocket\Cash\PayManage;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/**
+ * @description  现金系统-支付管理-银行卡入款通道列表
+ * @Author  Rose
+ * @date  2019-04-29
+ * @links  Cash/PayManage/PayBankEditUpdate {"route_id":1,"passage_id":1,"min_money":100,"max_money":5000,"acceptable":1,"level_id":["3","4","201"],"coupon_rate":1,"coupon_max":2,"coupon_times":3,"coupon_audit_rate":1}
+ * @modifyAuthor   Rose
+ * @modifyTime  2019-05-08
+ * */
+class PayBankEditUpdate extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo('StaffGrade');
+        if ($StaffGrade != 0) {
+            $context->reply(['status' => 203, 'msg' => '当前账号没有操作权限']);
+
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array('money_deposit_route', $auth)) {
+            $context->reply(['status' => 202, 'msg' => '你还没有操作权限']);
+
+            return;
+        }
+
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $route_id = $data['route_id'];
+        $min_money = $data['min_money'];
+        $max_money = $data['max_money'];
+        $acceptable = $data['acceptable'];
+        $layer_id = $data['level_id'];
+
+        //入款优惠参数
+        $coupon_rate = isset($data['coupon_rate']) ? $data['coupon_rate'] : 0;  //优惠比例
+        $coupon_max = isset($data['coupon_max']) ? $data['coupon_max'] : 0;   //优惠上线
+        $coupon_times = isset($data['coupon_times']) ? $data['coupon_times'] : 0;   //优惠次数
+        if (!isset($data['coupon_audit_rate']) || !is_numeric($data['coupon_audit_rate']) || empty($data['coupon_audit_rate'])) {
+            $context->reply(['status' => 201, 'msg' => '优惠金额稽核倍数不能为零']);
+
+            return;
+        }
+        $coupon_audit_rate = $data['coupon_audit_rate']; //稽核倍数
+
+        if (!is_numeric($route_id)) {
+            $context->reply(['status' => 203, 'msg' => '请选择']);
+
+            return;
+        }
+        if (!is_numeric($min_money)) {
+            $context->reply(['status' => 205, 'msg' => '请输入最低入款']);
+
+            return;
+        }
+        if (!is_numeric($max_money)) {
+            $context->reply(['status' => 206, 'msg' => '请输入最高入款']);
+
+            return;
+        }
+        if (empty($layer_id)) {
+            $context->reply(['status' => 206, 'msg' => '请选择层级']);
+
+            return;
+        }
+        if (!is_array($layer_id)) {
+            $context->reply(['status' => 207, 'msg' => '请选择层级']);
+
+            return;
+        }
+        if ($min_money > $max_money) {
+            $context->reply(['status' => 208, 'msg' => '请正确输入最低入款和最高入款']);
+
+            return;
+        }
+        if ($acceptable == 1) {
+            $acceptable = 1;
+        } elseif ($acceptable == 2) {
+            $acceptable = 0;
+        } else {
+            $acceptable = 1;
+        }
+        //入款优惠信息判断
+        if (!is_numeric($coupon_rate)) {
+            $context->reply(['status' => 220, 'msg' => '请输入优惠比例']);
+
+            return;
+        }
+        if ($coupon_rate > 100) {
+            $context->reply(['status' => 220, 'msg' => '请输入优惠比例']);
+
+            return;
+        }
+        if (!is_numeric($coupon_max)) {
+            $context->reply(['status' => 221, 'msg' => '请输入优惠上限']);
+
+            return;
+        }
+        if ($coupon_max < 0 || $coupon_max > 999999.99) {
+            $context->reply(['status' => 221, 'msg' => '请输入优惠上限']);
+
+            return;
+        }
+        if (!is_numeric($coupon_times)) {
+            $context->reply(['status' => 222, 'msg' => '请输入优惠次数']);
+
+            return;
+        }
+        if ($coupon_times < 0 || $coupon_times > 999) {
+            $context->reply(['status' => 222, 'msg' => '请输入优惠次数']);
+
+            return;
+        }
+        if (!is_numeric($coupon_audit_rate)) {
+            $context->reply(['status' => 223, 'msg' => '请输入稽核倍数']);
+
+            return;
+        }
+        if ($coupon_audit_rate < 0 || $coupon_audit_rate > 999) {
+            $context->reply(['status' => 223, 'msg' => '请输入稽核倍数']);
+
+            return;
+        }
+        //修改支付线路
+        $sql = 'UPDATE deposit_route SET min_money=:min_money,max_money=:max_money,acceptable=:acceptable,coupon_rate=:coupon_rate, coupon_max=:coupon_max, coupon_times=:coupon_times, coupon_audit_rate=:coupon_audit_rate WHERE route_id=:route_id';
+        $param = [
+            ':min_money' => $min_money,
+            ':max_money' => $max_money,
+            ':acceptable' => $acceptable,
+            ':route_id' => $route_id,
+            ':coupon_rate' => empty($coupon_rate) ? 0 : $coupon_rate,
+            ':coupon_max' => empty($coupon_max) ? 0 : $coupon_max,
+            ':coupon_times' => empty($coupon_times) ? 0 : $coupon_times,
+            ':coupon_audit_rate' => empty($coupon_audit_rate) ? 0 : $coupon_audit_rate,
+        ];
+        try {
+            $mysql->execute($sql, $param);
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 401, 'msg' => '修改失败']);
+            throw new \PDOException($e);
+        }
+        //修改会员层级
+        //先删除之前的
+        $sql = 'DELETE FROM deposit_route_layer WHERE route_id=:route_id';
+        $param = [':route_id' => $route_id];
+        try {
+            $mysql->execute($sql, $param);
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 402, 'msg' => '修改失败']);
+            throw new \PDOException($e);
+        }
+        foreach ($layer_id as $item) {
+            if (!is_numeric($item)) {
+                $context->reply(['status' => 209, 'msg' => '请选择正确层级']);
+
+                return;
+            }
+            $layer_info = ['route_id' => $route_id, 'layer_id' => $item];
+            $layers[] = $layer_info;
+        }
+        $mysql->deposit_route_layer->load($layers, [], 'replace');
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $context->getInfo('StaffId'),
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'money_deposit_route',
+            ':detail' => '修改银行转账支付路线'.$route_id,
+        ];
+        $mysql->execute($sql, $params);
+        $context->reply(['status' => 200, 'msg' => '修改成功']);
+    }
+}

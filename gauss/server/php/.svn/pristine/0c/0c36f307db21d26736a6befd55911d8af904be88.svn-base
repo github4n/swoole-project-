@@ -1,0 +1,165 @@
+<?php
+namespace Site\Websocket\Staff;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use Lib\Websocket\IHandler;
+
+/** 
+ * @description: 断线重连接口
+ * @author： leo
+ * @date：   2019-04-08   
+ * @link：   Staff/ResumeLogin {"resume_key":"5fe17fd3d24187fe348db10046a941defb3f7752"}
+ * @modifyAuthor: 交接负责人：暂无
+ * @modifyTime:  交接时间：暂无
+ * @param string resume_key: 重连key
+ * @returnData: json;
+ */
+
+class ResumeLogin implements IHandler
+{
+    public function onReceive(Context $context, Config $config)
+    {
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $resume_key = $data['resume_key'];
+        if (empty($resume_key)) {
+            $context->reply(["status" => 202, "msg" => "恢复的key不能为空"]);
+            return;
+        }
+        $user_agent = sha1($context->getInfo("User-Agent"));
+        $sql = "SELECT * FROM staff_session 
+            WHERE resume_key = :resume_key AND user_agent = :user_agent AND lose_time > :lose_time";
+        $params = [
+            ":resume_key" => $resume_key,
+            ":user_agent" => $user_agent,
+            ":lose_time" => time() - 600
+        ];
+        $info = [];
+        foreach ($mysql->query($sql, $params) as $row) {
+            $info = $row;
+        }
+        if (empty($info)) {
+            $context->reply(["status" => 400, "msg" => "恢复登录失败"]);
+            return;
+        } else {
+            //更新缓存信息
+            $sqls = "UPDATE staff_session 
+                SET client_id = :client_id, lose_time = :lose_time 
+                WHERE resume_key = :resume_key";
+            $params = [':client_id' => $context->clientId(), ':resume_key' => $resume_key, ":lose_time" => 0];
+            try {
+                //用户掉线10分钟内 重新上线更新用户的信息
+                $mysql->execute($sqls, $params);
+            } catch (\PDOException $e) {
+                $context->reply(['status' => 400, 'msg' => '恢复失败请重新登录']);
+                throw new \PDOException($e);
+            }
+            //获取用户信息
+            $staff_sql = "SELECT staff_key, staff_id, staff_name, staff_grade, master_id, add_time, leader_id 
+                FROM staff_info_intact 
+                WHERE staff_id = :staff_id";
+            $param = ["staff_id" => $info["staff_id"]];
+            foreach ($mysql->query($staff_sql, $param) as $rows) {
+                $staffInfo = $rows;
+            }
+            $staff_info = array();
+            $staff_info["staff_key"] =  $staffInfo["staff_key"];
+            $staff_info["staff_name"] =  $staffInfo["staff_name"];
+            $staff_info["staff_grade"] =  $staffInfo["staff_grade"];
+            $staff_info["add_time"] = !empty($staffInfo["add_time"]) ? date("Y-m-d", $staffInfo["add_time"]) : '';
+            $params = [];
+            $where = '';
+            //去除权限不可以用的操作key值
+            if ($staffInfo["staff_grade"] == 0) {
+                $staff_info["grade_name"] = "站长";
+                $params[':owner_permit'] = -1;
+                $where = " AND operate_key IN (SELECT operate_key FROM operate WHERE owner_permit != :owner_permit)";
+            }
+            if ($staffInfo["staff_grade"] == 1) {
+                $staff_info["grade_name"] = "大股东";
+                $params[':major_permit'] = -1;
+                $where = " AND operate_key IN (SELECT operate_key FROM operate WHERE major_permit != :major_permit)";
+            }
+            if ($staffInfo["staff_grade"] == 2) {
+                $staff_info["grade_name"] = "股东";
+                $params[':minor_permit'] = -1;
+                $where = " AND operate_key IN (SELECT operate_key FROM operate WHERE minor_permit != :minor_permit)";
+            }
+            if ($staffInfo["staff_grade"] == 3) {
+                $staff_info["grade_name"] = "总代理";
+                $params[':agent_permit'] = -1;
+                $where = " AND operate_key IN (SELECT operate_key FROM operate WHERE agent_permit != :agent_permit)";
+            }
+            // 获取用户权限
+            $sql = 'SELECT staff_id, operate_key FROM staff_permit WHERE staff_id = :staff_id' . $where;
+            $params[':staff_id'] = $info["staff_id"];
+            $authKey = [];
+            foreach ($mysql->query($sql, $params) as $row) {
+                array_push($authKey, $row['operate_key']);
+            }
+            //如果不是站长登录，则不传体系管理体系人员列表的修改删除key和会员列表的修改key
+            if ($staffInfo["staff_grade"] != 0) {
+                $del_key = [
+                    'staff_list_major_update',
+                    'staff_list_major_delete',
+                    'staff_list_minor_update',
+                    'staff_list_minor_delete',
+                    'staff_list_agent_update',
+                    'staff_list_agent_delete',
+                    'user_list_update'
+                ];
+                $authKey = array_diff($authKey, $del_key);
+            }
+            //如果登录账号为大股东，则不传新增总代理的key
+            if ($staffInfo["staff_grade"] == 1) {
+                $del_key = ['staff_list_agent_insert'];
+                $authKey = array_diff($authKey, $del_key);
+            }
+            //如果登录账号为总代理，则不传经营统计报表key
+            if ($staffInfo["staff_grade"] == 3) {
+                $del_key = ['report_money'];
+                $authKey = array_diff($authKey, $del_key);
+            }
+            $authKey1 = [];
+            foreach ($authKey as $k => $v) {
+                $authKey1[] = $v;
+            }
+            //缓存基本信息
+            $context->setInfo('StaffId', $info['staff_id']);
+            $context->setInfo('StaffAuth', json_encode($authKey1));     // 账号等级
+            $context->setInfo('StaffKey', $staffInfo['staff_key']);
+            $context->setInfo('StaffGrade', $staffInfo["staff_grade"]); // 账号等级
+            $context->setInfo('MasterId', $staffInfo["master_id"]);     // 所属主账号
+            $context->setInfo('LeaderId', $staffInfo["leader_id"]);     // 上级账号
+            //获取在线人数
+            $sql = "SELECT staff_id FROM staff_session WHERE lose_time = 0";
+            $online_num = $mysql->execute($sql);
+            //记录恢复日志
+            $serverHost = $context->getServerHost();
+            $clientAddr = $context->getClientAddr();
+            $userAgent = $context->getInfo("User-Agent");
+            $sql = 'INSERT INTO operate_log 
+                SET staff_id = :staff_id, operate_key = :operate_key, detail = :detail, client_ip= :client_ip';
+            $params = [
+                ':staff_id' => $info['staff_id'],
+                ':client_ip' => ip2long($context->getClientAddr()),
+                ':operate_key' => 'self_login',
+                ':detail'  => '服务器' . $serverHost . ';登录' . 'ip' . $clientAddr . ",User-Agent:" . $userAgent,
+            ];
+            $mysql->execute($sql, $params);
+            $context->reply([
+                'status' => 200,
+                'msg' => '恢复登录成功',
+                'resume_key' => $resume_key,
+                'userinfo' => $staff_info,
+                'menukey' => $authKey1,
+                "online_num" => $online_num
+            ]);
+            $masterid = $staffInfo["master_id"] == 0 ? $staffInfo['staff_id'] : $staffInfo["master_id"];
+            $id = $context->clientId();
+            $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+            $taskAdapter->plan('Index/Account', ['staff_grade' => $staffInfo["staff_grade"], 'id' => $id, "master_id" => $masterid, "staff_id" => $staffInfo['staff_id']], time());
+        }
+    }
+}

@@ -1,0 +1,66 @@
+<?php
+
+namespace Plat\Websocket\LotteryTicket\LotteryRebateSetting;
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ *LotteryTicket/LotteryRebateSetting/LotteryRebateList {"site_name":"测试站点A","status":1}
+ * */
+class LotteryRebateList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("lottery_rebate_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        //接收数据
+        $data = $context->getData();
+        $site_name = empty($data['site_name'])?"":$data['site_name'];
+        $status = empty($data['status'])?"":$data['status'];
+        $mysqlAdmin = $config->data_admin;
+        $mysqlAnalysis = $config->data_analysis;
+        $monthly = intval(date("Ym",strtotime("today")));
+        
+        if(!empty($site_name)){
+            $site_name = " and site_name = '$site_name'";
+        }
+
+        if(is_numeric($status)){
+            if($status >=4 || $status < 0){
+                $context->reply(["status"=>300,"msg"=>"站点状态不正确"]);
+                return;
+            }
+            $status = " and status = ".$status;
+        }
+
+        $list = [];
+        $sql = "select site_key,site_name from site where 1=1".$site_name.$status;
+        $siteList = iterator_to_array($mysqlAdmin->query($sql));
+        foreach ($siteList as $k=>$val){
+            $sql = 'SELECT site_key,site_name,bet_all,bonus_all,(bonus_all-bet_all) as profit,rebate FROM monthly_site WHERE site_key=:site_key and monthly=:monthly';
+            $param = [":site_key"=>$val["site_key"],":monthly"=>$monthly];
+            foreach ($mysqlAnalysis->query($sql,$param) as $row){
+                $info = $row;
+            }
+            $list[$k]['site_key'] = $val['site_key'];
+            $list[$k]['site_name'] = $val['site_name'];
+            $list[$k]['bet_all'] = empty($info['bet_all']) ? 0 : $info['bet_all'];
+            $list[$k]['bonus_all'] = empty($info['bonus_all']) ? 0 : $info['bonus_all'];
+            $list[$k]['profit'] = empty($info['profit']) ? 0 : $info['profit'];
+            $list[$k]['rebate'] = empty($info['rebate']) ? 0 : $info['rebate'];
+        }
+
+
+        $context->reply([
+            'status' => 200,
+            'msg' => '获取成功',
+            'list' => $list
+        ]);
+    }
+}

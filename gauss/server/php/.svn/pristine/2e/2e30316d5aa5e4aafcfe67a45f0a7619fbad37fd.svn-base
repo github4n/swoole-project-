@@ -1,0 +1,59 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-3-11
+ * Time: 下午12:38
+ */
+namespace App\Task\ExternalGame;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+use Lib\Task\Adapter;
+class CreatePlayer implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['data' => $data] = $context->getData();
+        if (isset($data['action'])) {
+            $taskAdapter = new Adapter($config->cache_daemon);
+            $taskAdapter->plan('NotifySite',['path' => 'ExternalGame/ExternalGameSend', 'data'=>["data"=>$data]]);
+        } else {
+            $datas = isset($data['data']) ? $data['data'] : '';
+            if (empty($datas)) {
+                return;
+            }
+            if ($data['status'] == 200) {
+                $interface_key = isset($datas['interface_key']) ? $datas['interface_key'] :'';
+                switch ($interface_key) {
+                    case 'fg':
+                        $openid = $datas['fg_openid'];
+                        $member_code = $datas['fg_member_code'];
+                        $user_id = $datas['user_id'];
+                        $password = $datas['fg_password'];
+                        $mysqlUser = $config->data_user;
+                        $sql = "INSERT INTO user_fungaming SET user_id = '$user_id',fg_openid ='$openid',fg_member_code='$member_code',fg_password='$password'";
+                        $mysqlUser->execute($sql);
+                        break;
+                    case 'ag':
+
+                        break;
+                    case 'ky':
+
+                        break;
+                    case 'lb':
+
+                        break;
+                    default:
+                        return;
+                        break;
+                }
+
+
+            }
+            $websocketAdapter = new \Lib\Websocket\Adapter($config->cache_daemon);
+            $websocketAdapter->send($datas['client_id'],'ExternalGame/CreateGamePlayer', $data);
+
+        }
+    }
+}

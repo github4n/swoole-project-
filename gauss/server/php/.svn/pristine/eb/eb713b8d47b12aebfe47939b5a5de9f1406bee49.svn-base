@@ -1,0 +1,56 @@
+<?php
+namespace Plat\Websocket\Website\Rent;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 接收修改app管理的修改的信息
+ * 参数：site_key:站点,app_key:APP名称,link:下载地址
+ * */
+
+class RentSave extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("website_tax_update",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $adminId = $context->getInfo('adminId');
+        $data = $context->getData();
+        $site_key = $data["site_key"];
+        $month_rent = $data["month_rent"];
+        if (empty($site_key)) {
+            $context->reply(["status"=>202,"msg"=>"站点关键字不能为空"]);
+            return;
+        }
+        if(!is_numeric($month_rent)){
+            $context->reply(["status"=>202,"msg"=>"服务费类型不正确"]);
+            return;
+        }
+        $mysql = $config->data_admin;
+        $sql = "UPDATE site_rent_config SET month_rent=:month_rent WHERE site_key=:site_key";
+        $param = [
+            ":site_key"=>$site_key,
+            ":month_rent"=>$month_rent,
+        ];
+        try{
+            $mysql->execute($sql,$param);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"修改失败"]);
+            throw new \PDOException($e);
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+        $params = [
+            ':admin_id' => $adminId,
+            ':operate_key' => 'website_tax_update',
+            ':detail' => '修改服务费设置',
+        ];
+        $mysql->execute($sql, $params);
+        $context->reply(["status"=>200,"msg"=>"修改成功"]);
+    }
+}

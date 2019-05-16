@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<program bucketRate="16384" bucketCapacity="1048576">
+    <service listen="http://*/0/" cache="redis://proxy:eMhai6u3yUSe58sw@redis/0/" parallel="1" bucketRate="262144" bucketCapacity="16777216"/>
+    <service listen="http://*/1/" cache="redis://proxy:eMhai6u3yUSe58sw@redis/1/" parallel="2" bucketRate="65536" bucketCapacity="4194304"/>
+    <service listen="http://*/2/" cache="redis://proxy:eMhai6u3yUSe58sw@redis/2/" parallel="5"/>
+    <service listen="http://*/3/" cache="redis://proxy:eMhai6u3yUSe58sw@redis/3/" parallel="5"/>
+    <service listen="http://*/4/" cache="redis://proxy:eMhai6u3yUSe58sw@redis/4/" parallel="5"/>
+    <service listen="http://*/5/" cache="redis://proxy:eMhai6u3yUSe58sw@redis/5/" parallel="2" bucketRate="65536" bucketCapacity="4194304"/>
+    <service listen="http://*/6/" cache="redis://proxy:eMhai6u3yUSe58sw@redis/6/" parallel="5"/>
+    <service listen="http://*/7/" cache="redis://proxy:eMhai6u3yUSe58sw@redis/7/" parallel="5"/>
+    <service listen="http://*/8/" cache="redis://proxy:eMhai6u3yUSe58sw@redis/8/" parallel="5"/>
+</program>

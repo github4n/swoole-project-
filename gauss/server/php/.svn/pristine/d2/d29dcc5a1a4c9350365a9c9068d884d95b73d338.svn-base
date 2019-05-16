@@ -1,0 +1,131 @@
+<?php
+
+namespace Site\Task\Fg;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+class Bet implements IHandler
+{
+	public function onTask(Context $context, Config $config)
+	{
+		//转发app请求至站点
+		$data = $context->getData();
+		$username = $data['username'];
+		$betAmount = $data['betAmount'];
+		$betId = $data['betId'];
+		$adapter = $context->getAdapter();
+		//判断用户是否存在
+		$mysql = $config->data_user;
+		$sql = "SELECT * FROM user_fungaming WHERE fg_member_code='$username' ";
+		foreach ($mysql->query($sql) as $v) {
+			$user_id = $v['user_id'];
+		}
+		if (!$user_id) {
+			$res = ['state'=>105, 'message'=>'用户名不存在'];
+			$adapter->plan('NotifyPlat', ['path' => 'Fg/Bet','data' =>['data'=>$res]]);
+			return;
+		}
+		//获取用户数据
+		$sql = "SELECT user_key,account_name,deal_key,layer_id FROM user_info_intact WHERE user_id='$user_id'";
+		foreach ($mysql->query($sql) as $v) {
+			$user_key = $v['user_key'];
+			$account_name = $v['account_name'];
+			$deal_key = $v['deal_key'];
+			$layer_id = $v['layer_id'];
+		}
+		//获取关联库
+		$deal_mysql = $config->__get("data_" . $deal_key);
+		//判断金额
+		$sql = "SELECT money FROM account WHERE user_id='$user_id'";
+		foreach ($deal_mysql->query($sql) as $v) {
+			$money = $v['money'];
+		}
+		if ($betAmount > $money) {
+			$res = ['state'=>100, 'message'=>'玩家余额不足'];
+			$adapter->plan('NotifyPlat', ['path' => 'Fg/Bet','data' =>['data'=>$res]]);
+			return;
+		}
+		//判断注单号是否存在
+		$sql = "SELECT * FROM external_export_fungaming WHERE fg_bet_id ='$betId' ";
+		$fungaming = [];
+		foreach ($deal_mysql->query($sql) as $v) {
+			$fungaming = $v;
+		}
+		if (!empty($fungaming)) {
+			$data = [
+				'username' => $username,
+				'balance' => $money*100,
+				'walletTime' => $this->utc_time()
+			];
+			$res = $this->return_data(102,'注单已存在', $data);
+			$adapter->plan('NotifyPlat', ['path' => 'Fg/Bet','data' =>['data'=>$res]]);
+			return;
+		}
+		$time = time();
+		//新增转出记录sql
+		$sql = "INSERT INTO external_export_launch SET
+				user_id=:user_id,user_key=:user_key,account_name=:account_name,
+				layer_id=:layer_id,external_type=:external_type,launch_money=:launch_money,
+				launch_time=:launch_time";
+		$param = [
+			":user_id"=> $user_id,
+			":user_key"=> $user_key,
+			":account_name"=> !empty($account_name) ? $account_name : 1,
+			":layer_id"=> $layer_id,
+			":external_type" => 'fg',
+			":launch_money"=> $betAmount,
+			":launch_time"=> $time
+		];
+		try{
+			$deal_mysql->execute($sql, $param);
+			$get_export_serial_sql = "SELECT serial_last('external_export') as export_serial";
+			foreach ($deal_mysql->query($get_export_serial_sql) as $v) {
+				$export_serial = $v['export_serial'];
+			}
+		}catch (\PDOException $e){
+			$res = ['state'=>2, 'message'=>'转出失败'];
+			$adapter->plan('NotifyPlat', ['path' => 'Fg/Bet','data' =>['data'=>$res]]);
+			return;
+			throw new \PDOException($e);
+		}
+		//插入转出注单id sql
+		$sqls = "INSERT INTO external_export_fungaming SET export_serial='$export_serial',fg_bet_id='$betId' ";
+		//插入转出成功记录sql
+		$sqlss = "INSERT INTO external_export_success SET export_serial='$export_serial',success_time='$time '";
+		try{
+			$deal_mysql->execute($sqls);
+			$deal_mysql->execute($sqlss);
+		}catch (\PDOException $e){
+			$res = ['state'=>2, 'message'=>'转出失败'];
+			$adapter->plan('NotifyPlat', ['path' => 'Fg/Bet','data' =>['data'=>$res]]);
+			return;
+			throw new \PDOException($e);
+		}
+		$data = [
+			'username' => $username,
+			'balance' => ($money-$betAmount)*100,
+			'walletTime' => $this->utc_time()
+		];
+		$res = $this->return_data(0,'OK', $data);
+		$adapter->plan('NotifyPlat', ['path' => 'Fg/Bet','data' =>['data'=>$res]]);
+	}
+
+	public function return_data($state,$msg,$data=array())
+	{
+		$arr = array(
+			"state"=> $state, //状态码
+			"message"=> $msg, //返回信息内容
+			"data"=>$data
+		);
+		return $arr ;
+	}
+
+	//获取UTC格式的时间
+	public function utc_time()
+	{
+		date_default_timezone_set('UTC');
+		$timestamp = new \DateTime();
+		$timeStr = $timestamp->format(DATE_ISO8601);
+		return $timeStr;
+	}
+}

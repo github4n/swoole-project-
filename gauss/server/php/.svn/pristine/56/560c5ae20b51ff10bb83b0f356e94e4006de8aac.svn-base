@@ -1,0 +1,50 @@
+<?php
+namespace Site\Websocket\Promotion\Manage;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 优惠活动--编辑活动
+ * Promotion/Manage/PromotionEdit {"promotion_id":1}
+ * */
+
+class PromotionEdit extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $promotion_id = $data["promotion_id"];
+        if(!is_numeric($promotion_id)){
+            $context->reply(["status"=>205,"msg"=>"参数类型错误"]);
+            return;
+        }
+        $sql = "SELECT * FROM promotion WHERE promotion_id=:promotion_id";
+        $param = [
+            ":promotion_id"=>$promotion_id,
+        ];
+        $list = array();
+        try{
+            foreach ($mysql->query($sql,$param) as $row){
+                $list = $row;
+            }
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        if(empty($list)){
+            $context->reply(["status"=>206,"msg"=>"查询信息为空,检查参数是否正确"]);
+            return;
+        }
+        $list["start_time"] = date("Y-m-d H:i:s",$list["start_time"]);
+        $list["stop_time"] = date("Y-m-d H:i:s",$list["stop_time"]);
+        $list["add_time"] = date("Y-m-d H:i:s",$list["add_time"]);
+        $context->reply(["status"=>200,"msg"=>"获取成功","info"=>$list]);
+    }
+}

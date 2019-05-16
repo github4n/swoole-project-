@@ -1,0 +1,41 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\Setting;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 返点设置列表
+ * 参数：game_key:彩种
+ * LotteryTicket/Setting/RebateSetting
+ * */
+class RebateSetting extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("ticket_setting_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $gamelist = json_decode($context->getInfo("GameList"));
+        if(empty($gamelist))  {
+            $gamelist = $this->getAllGame($context,$config);
+        }
+        $data = $context->getData();
+        $mysql = $config->data_public;
+        $game_key = $data["game_key"]?:"dice_ah";
+        $sql = "SELECT play_key,play_name,rebate_max as rebate FROM lottery_game_play_intact WHERE game_key=:game_key";
+        $param = [":game_key"=>$game_key];
+        foreach ($mysql->query($sql,$param) as $rows) {
+            $list[] = $rows;
+        }
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "game_list"=>$gamelist,
+            "list"=>$list,
+       ]);
+    }
+}

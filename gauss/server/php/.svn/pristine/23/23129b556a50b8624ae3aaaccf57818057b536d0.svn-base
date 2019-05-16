@@ -1,0 +1,29 @@
+<?php
+/**
+ * @Rose 2019-4-24
+ */
+namespace Site\Task\User;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Balance implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['user_list' => $user_list] = $context->getData();
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $userMysql = $config->data_user;
+        $sql = 'select user_id,client_id from user_session where user_id in :user_list';
+        $all_user = iterator_to_array($userMysql->query($sql,[':user_list'=>$user_list]));
+        if(!empty($all_user)){
+            foreach ($all_user as $key=>$val){
+                $sql = 'select deal_key from user_info_intact where user_id =:user_id';
+                foreach ($userMysql->query($sql,[':user_id'=>$val['user_id']]) as $row){
+                    $taskAdapter->plan('NotifyApp', ['path' => 'User/Balance', 'data' => ['user_id' => $val['user_id'],'deal_key'=>$row['deal_key'],'id'=>$val['client_id']]]);
+                }
+            }
+        }
+    }
+}

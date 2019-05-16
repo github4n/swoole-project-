@@ -1,0 +1,83 @@
+<?php
+/*
+ * * User:blake
+ Date:2019-04-23
+ * */
+namespace Site\Websocket\Member\MemberList;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员管理-会员列表-佣金详情
+ * Member/MemberList/BrokerageDetail {"user_key":"user001"}
+ * 参数：user_key:用户名
+ */
+class BrokerageDetail extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $data = $context->getData();
+        $userKey = $data['user_key'];
+
+        if (empty($userKey))
+        {
+            $context->reply(['status' => 201, 'msg' => '用户名(user_key)为空']);
+            return;
+        }
+
+        $mysql = $config->data_report;
+        $brokerList = [];
+        $list = [];
+        $sql = 'SELECT user_key,layer_id,broker_1_bet,broker_1_rate,brokerage_1,broker_2_bet,broker_2_rate,brokerage_2,broker_3_bet,broker_3_rate,brokerage_3 FROM daily_user_brokerage WHERE user_key=:user_key';
+        $param = [':user_key' => $userKey];
+
+        //一级下线投注人数
+        $brok1_num_sql = 'SELECT COUNT(DISTINCT user_id) AS brok1_num FROM daily_user WHERE broker_1_key=:user_key';
+
+        //二级下线投注人数
+        $brok2_num_sql = 'SELECT COUNT(DISTINCT user_id) AS brok2_num FROM daily_user WHERE broker_2_key=:user_key';
+
+        //三级下线投注人数
+        $brok3_num_sql = 'SELECT COUNT(DISTINCT user_id) AS brok3_num FROM daily_user WHERE broker_3_key=:user_key';
+        foreach ($mysql->query($sql,$param) as $row)
+        {
+            $list[] = $row;
+        }
+        foreach ($list as $k => $v)
+        {
+            $brokerList[$k]['user_key'] = $v['user_key'];
+            $brokerList[$k]['layer_id'] = $v['layer_id'];
+            $brokerList[$k]['broker_1_bet'] = $v['broker_1_bet'];
+            foreach ($mysql->query($brok1_num_sql,$param) as $row)
+            {
+                $brokerList[$k]['broker_1_num'] = $row['brok1_num'];
+            }
+            $brokerList[$k]['broker_1_rate'] = $v['broker_1_rate'];
+            $brokerList[$k]['brokerage_1'] = $v['brokerage_1'];
+            $brokerList[$k]['broker_2_bet'] = $v['broker_2_bet'];
+            foreach ($mysql->query($brok2_num_sql,$param) as $item)
+            {
+                $brokerList[$k]['broker_2_num'] = $item['brok2_num'];
+            }
+            $brokerList[$k]['broker_2_rate'] = $v['broker_2_rate'];
+            $brokerList[$k]['brokerage_2'] = $v['brokerage_2'];
+            $brokerList[$k]['broker_3_bet'] = $v['broker_3_bet'];
+            foreach ($mysql->query($brok3_num_sql,$param) as $num)
+            {
+                $brokerList[$k]['broker_3_num'] = $num['brok3_num'];
+            }
+            $brokerList[$k]['broker_3_rate'] = $v['broker_3_rate'];
+            $brokerList[$k]['brokerage_3'] = $v['brokerage_3'];
+        }
+        if (!empty($brokerList))
+        {
+            $context->setInfo('broker_1_rate',$brokerList['broker_1_rate']);
+            $context->setInfo('broker_2_rate',$brokerList['broker_2_rate']);
+            $context->setInfo('broker_3_rate',$brokerList['broker_3_rate']);
+        }
+        //$context->reply($total);
+        $context->reply(['status' => 200, 'msg' => '获取成功', 'data' => $brokerList]);
+    }
+}

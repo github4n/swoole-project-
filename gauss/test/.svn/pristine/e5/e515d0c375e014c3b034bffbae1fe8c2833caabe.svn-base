@@ -1,0 +1,141 @@
+<?php
+echo "waiting for mysql";
+while (true) {
+    try {
+        $pdo = new PDO('mysql:host=mysql;port=3306;dbname=information_schema', 'phpmyadmin', 'o5UC95311O1silJ0', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+        break;
+    } catch (Throwable $ex) {
+        sleep(1);
+        echo ".";
+    }
+}
+
+echo "\n";
+
+$modules = ["Plat", "Site", "App"];
+$protocols = ["Websocket", "Http", "Task"];
+
+$template = file_get_contents("/opt/gauss/job/daemon.php");
+
+foreach ($modules as $module) {
+    foreach ($protocols as $protocol) {
+        $content = str_replace(["MODULE", "PROTOCOL"], [$module, $protocol], $template);
+        file_put_contents("/etc/supervisor.d/{$module}{$protocol}.php", $content);
+    }
+}
+
+$mysqlUsers = [
+    "plat_admin" => "PbeXKasLdsDq0VEv",
+    "site1_staff" => "WU80HM25VXCLptQ7",
+    "site1_user" => "ysWLWc6ZIC41LCJq",
+    "site2_staff" => "AIX3IdoflRAPuspz",
+    "site2_user" => "uibiFN11gTblWi6k",
+];
+$redisUsage = ["plat", "site1", "site1app1", "site1app2", "site1app3", "site2", "site2app1", "site2app2", "site2app3"];
+$redisDb = array_flip($redisUsage);
+
+$platPwd = $mysqlUsers['plat_admin'];
+$platDb = $redisDb['plat'];
+$services = [
+    "plat0admin" => [
+        "config" => [
+            "data_admin" => "mysql://plat_admin:{$platPwd}@mysql/plat_admin",
+            "data_public" => "mysql://plat_admin:{$platPwd}@mysql/plat_public",
+            "data_analysis" => "mysql://plat_admin:{$platPwd}@mysql/plat_analysis",
+            "cache_daemon" => "redis://plat_admin:eMhai6u3yUSe58sw@redis/{$platDb}",
+            "cache_plat" => "redis://plat_admin:eMhai6u3yUSe58sw@redis/{$platDb}",
+            "site_list" => [],
+            "fg_apiurl" => "https://api.ppro.98078.net",
+            "fg_merchantname" => "uat_gongying1214",
+            "fg_merchantcode" => "196f947f9c00ee8e20af23cc0d5b5926",
+            "fg_partnerid" => "kma61Eku",
+            "fg_apikey" => "eYqydWb4UdNewXZqyOPxY3kGxTEtB4IC",
+            "ky_apiurl" => "https://kyapi.ky206.com:189/channelHandle",
+            "ky_recordurl" => "https://kyrecord.ky206.com:190/getRecordHandle",
+            "ky_agent" => "70703",
+            "ky_deskey" => "A912B25D61265D4F",
+            "ky_md5key" => "15B4FAC38BA8FB2A",
+        ],
+        "processes" => [
+            "PlatHttp" => 1,
+            "PlatWebsocket" => 2,
+            "PlatTask" => 5,
+        ],
+    ],
+];
+foreach (["site1", "site2"] as $site) {
+    $staffPwd = $mysqlUsers["{$site}_staff"];
+    $userPwd = $mysqlUsers["{$site}_user"];
+    $siteDb = $redisDb[$site];
+    $services["plat0admin"]["config"] += [
+        "data_{$site}_staff" => "mysql://plat_admin:{$platPwd}@mysql/{$site}_staff",
+        "data_{$site}_report" => "mysql://plat_admin:{$platPwd}@mysql/{$site}_report",
+        "data_{$site}_user" => "mysql://plat_admin:{$platPwd}@mysql/{$site}_user",
+        "cache_{$site}" => "redis://plat_admin:eMhai6u3yUSe58sw@redis/{$siteDb}",
+    ];
+    $services["plat0admin"]["config"]["site_list"][] = $site;
+    $services["{$site}staff"] = [
+        "config" => [
+            "data_public" => "mysql://{$site}_staff:{$staffPwd}@mysql/plat_public",
+            "data_staff" => "mysql://{$site}_staff:{$staffPwd}@mysql/{$site}_staff",
+            "data_report" => "mysql://{$site}_staff:{$staffPwd}@mysql/{$site}_report",
+            "data_user" => "mysql://{$site}_staff:{$staffPwd}@mysql/{$site}_user",
+            "data_deal1" => "mysql://{$site}_staff:{$staffPwd}@mysql/{$site}_deal1",
+            "data_deal2" => "mysql://{$site}_staff:{$staffPwd}@mysql/{$site}_deal2",
+            "data_deal3" => "mysql://{$site}_staff:{$staffPwd}@mysql/{$site}_deal3",
+            "data_deal4" => "mysql://{$site}_staff:{$staffPwd}@mysql/{$site}_deal4",
+            "data_deal5" => "mysql://{$site}_staff:{$staffPwd}@mysql/{$site}_deal5",
+            "data_guest" => "mysql://{$site}_staff:{$staffPwd}@mysql/{$site}_guest",
+            "cache_daemon" => "redis://{$site}_staff:eMhai6u3yUSe58sw@redis/{$siteDb}",
+            "cache_site" => "redis://{$site}_staff:eMhai6u3yUSe58sw@redis/{$siteDb}",
+            "deal_list" => ['deal1', 'deal2', 'deal3', 'deal4', 'deal5'],
+            "app_list" => [],
+        ],
+        "processes" => [
+            "SiteHttp" => 1,
+            "SiteWebsocket" => 2,
+            "SiteTask" => 5,
+        ],
+    ];
+    foreach (["app1", "app2", "app3"] as $app) {
+        $appDb = $redisDb["{$site}{$app}"];
+        $services["{$site}staff"]["config"] += [
+            "cache_{$app}" => "redis://{$site}_staff:eMhai6u3yUSe58sw@redis/{$appDb}",
+        ];
+        $services["{$site}staff"]["config"]["app_list"][] = $app;
+        $services["{$site}{$app}"] = [
+            "config" => [
+                "data_public" => "mysql://{$site}_user:{$userPwd}@mysql/plat_public",
+                "data_staff" => "mysql://{$site}_user:{$userPwd}@mysql/{$site}_staff",
+                "data_report" => "mysql://{$site}_user:{$userPwd}@mysql/{$site}_report",
+                "data_user" => "mysql://{$site}_user:{$userPwd}@mysql/{$site}_user",
+                "data_deal1" => "mysql://{$site}_user:{$userPwd}@mysql/{$site}_deal1",
+                "data_deal2" => "mysql://{$site}_user:{$userPwd}@mysql/{$site}_deal2",
+                "data_deal3" => "mysql://{$site}_user:{$userPwd}@mysql/{$site}_deal3",
+                "data_deal4" => "mysql://{$site}_user:{$userPwd}@mysql/{$site}_deal4",
+                "data_deal5" => "mysql://{$site}_user:{$userPwd}@mysql/{$site}_deal5",
+                "data_guest" => "mysql://{$site}_user:{$userPwd}@mysql/{$site}_guest",
+                "cache_daemon" => "redis://{$site}_user:eMhai6u3yUSe58sw@redis/{$appDb}",
+                "cache_app" => "redis://{$site}_user:eMhai6u3yUSe58sw@redis/{$appDb}",
+            ],
+            "processes" => [
+                "AppHttp" => 2,
+                "AppWebsocket" => 5,
+                "AppTask" => 5,
+            ],
+        ];
+    }
+}
+
+$template = file_get_contents("/opt/gauss/job/daemon.ini");
+foreach ($services as $key => $value) {
+    mkdir("/var/log/{$key}", 0777, true);
+    $config = $value['config'];
+    file_put_contents("/etc/supervisor.d/{$key}.json", json_encode($config));
+    foreach ($value['processes'] as $daemon => $parallel) {
+        $content = str_replace(["SERVICE", "DAEMON", "PARALLEL"], [$key, $daemon, $parallel], $template);
+        file_put_contents("/etc/supervisor.d/{$key}{$daemon}.ini", $content);
+    }
+}

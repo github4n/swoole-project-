@@ -1,0 +1,60 @@
+<?php
+namespace Site\Websocket\Lottery\LotteryConfig;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 返点投注额批量编辑
+ * Lottery/LotteryConfig/BatchRebate
+ * 参数  game_key(string)    play_list(array)  rebate(float)
+ * */
+class BatchRebate extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $game_key = $data["game_key"];
+        $play_list = $data["play_list"];
+        $rebate = $data["rebate"];
+        if(!is_array($play_list)){
+            $context->reply(["status"=>204,"msg"=>"玩法类型不能为空"]);
+            return;
+        }
+        if(empty($game_key)){
+            $context->reply(["status"=>205,"msg"=>"彩票名称不能为空"]);
+            return;
+        }
+        if(!is_numeric($rebate)){
+            $context->reply(["status"=>208,"msg"=>"返点参数错误"]);
+            return;
+        }
+        foreach ($play_list as $item){
+            $play_key = $item;
+            if(empty($play_key)){
+                $context->reply(["status"=>209,"msg"=>"玩法名称不能为空"]);
+                return;
+            }
+            $sql = "UPDATE lottery_game_play SET rebate_max = :rebate_max WHERE game_key=:game_key AND play_key = :play_key";
+            $param = [
+                ":rebate_max"=>$rebate,
+                ":game_key"=>$game_key,
+                ":play_key"=>$play_key
+            ];
+            try{
+                $mysql->execute($sql,$param);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                throw new \PDOException($e);
+            }
+        }
+        //记录日志
+        $context->reply(["status"=>200,"msg"=>"修改成功"]);
+    }
+}

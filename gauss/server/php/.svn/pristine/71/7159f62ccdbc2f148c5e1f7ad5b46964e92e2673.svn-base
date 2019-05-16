@@ -1,0 +1,55 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\Setting;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 玩法赔率设置列表
+ * LotteryTicket/Setting/PlayRateSetting
+ * game_key:彩种
+ * */
+class PlayRateSetting extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("ticket_setting_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_public;
+        $game_key = $data['game_key']?:"dice_ah";
+        //彩种列表
+        $gamelist = json_decode($context->getInfo("GameList"));
+        if(empty($gamelist))  {
+            $gamelist = $this->getAllGame($context,$config);
+        }
+        //玩法列表
+        $sql = "SELECT play_name,play_key,game_key FROM lottery_game_play_intact WHERE game_key=:game_key";
+        $param=[":game_key"=>$game_key];
+        $playlist = iterator_to_array($mysql->query($sql,$param));
+        if(!empty($playlist)){
+            foreach ($playlist as $key=>$val){
+                $rebate_list = [];
+                //获取相对应的玩法赔率
+                $sql = "SELECT game_key,play_key,win_name,win_key,suggest_bonus_rate,bonus_rate FROM lottery_game_win_intact WHERE game_key=:game_key AND play_key=:play_key";
+                $param=[
+                    ":game_key"=>$game_key,
+                    ":play_key"=>$val["play_key"]
+                ];
+                $rebate_list["play_ksy"] = $val["play_key"];
+                $rebate_list["rebate_list"] = iterator_to_array($mysql->query($sql,$param));
+                $rebate_lists[] = $rebate_list;
+            }
+        }
+        $context->reply(["status"=>200,
+            "msg"=>"获取成功",
+            "game_list"=>$gamelist,
+            "play_list"=>$playlist,
+            "list"=>$rebate_lists
+        ]);
+    }
+}

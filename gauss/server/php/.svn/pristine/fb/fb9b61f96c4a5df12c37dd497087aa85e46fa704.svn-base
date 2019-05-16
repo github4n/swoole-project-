@@ -1,0 +1,56 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: user
+ * Date: 19-3-22
+ * Time: 上午11:03
+ */
+
+namespace App\Websocket\BetRecord;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+/*
+ * 注单--外接注单记录
+ * BetRecord/BetExternalGame {"interface_key":"fg","status":0}
+ * status:0 全部  1 赢  2 输  3 和
+ * */
+
+class BetExternalGame extends CheckLogin
+{
+	public function onReceiveLogined(Context $context, Config $config)
+	{
+		$param = $context->getData();
+		$status = $param['status'];
+		$interface_key = isset($param['interface_key']) ? $param['interface_key'] : '';
+		if (empty($interface_key)) {
+			$context->reply(['status' => 400,'msg' => '三方平台Key不能为空']);
+			return;
+		}
+		$user_id = $context->getInfo('UserId');
+		$deal_key = $context->getInfo('DealKey');
+		//读取游戏列表json文件
+		$file_data = json_decode(file_get_contents($interface_key .'_game_bet.json',__FILE__));
+		//选择数据库
+		$mysql = $config->__get("data_".$deal_key);
+		$res = [];
+		switch ($status) {
+			case 0:
+				$res = $file_data;
+				break;
+			default :
+				foreach ($file_data->data as $key=>$val) {
+					if ($val->winloss == $status) {
+						$res[] = $val;
+					}
+				}
+				$res = [
+					'data' => $res
+				];
+		}
+		$context->reply($res);
+		return;
+	}
+}

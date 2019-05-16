@@ -1,0 +1,60 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-3-11
+ * Time: 下午12:30
+ */
+
+namespace App\Websocket\ExternalGame;
+use Lib\Websocket\Context;
+use Lib\Config;
+use App\Websocket\CheckLogin;
+
+/*
+ * 获取游戏列表
+ * ExternalGame/Fg/FgGameList  {"interface_key":"fg"  or "category_key":"game"}
+ */
+class GameList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $param = $context->getData();
+        $mysqlStaff = $config->data_staff;
+        if (isset($param['category_key']) && $param['category_key']) {
+            $category_key = $param['category_key'];
+            $sql = "select interface_key from external_game where category_key = '$category_key' and acceptable = 1 group by category_key,interface_key";
+            $interface_list = [];
+            foreach ($mysqlStaff->query($sql) as $value) {
+                $interface_list[] = $value;
+            }
+            $context->reply(['status' => 200,'msg' => '成功','data' => $interface_list]);
+            return;
+        } elseif (isset($param['interface_key']) && $param['interface_key']) {
+            $interface_key = $param['interface_key'];
+            $sql = "select game_key from external_game where interface_key = '$interface_key' and acceptable = 1";
+            $game_list = [];
+            foreach ($mysqlStaff->query($sql) as $value) {
+                //切割server_id
+                $server_id =  substr($value['game_key'],3);
+                //读取游戏列表json
+                $file_data = file_get_contents($interface_key .'_game.json',__FILE__);
+                $data = json_decode($file_data);
+                foreach ($data->data as $game) {
+                    //匹配数据
+                    if ($server_id == $game->service_id) {
+                        $value['game_code'] = $game->gamecode;
+                        $value['game_url'] = $game->game_url;
+                        $value['game_name'] = $game->name;
+                    }
+                }
+                $game_list[] = $value;
+            }
+            $context->reply(['status' => 200,'msg' => '成功','data' => $game_list]);
+            return;
+        } else {
+            $context->reply(['status' => 404,'获取列表信息失败']);
+            return;
+        }
+    }
+}

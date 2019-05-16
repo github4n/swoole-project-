@@ -1,0 +1,219 @@
+<?php
+
+namespace Site\Websocket\Member\Deposits;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/**
+ * MemberWithdrawal class.
+ *
+ * @description   会员出入款查询-会员出款
+ * @Author  blake
+ * @date  2019-05-08
+ * @links  Member/Deposits/MemberWithdrawal
+ *  参数：status(1.拒绝出款（审核），2.出款成功，3.出款失败，4.等待出款，5.出款中)
+ * 搜索参数：user_name:会员名,user_level:会员层级,rel_name:真实姓名,status；状态,start_time:提交时间开始值,end_time:提交时间结束值
+ * @modifyAuthor   blake
+ * @modifyTime  2019-05-08
+ */
+class MemberWithdrawal extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //会员层级列表
+        $all_layer_list = $this->LayerManage($context, $config);
+
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $user_name = isset($data['user_name']) ? $data['user_name'] : '';
+        $user_level = isset($data['user_level']) ? $data['user_level'] : '';
+        $rel_name = isset($data['rel_name']) ? $data['rel_name'] : '';
+        $status = isset($data['status']) ? $data['status'] : '';
+        $start_time = isset($data['start_time']) ? $data['start_time'] : '';
+        $end_time = isset($data['end_time']) ? $data['end_time'] : '';
+        $staffId = $context->getInfo('StaffId');
+        $staffGrade = $context->getInfo('StaffGrade');
+        $MasterId = $context->getInfo('MasterId');
+        if ($MasterId != 0) {
+            $staffId = $MasterId;
+        }
+        $mysqlStaff = $config->data_staff;
+        $mysqlUser = $config->data_user;
+        $agent_list = [0];
+        $layer_list = [0];
+        switch ($staffGrade) {
+            case 0:
+                if (empty(!$MasterId)) {
+                    $accout_sql = 'select layer_id from staff_layer where staff_id=:staff_id';
+
+                    foreach ($mysqlStaff->query($accout_sql, [':staff_id' => $context->getInfo('StaffId')]) as $row) {
+                        $layer_list[] = $row['layer_id'];
+                    }
+                    $user_sql = 'select user_id from user_info_intact where layer_id in :layer_list';
+                    $query = $mysqlUser->query($user_sql, [':layer_list' => $layer_list]);
+                } else {
+                    $user_sql = 'select user_id  from user_info_intact';
+                    $query = $mysqlUser->query($user_sql);
+                }
+
+                $user_list = [];
+                foreach ($query as $row) {
+                    $user_list[] = $row['user_id'];
+                }
+                break;
+            case 1:
+                $sql = 'SELECT agent_id FROM staff_struct_agent WHERE major_id=:major_id';
+                foreach ($mysqlStaff->query($sql, [':major_id' => $staffId]) as $row) {
+                    $agent_list[] = $row['agent_id'];
+                }
+
+                if (empty($agent_list)) {
+                    $agent_list = [0];
+                }
+                if (empty(!$MasterId)) {
+                    $accout_sql = 'select layer_id from staff_layer where staff_id=:staff_id';
+                    $layer_list = [];
+                    foreach ($mysqlStaff->query($accout_sql, [':staff_id' => $context->getInfo('StaffId')]) as $row) {
+                        $layer_list[] = $row['layer_id'];
+                    }
+                    $user_sql = 'select user_id from user_info_intact where agent_id in :agent_list and layer_id in :layer_list';
+                    $query = $mysqlUser->query($user_sql, [':agent_list' => $agent_list, ':layer_list' => $layer_list]);
+                } else {
+                    $user_sql = 'select user_id from user_info_intact where agent_id in :agent_list';
+                    $query = $mysqlUser->query($user_sql, [':agent_list' => $agent_list]);
+                }
+
+                foreach ($query as $row) {
+                    $user_list[] = $row['user_id'];
+                }
+                break;
+            case 2:
+                $sql = 'SELECT agent_id FROM staff_struct_agent WHERE minor_id=:major_id';
+                foreach ($mysqlStaff->query($sql, [':major_id' => $staffId]) as $row) {
+                    $agent_list[] = $row['agent_id'];
+                }
+                if (empty(!$MasterId)) {
+                    $accout_sql = 'select layer_id from staff_layer where staff_id=:staff_id';
+                    $layer_list = [];
+                    foreach ($mysqlStaff->query($accout_sql, [':staff_id' => $context->getInfo('StaffId')]) as $row) {
+                        $layer_list[] = $row['layer_id'];
+                    }
+                    $user_sql = 'select user_id from user_info_intact where agent_id in :agent_list and layer_id in :layer_list';
+                    $query = $mysqlUser->query($user_sql, [':agent_list' => $agent_list, ':layer_list' => $layer_list]);
+                } else {
+                    $user_sql = 'select user_id from user_info_intact where agent_id in :agent_list';
+                    $query = $mysqlUser->query($user_sql, [':agent_list' => $agent_list]);
+                }
+
+                foreach ($query as $row) {
+                    $user_list[] = $row['user_id'];
+                }
+                break;
+            case 3:
+                if (empty(!$MasterId)) {
+                    $accout_sql = 'select layer_id from staff_layer where staff_id=:staff_id';
+                    $layer_list = [];
+                    foreach ($mysqlStaff->query($accout_sql, [':staff_id' => $context->getInfo('StaffId')]) as $row) {
+                        $layer_list[] = $row['layer_id'];
+                    }
+                    $layer_list = empty($layer_list) ? [0] : $layer_list;
+                    $user_sql = 'select user_id from user_info_intact where agent_id =:agent_id and layer_id in :layer_list';
+                    $query = $mysqlUser->query($user_sql, [':layer_list' => $layer_list, ':agent_id' => $staffId]);
+                } else {
+                    $user_sql = 'select user_id from user_info_intact where agent_id = :agent_id';
+                    $query = $mysqlUser->query($user_sql, [':agent_id' => $staffId]);
+                }
+                foreach ($query as $row) {
+                    $user_list[] = $row['user_id'];
+                }
+                break;
+        }
+        if (empty($user_list)) {
+            $user_list = [0];
+        }
+
+        $data_sql = 'SELECT user_id,user_key,layer_id,withdraw_money,account_name,launch_time,accept_time,reject_time,lock_type,'.
+                    'finish_time,cancel_time FROM withdraw_intact WHERE user_id in :user_list ';
+
+        $param = [':user_list' => $user_list];
+        if ($user_name) {
+            $data_sql .= ' and user_key=:user_key';
+            $param[':user_key'] = $user_name;
+        }
+        if ($user_level) {
+            $data_sql .= ' and layer_id=:layer_id';
+            $param[':layer_id'] = $user_level;
+        }
+        if ($rel_name) {
+            $data_sql .= ' and account_name=:account_name';
+            $param[':account_name'] = $rel_name;
+        }
+        if (!empty($status)) {
+            if ($status == 1) {
+                $data_sql .= ' and reject_time>0';
+            } elseif ($status == 2) {
+                $data_sql .= ' and finish_time>0';
+            } elseif ($status == 3) {
+                $data_sql .= ' and cancel_time>0';
+            } elseif ($status == 4) {
+                $data_sql .= ' and launch_time > 0 and accept_time is null and reject_time is null and cancel_time is null and finish_time is null and lock_type is null';
+            } elseif ($status == 5) {
+                $data_sql .= ' and launch_time > 0 and (lock_type is not null or accept_time > 0) and reject_time is null and cancel_time is null and finish_time is null';
+            }
+        }
+        if (!empty($start_time) && !empty($end_time)) {
+            $start = strtotime($start_time.' 00:00:00');
+            $end = strtotime($end_time.' 23:59:59');
+            $data_sql .= ' and launch_time BETWEEN :start_time  and :end_time';
+            $param[':start_time'] = $start;
+            $param[':end_time'] = $end;
+        }
+        $list = $config->deal_list;
+        $withdrawal_list = [];
+        if (!empty($list)) {
+            foreach ($list as $deal) {
+                $mysqls = $config->__get('data_'.$deal);
+
+                foreach ($mysqls->query($data_sql, $param) as $rows) {
+                    $withdrawal = [
+                        'user_key' => $rows['user_key'],
+                        'layer_name' => $context->getInfo($rows['layer_id']),
+                        'account_name' => empty(str_replace(' ', '', $rows['account_name'])) ? '' : $rows['account_name'],
+                        'withdraw_money' => $this->intercept_num($rows['withdraw_money']),
+                        'launch_time' => !empty($rows['launch_time']) ? date('Y-m-d H:i:s', $rows['launch_time']) : '',
+                    ];
+                    if (!empty($rows['finish_time'])) {
+                        $withdrawal['status'] = '出款成功';
+                        $withdrawal['finish_time'] = date('Y-m-d H:i:s', $rows['finish_time']);
+                    }
+                    if (!empty($rows['reject_time'])) {
+                        $withdrawal['status'] = '拒绝出款';
+                        $withdrawal['finish_time'] = date('Y-m-d H:i:s', $rows['reject_time']);
+                    }
+                    if (empty($rows['finish_time']) && empty($rows['cancel_time']) && empty($rows['reject_time']) && empty($rows['accept_time']) && $rows['lock_type'] == null) {
+                        $withdrawal['status'] = '等待出款';
+                        $withdrawal['finish_time'] = '';
+                    }
+                    if (($rows['lock_type'] != null || !empty($rows['accept_time'])) && empty($rows['finish_time']) && empty($rows['cancel_time']) && empty($rows['reject_time'])) {
+                        $withdrawal['status'] = '出款中';
+                        $withdrawal['finish_time'] = '';
+                    }
+                    if (!empty($rows['cancel_time'])) {
+                        $withdrawal['status'] = '出款失败';
+                        $withdrawal['finish_time'] = date('Y-m-d H:i:s', $rows['cancel_time']);
+                    }
+                    $withdrawal_list[] = $withdrawal;
+                }
+            }
+        }
+        array_multisort(array_column($withdrawal_list, 'launch_time'), SORT_DESC, $withdrawal_list);
+        $context->reply([
+            'status' => 200,
+            'msg' => '获取成功',
+            'level_list' => $all_layer_list, //会员层级列表信息
+            'list' => $withdrawal_list,
+        ]);
+    }
+}

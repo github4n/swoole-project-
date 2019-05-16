@@ -1,0 +1,106 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-3-11
+ * Time: 下午12:19
+ */
+
+namespace App\Websocket\ExternalGame;
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+/*
+ * 额度转换
+ * ExternalGame/GameAmountTransfer
+ * {"wallet":"my","plat":"ky","money":"500"}
+ * wallet: 选择钱包
+ * plat:   转入平台
+ */
+class GameAmountTransfer extends CheckLogin
+{
+	public function onReceiveLogined(Context $context, Config $config)
+	{
+		$param = $context->getData();
+		$wallet = isset($param['wallet']) ? $param['wallet'] : '';
+		$plat = isset($param['plat']) ? $param['plat'] : '';
+		if (empty($wallet) || empty($plat)) {
+			$context->reply(['status' => 400,'msg' => '请选择钱包或转入平台类型']);
+			return;
+		}
+		if ($wallet == $plat) {
+			$context->reply(['status' => 400,'msg' => '请勿选择相同的类型']);
+			return;
+		}
+		$money = isset($param['money']) ? $param['money'] : '';
+		if (empty($money) || $money <= 0) {
+			$context->reply(['status' => 400,'msg' => '充值金额异常']);
+			return;
+		}
+		//判断选择钱包内的金额
+
+		$user_id = $context->getInfo('UserId');
+		$user_key = $context->getInfo('UserKey');
+		$deal_key = $context->getInfo("DealKey");
+		$deal_mysql = $config->__get("data_".$deal_key);
+		//查询用户余额
+		$sql = "SELECT money FROM account WHERE user_id='$user_id'";
+		foreach ($deal_mysql->query($sql) as $v) {
+			$user_money = $v['money'];
+		}
+		$adapter = new \Lib\Task\Adapter($config->cache_daemon);
+		switch ($wallet) {
+			//充值
+			case 'my':
+				switch ($plat) {
+					//充值到开元棋牌
+					case 'ky':
+						if ($money > $user_money) {
+							$context->reply(['status'=>404,'msg'=>'余额不足']);
+							return;
+						}
+						$param = [
+							'account' => $user_id,
+							'money' => $money,
+							'action' => 'addScore',
+							'client_id' => $context->clientId(),
+							'interface_key' => $plat
+						];
+						$adapter->plan('ExternalGame/GameAmountTransfer',['data'=>$param],time(),1);
+						break;
+					//充值到AG视讯
+					case 'ag':
+						break;
+					case 'lb':
+						break;
+				}
+			case 'ky':
+				switch ($plat) {
+					//提现到我的钱包
+					case 'my':
+						$param = [
+							'account' => $user_id,
+							'money' => $money,
+							'action' => 'subordinate',
+							'client_id' => $context->clientId(),
+							'interface_key' => $wallet
+						];
+						$adapter->plan('ExternalGame/GameAmountTransfer',['data'=>$param],time(),1);
+						break;
+					case 'ag':
+						break;
+					case 'lb':
+						break;
+				}
+			case 'ag':
+				break;
+			case 'lb':
+				break;
+			//提现
+			default:
+				$context->reply(['status'=>404,'msg'=>'非法参数']);
+				return;
+		}
+	}
+}

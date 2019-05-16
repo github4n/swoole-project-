@@ -1,0 +1,70 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-3-5
+ * Time: 下午5:28
+ */
+namespace App\Websocket\ExternalGame;
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+use App\Websocket\ExternalGame\FG\FgApi;
+class FgGameList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $userMysql = $config->data_user;
+        $param = $context->getData();
+        $terminal = isset($param['terminal']) ? $param['terminal'] : 'as';
+        $lang = isset($param['lang']) ? $param['lang'] : 'zh_CN';
+        $user_key = $context->getInfo('UserKey');
+        $user_sql = "select user_id,register_time,deal_key from user_info_intact where user_key = '$user_key'";
+        $member_code = '';
+        $password = '';
+        foreach ($userMysql->query($user_sql) as $row) {
+            $user_id = $row['user_id'];
+            $register_time = $row['register_time'];
+            //member_code生产
+            $member_code = $user_id . $user_key . substr($register_time,-5,6);
+            $password = md5($user_key . round(3,3));
+        }
+        if (!$member_code || !$password) {
+            $context->reply(['status' => 400,'msg' =>'启动FG电子游戏大厅失败,未获取到用户信息']);
+        }
+        $fgAPI = new FgApi();
+        $res = $fgAPI->is_player_exist($member_code);
+        //无返回的情况
+        if (empty($res)) {
+            $context->reply(['status' => 401,'msg' => '启动FG电子游戏大厅失败']);
+            return;
+        }
+        $error_code = isset($res['res']['error_code']) ? $res['res']['error_code'] : '';
+        //玩家存在(直接返回游戏列表)
+
+        switch ($error_code) {
+                //玩家不存在,先创建玩家
+            case 53 :
+                $createUser = $fgAPI->create_new_player($member_code,$password);
+                if (isset($createUser['res']['error_code'])) {
+                    $context->reply(['status' => 403,'msg'=> '启动游戏失败,未成功创建玩家账户']);
+                    return;
+                }
+                $gameData = $fgAPI->get_game_list($terminal,$lang);
+                $context->reply(['status' => 200, 'msg' => '成功','data' => $gameData]);
+                return;
+                break;
+                //玩家存在,直接取游戏列表
+            case 54 :
+                $gameData = $fgAPI->get_game_list($terminal,$lang);
+                $context->reply(['status' => 200, 'msg' => '成功','data' => $gameData]);
+                return;
+                break;
+            default :
+                $context->reply(['status'=>402,'msg'=>'启动FG电子游戏大厅失败' ]);
+                break;
+        }
+
+    }
+
+}

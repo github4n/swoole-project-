@@ -1,0 +1,577 @@
+<?php
+
+namespace Site\Task\Index;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Account implements IHandler {
+
+    public function onTask(Context $context, Config $config) {
+        ['staff_grade' => $StaffGrade, 'id' => $id, "master_id" => $master, "staff_id" => $staffId] = $context->getData();
+        $websocketAdapter = new \Lib\Websocket\Adapter($config->cache_site);
+        $mysqlReport = $config->data_report;
+        $mysqlUser = $config->data_user;
+        $mysqlStaff = $config->data_staff;
+
+        $allmoney = 0;
+        $alipay = 0;
+        $firstNum = 0;
+        $weixin = 0;
+        $onlineBank = 0;
+        $bank = 0;
+        $manual = 0;
+        $rechargeUserNum = 0;
+        $rechargeNum = 0;
+        $manualRechargeUserNum = 0;
+        $manualRechargeNum = 0;
+        $alipayUser = 0;
+        $weixinUser = 0;
+        $onlineBankUser = 0;
+        $bankUser = 0;
+        $manualUser = 0;
+        $allWithdraw = 0;
+        $manualWithdraw = 0;
+        $activityWithdraw = 0;
+        $activityWithdrawNum = 0;
+        $withdrawUserNumAll = 0;
+        $rebate = 0;
+        $rebateNum = 0;
+        $rebatesub = 0;
+        $register = 0;
+        $rebatesubNum = 0;
+        $broker = 0;
+        $brokerNum = 0;
+        $withdrawNum = 0;
+        $withdrawUserNum = 0;
+        $manualWithdrawUserNum = 0;
+        $manualWithdrawNum = 0;
+        $betAmount = 0;
+        $betNum = 0;
+        $firstMoney = 0;
+        $betCount = 0;
+        $depositLineBank = [];
+        $depositWeixin = [];
+        $depositAlipay = [];
+        $depositBank = [];
+        $convenientRecharge = [];
+        $convenientPaymentCount = 0; //便捷支付金额
+        $convenientPaymentNum = 0; //便捷支付人数
+        $bonusNum = 0;
+        $bonusCount = 0;
+        $bonusFrequency = 0;
+        $bank_deposit_count = 0;
+        $bank_deposit_amount = 0;
+
+
+        //外接口投注及派奖数据
+        $video_betcount = 0;
+        $video_betamount = 0;
+        $video_betnum = 0;
+        $video_bonuscount = 0;
+        $video_bonusamount = 0; //AG视讯
+        $video_bonusnum = 0; //
+
+        $game_betcount = 0;
+        $game_betamount = 0;
+        $game_betnum = 0;
+        $game_bonuscount = 0;
+        $game_bonusamount = 0;
+        $game_bonusnum = 0; //MG电子
+
+        $sports_betcount = 0;
+        $sports_betamount = 0;
+        $sports_betnum = 0;
+        $sports_bonuscount = 0;
+        $sports_bonusamount = 0;
+        $sports_bonusnum = 0; //沙巴体育
+
+        $cards_betcount = 0;
+        $cards_betamount = 0;
+        $cards_betnum = 0;
+        $cards_bonuscount = 0;
+        $cards_bonusamount = 0;
+        $cards_bonusnum = 0; //澳门视讯
+
+        $lottery_game_betcount = 0;
+        $lottery_game_betamount = 0;
+        $lottery_game_betnum = 0;
+        $lottery_game_bonuscount = 0;
+        $lottery_game_bonusamount = 0;
+        $lottery_game_bonusnum = 0; //彩票游戏（本地非外接口）
+
+
+        $distributedBrokerage = 0;
+        $distributedBrokerageNum = 0;
+        $waitBrokerageNum = 0;
+        $waitBrokerage = 0;
+
+        $staffWithdrawalAmountAll = 0; //人工出款总额
+        $staffWithdrawalCountAll = 0; //人工出款总人数
+
+        $staffWithdrawalAmount = 0; //手工提出
+        $staffWithdrawalCount = 0;
+        $cancelDepositAmount = 0; //取消存款
+        $cancelDepositCount = 0;
+        $illegalBetAmount = 0; //非法投注
+        $illegalBetCount = 0;
+        $forgoOfferAmount = 0;
+        $forgoOfferCount = 0; //放弃存款优惠
+        $otherWithdrawalAmount = 0; //其他出款
+        $otherWithdrawalCount = 0;
+
+        $refuseWithdrawalAmount = 0; //拒绝出款金额
+        $refuseWithdrawalCount = 0; //拒绝出款人数
+
+
+
+        if ($master != 0) {
+            $staffId = $master;
+        }
+
+        $agentMysql = $config->data_staff;
+        $agent_id = [];
+        switch ($StaffGrade) {
+            case 0:
+                $sql = "SELECT agent_id FROM staff_struct_agent ";
+                $agent_id = iterator_to_array($agentMysql->query($sql));
+                break;
+            case 1:
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE major_id='$staffId'";
+                $agent_id = iterator_to_array($agentMysql->query($sql));
+                break;
+            case 2:
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE minor_id='$staffId'";
+                $agent_id = iterator_to_array($agentMysql->query($sql));
+                break;
+
+            case 3:
+                $agent_id[] = ['agent_id' => $staffId];
+                break;
+        }
+
+        $userMysql = $config->data_user;
+        $user_id = '';
+        if (!empty($agent_id)) {
+            foreach ($agent_id as $row) {
+                $get_agent = $row['agent_id'];
+                $sql = "SELECT user_id,deal_key FROM user_info WHERE agent_id='$get_agent'";
+                foreach ($userMysql->query($sql) as $item) {
+                    $user_id .= $item['user_id'] . ',';
+                }
+            }
+        }
+        $user_list = rtrim($user_id, ',');
+        if (empty($user_list)) {
+            $user_list = 0;
+        }
+        $day_today = date("Y-m-d", time()); //今日日期
+        $day_start = strtotime(date("Y-m-d", time()) . " 00:00:00"); //日起始时间
+        $day_end = strtotime(date("Y-m-d", time()) . " 23:59:59"); //日结束时间
+        $month_start_day = date('Ymd', strtotime(date('Y-m', time()) . '-01 00:00:00')); //本月开始第一天
+        $lastMonthFirstday = date('Ym01', strtotime('last month')); //上月第一天
+        $lastMonthLastday = date('Ymd', strtotime(date('Y-m-1') . '-1 day')); //上月最后一天
+
+        if ($StaffGrade == 0) {
+            $all_data_sql = "select sum(deposit_count) as  deposit_count_number, sum(withdraw_count) as  withdraw_count_number,count(bank_deposit_coupon>0 or null)as bank_deposit_count, sum(bank_deposit_coupon)as bank_deposit_amount,count(is_first_deposit=1 or null ) as firstRechargeNum,sum(if(is_first_deposit>0,deposit_amount,0)) as firstRechargeAmount,sum(simple_deposit_amount) as simpleDepositAmount ,count(simple_deposit_amount>0 or null) as simpleDepositNum,sum(bonus_count) as bonusFrequency ,count(bonus_amount>0 or null) as bonusNum,sum(bonus_amount) as bonusCount ,count(bank_deposit_count>0 or null) as bank_deposit_count, sum(bank_deposit_amount)as bank_deposit_amount,count(deposit_bank_count>0 or null ) as deposit_bank_count,sum(deposit_bank_amount) as deposit_bank_amount,count(deposit_weixin_count>0 or null) as deposit_weixin_count ,sum(deposit_weixin_amount)as deposit_weixin_amount,count(deposit_alipay_count>0 or null) as deposit_alipay_count,sum(deposit_alipay_amount) as deposit_alipay_amount,count(staff_deposit_count>0 or null )  as staff_deposit_count,sum(staff_deposit_amount)  as staff_deposit_amount, count(withdraw_count>0 or null) as  withdraw_count, sum(withdraw_amount)as withdraw_amount,count(coupon_amount>0 or null)as coupon_count, sum(coupon_amount)as coupon_amount,count(staff_withdraw_count) as staff_withdraw_count,sum(staff_withdraw_amount) as staff_withdraw_amount, count(rebate_amount>0 or null) as rebate_amountTime ,sum(rebate_amount)as rebate_amount, count(subsidy_amount>0 or null) as subsidy_count ,sum(subsidy_amount)  as subsidy_amount, sum(bet_count)as bet_count,count(staff_deposit_count>0 or null)as staff_deposit_countTime,sum(staff_deposit_count)  as staff_deposit_countSum, count(staff_withdraw_count>0 or null)as staff_withdraw_countTime,sum(staff_withdraw_count) as  staff_withdraw_countSum,  count(bet_count>0 or null) as bet_countTime,sum(bet_count)as bet_count,sum(bet_amount)as bet_amount, count(is_first_deposit>0 or null) as is_first_deposit from daily_user where  daily>='$day_today'";
+            $register_data_sql = "SELECT count(user_id) as user_id FROM user_info_intact WHERE register_time  >= '$day_start'";
+            $brokerage_data_sql = "select sum(brokerage) as brokerage,count(user_id) as user_id FROM daily_user_brokerage where daily >='$day_today'";
+            $deposit_linebank_detail = "SELECT way_name,gate_name, sum(finish_money) as money " .
+                    "FROM deposit_gateway_intact WHERE finish_time BETWEEN  '$day_start' AND '$day_end'" .
+                    " AND way_key='bank' group by gate_name,way_name ";
+            $deposit_weixin_detail = "SELECT way_name,gate_name, sum(finish_money) as money " .
+                    "FROM deposit_gateway_intact WHERE  finish_time  BETWEEN  '$day_start' AND '$day_end'" .
+                    " AND way_key='weixin' group by gate_name,way_name ";
+            $deposit_alipay_detail = "SELECT way_name,gate_name, sum(finish_money) as money " .
+                    "FROM deposit_gateway_intact WHERE  finish_time  BETWEEN  '$day_start' AND '$day_end'" .
+                    " AND way_key='alipay' group by gate_name,way_name ";
+            $deposit_bank_detail = "SELECT passage_name,to_bank_name, to_account_number, sum(finish_money) as money" .
+                    " FROM deposit_bank_intact WHERE  finish_time   BETWEEN  '$day_start' AND '$day_end'  group by passage_name,to_bank_name,to_account_number";
+            $deposit_simple_detail = "SELECT passage_name,pay_url, sum(finish_money) as money " .
+                    "FROM deposit_simple_intact WHERE  finish_time BETWEEN  '$day_start' AND '$day_end'" .
+                    "  group by passage_name,pay_url ";
+            $lottery_sql = "select sum(bet_count)as gameBetCount,count(bet_count>0 or null) as gameBetNum,sum(bet_amount)as game_BetAmount,sum(bonus_amount)as gameBonusAmount,sum(bonus_count) as gameBonusCount,count(bonus_count>0 or null)as gameBonusNum from daily_user_lottery where  daily>='$day_today'   ";
+            $external_sql = "select interface_key,sum(bet_count)as gameBetCount,count(bet_count>0 or null) as gameBetNum,sum(bet_amount)as game_BetAmount,sum(bonus_amount)as gameBonusAmount,sum(bonus_count) as gameBonusCount,count(bonus_count>0 or null)as gameBonusNum from daily_user_external where   daily>='$day_today'   group by interface_key ";
+            $brokerage_sql = "select count(deliver_time=0 or null ) as waitBrokerageNum,count(deliver_time>0 or null ) as distributedBrokerageNum,sum(if(deliver_time>0,brokerage,0)) as distributedBrokerage,sum(if(deliver_time=0,brokerage,0)) as waitBrokerage from daily_user_brokerage WHERE   daily>='$day_today'   ";
+            $staff_withdraw_intact_sql = "select sum(money) as  withdraw_money,count(user_id) as user_ids from  staff_withdraw_intact  where  withdraw_time  BETWEEN   '$day_start' AND '$day_end' group by withdraw_type ";
+            $withdraw_intact_sql = "select sum(withdraw_money) as  withdraw_money,count(user_id) as user_ids from  withdraw_intact   where   reject_time  BETWEEN   '$day_start' AND '$day_end' ";
+        } else {
+            $all_data_sql = "select sum(deposit_count) as  deposit_count_number, sum(withdraw_count) as  withdraw_count_number,count(bank_deposit_coupon>0 or null)as bank_deposit_count, sum(bank_deposit_coupon)as bank_deposit_amount,count(is_first_deposit=1 or null ) as firstRechargeNum,sum(if(is_first_deposit>0,deposit_amount,0)) as firstRechargeAmount,sum(simple_deposit_amount) as simpleDepositAmount ,count(simple_deposit_amount>0 or null) as simpleDepositNum,sum(bonus_count) as bonusFrequency , count(bonus_amount>0 or null) as bonusNum,sum(bonus_amount) as bonusCount , count(bank_deposit_count>0 or null) as bank_deposit_count, sum(bank_deposit_amount)as bank_deposit_amount,count(deposit_bank_count>0 or null ) as deposit_bank_count,sum(deposit_bank_amount) as deposit_bank_amount,count(deposit_weixin_count>0 or null) as deposit_weixin_count ,sum(deposit_weixin_amount)as deposit_weixin_amount,count(deposit_alipay_count>0 or null) as deposit_alipay_count,sum(deposit_alipay_amount) as deposit_alipay_amount,count(staff_deposit_count>0 or null )  as staff_deposit_count,sum(staff_deposit_amount)  as staff_deposit_amount, count(withdraw_count>0 or null) as  withdraw_count, sum(withdraw_amount)as withdraw_amount,count(coupon_amount>0 or null)as coupon_count, sum(coupon_amount)as coupon_amount,count(staff_withdraw_count) as staff_withdraw_count,sum(staff_withdraw_amount) as staff_withdraw_amount, count(rebate_amount>0 or null) as rebate_amountTime ,sum(rebate_amount)as rebate_amount, count(subsidy_amount>0 or null) as subsidy_count ,sum(subsidy_amount)  as subsidy_amount, sum(bet_count)as bet_count,count(staff_deposit_count>0 or null)as staff_deposit_countTime,sum(staff_deposit_count)  as staff_deposit_countSum, count(staff_withdraw_count>0 or null)as staff_withdraw_countTime,sum(staff_withdraw_count) as  staff_withdraw_countSum,  count(bet_count>0 or null) as bet_countTime,sum(bet_count)as bet_count,sum(bet_amount)as bet_amount, count(is_first_deposit>0 or null) as is_first_deposit from daily_user where user_id in ($user_list) and   daily>='$day_today'";
+            $register_data_sql = "SELECT count(user_id) as user_id FROM user_info_intact WHERE user_id in ($user_list) and  register_time >= '$day_start'";
+            $brokerage_data_sql = "select sum(brokerage) as brokerage,count(user_id) as user_id FROM daily_user_brokerage where user_id in ($user_list) and  daily >='$day_today'";
+            $deposit_linebank_detail = "SELECT way_name,gate_name, sum(finish_money) as money " .
+                    "FROM deposit_gateway_intact WHERE user_id in ($user_list) AND finish_time BETWEEN '$day_start' AND '$day_end'" .
+                    " AND way_key='bank' group by gate_name,way_name ";
+            $deposit_weixin_detail = "SELECT way_name,gate_name, sum(finish_money) as money " .
+                    "FROM deposit_gateway_intact WHERE user_id in ($user_list) AND finish_time  BETWEEN '$day_start' AND '$day_end'" .
+                    " AND way_key='weixin' group by gate_name,way_name ";
+            $deposit_alipay_detail = "SELECT way_name,gate_name, sum(finish_money) as money " .
+                    "FROM deposit_gateway_intact WHERE user_id in ($user_list) AND finish_time  BETWEEN '$day_start' AND '$day_end'" .
+                    " AND way_key='alipay' group by gate_name,way_name ";
+
+            $deposit_bank_detail = "SELECT passage_name,to_bank_name, to_account_number, sum(finish_money) as money" .
+                    " FROM deposit_bank_intact WHERE user_id in ($user_list) AND finish_time   BETWEEN '$day_start' AND '$day_end'  group by passage_name,to_bank_name,to_account_number";
+            $deposit_simple_detail = "SELECT passage_name,pay_url, sum(finish_money) as money " .
+                    "FROM deposit_simple_intact WHERE user_id in ($user_list) AND finish_time BETWEEN '$day_start' AND '$day_end'" .
+                    "  group by passage_name,pay_url ";
+            $lottery_sql = "select sum(bet_count)as gameBetCount,count(bet_count>0 or null) as gameBetNum,sum(bet_amount)as game_BetAmount,sum(bonus_amount)as gameBonusAmount,sum(bonus_count) as gameBonusCount,count(bonus_count>0 or null)as gameBonusNum from daily_user_lottery where  user_id in ($user_list) and  daily >='$day_today'";
+            $external_sql = "select interface_key,sum(bet_count)as gameBetCount,count(bet_count>0 or null) as gameBetNum,sum(bet_amount)as game_BetAmount,sum(bonus_amount)as gameBonusAmount,sum(bonus_count) as gameBonusCount,count(bonus_count>0 or null)as gameBonusNum from daily_user_external where user_id in ($user_list)  and  daily >='$day_today' group by interface_key ";
+            $brokerage_sql = "select count(deliver_time=0 or null ) as waitBrokerageNum,count(deliver_time>0 or null ) as distributedBrokerageNum,sum(if(deliver_time>0,brokerage,0)) as distributedBrokerage,sum(if(deliver_time=0,brokerage,0)) as waitBrokerage from daily_user_brokerage WHERE user_id in ($user_list)  and   daily >='$day_today'  ";
+            $staff_withdraw_intact_sql = "select sum(money) as  withdraw_money,count(user_id) as user_ids from  staff_withdraw_intact  where user_id in ($user_list) AND withdraw_time  BETWEEN   '$day_start' AND '$day_end' group by withdraw_type ";
+            $withdraw_intact_sql = "select sum(withdraw_money) as  withdraw_money,count(user_id) as user_ids  from  withdraw_intact   where user_id in ($user_list) AND   reject_time  BETWEEN   '$day_start' AND '$day_end' ";
+        }
+        $brokerage_data_list = iterator_to_array($mysqlReport->query($brokerage_sql));
+        $distributedBrokerage += $brokerage_data_list[0]['distributedBrokerage'];
+        $distributedBrokerageNum += $brokerage_data_list[0]['distributedBrokerageNum'];
+        $waitBrokerageNum += $brokerage_data_list[0]['waitBrokerageNum'];
+        $waitBrokerage += $brokerage_data_list[0]['waitBrokerage'];
+
+        $data_list = iterator_to_array($mysqlReport->query($all_data_sql));
+        $rechargeUserNum += $data_list[0]['bank_deposit_count'] + $data_list[0]['deposit_bank_count'] + $data_list[0]['deposit_weixin_count'] + $data_list[0]['deposit_alipay_count'] + $data_list[0]['staff_deposit_count'] + $data_list[0]['simpleDepositNum']; //计算待思考
+        $allmoney += $data_list[0]['bank_deposit_amount'] + $data_list[0]['deposit_bank_amount'] + $data_list[0]['deposit_weixin_amount'] + $data_list[0]['deposit_alipay_amount'] + $data_list[0]['staff_deposit_amount'] + $data_list[0]['simpleDepositAmount'];
+        //内外接口的投注及派奖数据 
+
+        $data_lottery = iterator_to_array($mysqlReport->query($lottery_sql));
+        $lottery_game_betcount += $data_lottery[0]['gameBetCount'];
+        $lottery_game_betamount += $data_lottery[0]['game_BetAmount'];
+        $lottery_game_betnum += $data_lottery[0]['gameBetNum'];
+
+        $lottery_game_bonuscount += $data_lottery[0]['gameBonusCount'];
+        $lottery_game_bonusamount += $data_lottery[0]['gameBonusAmount'];
+        $lottery_game_bonusnum += $data_lottery[0]['gameBonusNum'];
+        $data_external = iterator_to_array($mysqlReport->query($external_sql));
+        if (!empty($data_external)) {
+            foreach ($data_external[0] as $value) {
+                switch ($value['interface_key']) {
+                    case 'fg':
+                        $fg_betcount += $value['gameBetCount'];
+                        $fg_betamount += $value['game_BetAmount'];
+                        $fg_betnum += $value['gameBetNum'];
+                        $fg_bonuscount += $value['gameBonusCount'];
+                        $fg_bonusnum += $value['gameBonusNum'];
+                        $fg_bonusamount += $value['gameBonusAmount'];
+                        break;
+                    case 'ky':
+                        $ky_betcount += $value['gameBetCount'];
+                        $ky_betamount += $value['game_BetAmount'];
+                        $ky_betnum += $value['gameBetNum'];
+                        $ky_bonuscount += $value['gameBonusCount'];
+                        $ky_bonusnum += $value['gameBonusNum'];
+                        $ky_bonusamount += $value['gameBonusAmount'];
+                        break;
+                    case 'lb':
+                        $lb_betcount += $value['gameBetCount'];
+                        $lb_betamount += $value['game_BetAmount'];
+                        $lb_betnum += $value['gameBetNum'];
+                        $lb_bonuscount += $value['gameBonusCount'];
+                        $lb_bonusnum += $value['gameBonusNum'];
+                        $lb_bonusamount += $value['gameBonusAmount'];
+                        break;
+                    case 'ag':
+                        $ag_betcount += $value['gameBetCount'];
+                        $ag_betamount += $value['game_BetAmount'];
+                        $ag_betnum += $value['gameBetNum'];
+                        $ag_bonuscount += $value['gameBonusCount'];
+                        $ag_bonusnum += $value['gameBonusNum'];
+                        $ag_bonusamount += $value['gameBonusAmount'];
+                        break;
+                }
+            }
+        }
+
+        //右侧收益数据固定栏
+        $month_income_sql = "select sum(bet_amount) as monthBetAmount,sum(bonus_amount) as monthBonusAmount,sum(rebate_amount)as monthRebateAmount,sum(subsidy_amount) as monthSubsidyAmount,sum(coupon_amount) as monthCouponAmount from daily_user where  daily >='$month_start_day'";
+        $month_brokerage_sql = "select sum(brokerage) as brokerage  FROM daily_user_brokerage where daily >='$month_start_day'";
+        $lastMonth_income_sql = "select sum(bet_amount) as monthBetAmount,sum(bonus_amount) as monthBonusAmount,sum(rebate_amount)as monthRebateAmount,sum(subsidy_amount) as monthSubsidyAmount  , sum(coupon_amount) as monthCouponAmount from daily_user   where  daily BETWEEN '$lastMonthFirstday' and '$lastMonthLastday'";
+        $lastMonth_brokerage_sql = "select sum(brokerage) as brokerage FROM daily_user_brokerage where daily  BETWEEN '$lastMonthFirstday' and '$lastMonthLastday'";
+        $onlineUsers_sql = "select count(lose_time=0 or null ) as usersNum from  user_session";
+        if ($StaffGrade != 0) {
+            $month_income_sql .= " and  user_id in ($user_list) ";
+            $month_brokerage_sql .= " and  user_id in ($user_list) ";
+            $lastMonth_income_sql .= " and  user_id in ($user_list) ";
+            $lastMonth_brokerage_sql .= " and  user_id in ($user_list) ";
+        }
+        $lineUser = iterator_to_array($userMysql->query($onlineUsers_sql));
+        $month_income = iterator_to_array($mysqlReport->query($month_income_sql));
+        $month_brokerage = iterator_to_array($mysqlReport->query($month_brokerage_sql));
+        $lastMonth_income = iterator_to_array($mysqlReport->query($lastMonth_income_sql));
+        $lastMonth_brokerage = iterator_to_array($mysqlReport->query($lastMonth_brokerage_sql));
+
+        $monthBetAmount = !empty($month_income[0]['monthBetAmount']) ? $month_income[0]['monthBetAmount'] : 0;
+        $monthBonusAmount = !empty($month_income[0]['monthBonusAmount']) ? $month_income[0]['monthBonusAmount'] : 0;
+        $monthRebateAmount = !empty($month_income[0]['monthRebateAmount']) ? $month_income[0]['monthRebateAmount'] : 0;
+        $monthSubsidyAmount = !empty($month_income[0]['monthSubsidyAmount']) ? $month_income[0]['monthSubsidyAmount'] : 0;
+        $monthCouponAmount = !empty($month_income[0]['monthCouponAmount']) ? $month_income[0]['monthCouponAmount'] : 0;
+        $monthBrokerage = !empty($month_brokerage[0]['brokerage']) ? $month_brokerage[0]['brokerage'] : 0;
+
+        $lastMonthBetAmount = !empty($lastMonth_income[0]['monthBetAmount']) ? $lastMonth_income[0]['monthBetAmount'] : 0;
+        $lastMonthBonusAmount = !empty($lastMonth_income[0]['monthBonusAmount']) ? $lastMonth_income[0]['monthBonusAmount'] : 0;
+        $lastMonthRebateAmount = !empty($lastMonth_income[0]['monthRebateAmount']) ? $lastMonth_income[0]['monthRebateAmount'] : 0;
+        $lastMonthSubsidyAmount = !empty($lastMonth_income[0]['monthSubsidyAmount']) ? $lastMonth_income[0]['monthSubsidyAmount'] : 0;
+        $lastMonthCouponAmount = !empty($lastMonth_income[0]['monthCouponAmount']) ? $lastMonth_income[0]['monthCouponAmount'] : 0;
+        $lastMonthBrokerage = !empty($lastMonth_brokerage[0]['brokerage']) ? $lastMonth_brokerage[0]['brokerage'] : 0;
+
+        $monthIncome = $monthBetAmount - $monthBonusAmount;
+        $monthProfit = $monthBetAmount - $monthBonusAmount - $monthRebateAmount - $monthSubsidyAmount - $monthCouponAmount - $monthBrokerage;
+        $lastMonthIncome = $lastMonthBetAmount - $lastMonthBonusAmount;
+        $lastMonthProfit = $lastMonthBetAmount - $lastMonthBonusAmount - $lastMonthRebateAmount - $lastMonthSubsidyAmount - $lastMonthCouponAmount - $lastMonthBrokerage;
+
+        if ($monthBetAmount == 0) {
+            $monthRate = 0;
+            $monthProfitRate = 0;
+        } else {
+            $monthRate = round($monthIncome / $monthBetAmount, 4);
+            $monthProfitRate = round($monthProfit / $monthBetAmount, 4); //前端需百分比显示
+        }
+        if ($lastMonthBetAmount == 0) {
+            $lastMonthRate = 0;
+            $lastMonthProfitRate = 0;
+        } else {
+            $lastMonthRate = round($lastMonthIncome / $lastMonthBetAmount, 4);
+            $lastMonthProfitRate = round($lastMonthProfit / $lastMonthBetAmount, 4);
+        }
+
+        $bank += $data_list[0]['bank_deposit_amount'];
+        $bankUser += $data_list[0]['bank_deposit_count']; //银行
+        $onlineBank += $data_list[0]['deposit_bank_amount']; //网银
+        $onlineBankUser += $data_list[0]['deposit_bank_count'];
+        $weixin += $data_list[0]['deposit_weixin_amount']; //微信
+        $weixinUser += $data_list[0]['deposit_weixin_count'];
+        $alipay += $data_list[0]['deposit_alipay_amount']; //支付宝
+        $alipayUser += $data_list[0]['deposit_alipay_count'];
+        $manual += $data_list[0]['staff_deposit_amount']; //人工存入
+        $manualUser += $data_list[0]['staff_deposit_count'];
+        $bank_deposit_count += $data_list[0]['bank_deposit_count']; //入款优惠笔数
+        $bank_deposit_amount += $data_list[0]['bank_deposit_amount'];   //入款优惠金额                    
+        $convenientPaymentCount += $data_list[0]['simpleDepositAmount']; //便捷入款金额
+        $convenientPaymentNum += $data_list[0]['simpleDepositNum']; //便捷入款人数
+        $withdrawUserNumAll += $data_list[0]['withdraw_count']; //总出款人数　
+        $allWithdraw += $data_list[0]['withdraw_amount']; //总出款
+        $activityWithdraw += $data_list[0]['coupon_amount']; //活动礼金金额
+        $activityWithdrawNum += $data_list[0]['coupon_count']; //活动礼金的人数
+        $manualWithdraw += $data_list[0]['staff_withdraw_amount']; //人工提款金额
+        $withdrawUserNum += $data_list[0]['staff_withdraw_count']; //人工提款人数
+        $rebate += $data_list[0]['rebate_amount'];
+        $rebateNum += $data_list[0]['rebate_amountTime']; //返点
+        $rebatesub += $data_list[0]['subsidy_amount'];
+        $rebatesubNum += $data_list[0]['subsidy_count']; //反水
+        $bonusNum += $data_list[0]['bonusNum']; //派奖人数
+        $bonusCount += $data_list[0]['bonusCount']; //派奖金额
+        $bonusFrequency += $data_list[0]['bonusFrequency']; //派奖注数
+        $register += iterator_to_array($mysqlUser->query($register_data_sql))[0]['user_id']; //注册人数
+        $brokerageData = iterator_to_array($mysqlReport->query($brokerage_data_sql)); //返佣金额
+        $broker += intval($brokerageData[0]['brokerage']);
+        $brokerNum += intval($brokerageData[0]['user_id']); //返佣人数
+        $withdrawNum += $data_list[0]['withdraw_count_number']; //出款单数
+        $manualRechargeNum += $data_list[0]['staff_deposit_countSum']; //笔数
+        $manualRechargeUserNum += $data_list[0]['staff_deposit_countTime']; //人数
+        $rechargeNum += $data_list[0]['deposit_count_number']; //充值总笔数
+        $manualWithdrawNum += $data_list[0]['staff_withdraw_count'];
+        $manualWithdrawUserNum += $data_list[0]['staff_withdraw_countTime'];
+
+        $betCount += $data_list[0]['bet_count']; //单数
+        $betAmount += $data_list[0]['bet_amount']; //金额
+        $betNum += $data_list[0]['bet_countTime']; //交易人数
+        $firstNum += $data_list[0]['firstRechargeNum'];
+        $firstMoney += $data_list[0]['firstRechargeAmount'];
+        foreach ($config->deal_list as $deal) {
+            $mysqlDeal = $config->__get("data_" . $deal);
+            $staff_withdraw_data = iterator_to_array($mysqlDeal->query($staff_withdraw_intact_sql));
+            $withdraw_intact_data = iterator_to_array($mysqlDeal->query($withdraw_intact_sql));
+            if (!empty($staff_withdraw_data)) {
+                foreach ($staff_withdraw_data as $staff_withdraw) {
+                    $staffWithdrawalAmountAll += $staff_withdraw['withdraw_money']; //人工出款总额
+                    $staffWithdrawalCountAll += $staff_withdraw['user_ids']; //人工出款总人数
+                    switch ($staff_withdraw['withdraw_type']) {
+                        case 0:
+                            $staffWithdrawalAmount += $staff_withdraw['withdraw_money'];
+                            $staffWithdrawalCount = $staff_withdraw['user_ids'];
+                            break;
+                        case 1:
+                            $cancelDepositAmount += $staff_withdraw['withdraw_money'];
+                            $cancelDepositCount = $staff_withdraw['user_ids'];
+                            break;
+                        case 2:
+                            $illegalBetAmount += $staff_withdraw['withdraw_money'];
+                            $illegalBetCount = $staff_withdraw['user_ids'];
+                            break;
+                        case 3:
+                            $forgoOfferAmount += $staff_withdraw['withdraw_money'];
+                            $forgoOfferCount = $staff_withdraw['user_ids'];
+                            break;
+                        case 4:
+                            $otherWithdrawalAmount += $staff_withdraw['withdraw_money'];
+                            $otherWithdrawalCount = $staff_withdraw['user_ids'];
+                            break;
+                    }
+                }
+            }
+            if (!empty($withdraw_intact_data)) {
+                foreach ($withdraw_intact_data as $withdraw_intact) {
+                    $refuseWithdrawalAmount += $withdraw_intact['withdraw_money'];
+                    $refuseWithdrawalCount += $withdraw_intact['user_ids'];
+                }
+            }
+
+            foreach ($mysqlDeal->query($deposit_linebank_detail) as $deposit_linebank) {
+                $depositLineBank[] = $deposit_linebank; //网银入款详情
+            }
+            foreach ($mysqlDeal->query($deposit_weixin_detail) as $deposit_weixin) {
+                $depositWeixin[] = $deposit_weixin; //微信入款详情
+            }
+            foreach ($mysqlDeal->query($deposit_alipay_detail) as $deposit_alipay) {
+                $depositAlipay[] = $deposit_alipay; //支付宝入款详情
+            }
+            foreach ($mysqlDeal->query($deposit_bank_detail) as $deposit_bank) {
+                $depositBank[] = $deposit_bank; //银行入款详情
+            }
+            foreach ($mysqlDeal->query($deposit_simple_detail) as $deposit_simple) {
+                $convenientRecharge[] = $deposit_simple; //便捷入款详情
+            }
+        }
+        $rechargeDetail = [
+            [
+                "methodName" => "银行转账", "methodKey" => "bank", "userNum" => $bankUser, "rechargeAmount" => $bank, "detail" => $depositBank],
+            [
+                "methodName" => "网银支付", "methodKey" => "onlineBank", "userNum" => $onlineBankUser, "rechargeAmount" => $onlineBank, "detail" => $depositLineBank],
+            [
+                "methodName" => "微信支付", "methodKey" => "weixin", "userNum" => $weixinUser, "rechargeAmount" => $weixin, "detail" => $depositWeixin],
+            [
+                "methodName" => "支付宝充值", "methodKey" => "alipay", "userNum" => $alipayUser, "rechargeAmount" => $alipay, "detail" => $depositAlipay],
+            [
+                "methodName" => "便捷支付", "methodKey" => "convenient", "userNum" => $convenientPaymentNum, "rechargeAmount" => $convenientPaymentCount, "detail" => $convenientRecharge],
+            [
+                "methodName" => "人工存入", "methodKey" => "staffDeposit", "userNum" => $manualUser, "rechargeAmount" => $manual, "detail" => []],
+        ];
+
+        $betDetail = [
+            [
+                "betName" => "彩票游戏", "interface_key" => "lottery", "betAmount" => $lottery_game_betamount, "betQuantity" => $lottery_game_betcount, "betNum" => $lottery_game_betnum],
+            [
+                "betName" => "FunGaming", "interface_key" => "fg", "betAmount" => $fg_betamount, "betQuantity" => $fg_betcount, "betNum" => $fg_betnum],
+            [
+                "betName" => "开元棋牌", "interface_key" => "ky", "betAmount" => $ky_betamount, "betQuantity" => $ky_betcount, "betNum" => $ky_betnum],
+            [
+                "betName" => "Lebo体育", "interface_key" => "lb", "betAmount" => $lb_betamount, "betQuantity" => $lb_betcount, "betNum" => $lb_betnum],
+            [
+                "betName" => "AsiaGaming", "interface_key" => "ag", "betAmount" => $ag_betamount, "betQuantity" => $ag_betcount, "betNum" => $ag_betnum],
+        ];
+
+        $bonusDetail = [
+            [
+                "bonusName" => "彩票游戏", "interface_key" => "lottery", "bonusAmount" => $lottery_game_bonusamount, "bonusQuantity" => $lottery_game_bonuscount, "bonusNum" => $lottery_game_bonusnum],
+            [
+                "bonusName" => "FunGaming", "interface_key" => "fg", "bonusAmount" => $fg_bonusamount, "bonusQuantity" => $fg_bonuscount, "bonusNum" => $fg_bonusnum],
+            [
+                "bonusName" => "开元棋牌", "interface_key" => "ky", "bonusAmount" => $ky_bonusamount, "bonusQuantity" => $ky_bonuscount, "bonusNum" => $ky_bonusnum],
+            [
+                "bonusName" => "Lebo体育", "interface_key" => "lb", "bonusAmount" => $lb_bonusamount, "bonusQuantity" => $lb_bonuscount, "bonusNum" => $lb_bonusnum],
+            [
+                "bonusName" => "AsiaGaming", "interface_key" => "ag", "bonusAmount" => $ag_bonusamount, "bonusQuantity" => $ag_bonuscount, "bonusNum" => $ag_bonusnum],
+        ];
+
+        $depositCount = [
+            "staffWithdrawalAmount" => $staffWithdrawalAmount,
+            "staffWithdrawalCount" => $staffWithdrawalCount,
+            "cancelDepositAmount" => $cancelDepositAmount,
+            "cancelDepositCount" => $cancelDepositCount,
+            "illegalBetAmount" => $illegalBetAmount,
+            "illegalBetCount" => $illegalBetCount,
+            "forgoOfferAmount" => $forgoOfferAmount,
+            "forgoOfferCount" => $forgoOfferCount,
+            "otherWithdrawalAmount" => $otherWithdrawalAmount,
+            "otherWithdrawalCount" => $otherWithdrawalCount
+        ];
+        $staffWithdrawalDetail = [
+            "staffWithdrawalAmountAll" => $staffWithdrawalAmountAll,
+            "staffWithdrawalCountAll" => $staffWithdrawalCountAll,
+            "staffWithdrawalDetail" => $depositCount,
+            "refuseWithdrawalAmount" => $refuseWithdrawalAmount,
+            "refuseWithdrawalCount" => $refuseWithdrawalCount
+        ];
+
+        $deposit = [
+            "recharge_amount" => $allmoney, //总充值金额
+            "rechargeUserNum" => $rechargeUserNum, //充值总人数
+            "rechargeDetail" => $rechargeDetail
+        ];
+
+        $activeDetail = [
+            "rechargeGiftCount" => $activityWithdraw, //充值送的彩金金额　
+            "rechargeGiftNum" => $activityWithdrawNum, //充值送的彩金人数
+            "rechargeOfferCount" => $bank_deposit_amount, //入款优惠金额
+            "rechargeOfferNum" => $bank_deposit_count, //入款优惠笔数
+        ];
+        $brokerageDetail = [
+            "distributedBrokerage" => $distributedBrokerage, //已派发佣金
+            "distributedBrokerageNum" => $distributedBrokerageNum, //已派发佣金人数
+            "waitBrokerageNum" => $waitBrokerageNum, //未派发佣金人数
+            "waitBrokerage" => $waitBrokerage //未派发佣金
+        ];
+        $withdraw = [
+            "withdraw_amount" => $allWithdraw, //总支出
+            "withdrawUserNumAll" => $withdrawUserNumAll,
+            "active" => $activityWithdraw, //活动礼金
+            "activityWithdrawNum" => $activityWithdrawNum, //活动礼金人数
+            "activeDetail" => $activeDetail, //活动礼金详情
+            "brokerageDetail" => $brokerageDetail, //返佣详情
+            "rebatesub" => $rebatesub, //反水金额
+            "rebatesubNum" => $rebatesubNum, //反水人数
+            "broker" => $broker, //返佣金额
+            "brokerNum" => $brokerNum, //返佣人数
+        ];
+        $count = [
+            "recharge_count" => $rechargeNum, //充值笔数
+            "rechargeUserAll" => $rechargeUserNum, //充值人数
+            "withdraw_count" => $withdrawNum, //提现笔数
+            "first_recharge_count" => $firstNum, //首充人数
+            "firstMoney" => $firstMoney  //首充金额
+        ];
+        //中上
+        $bet = [
+            "betCount" => $betCount, //投注总单数
+            "betAmount" => $betAmount, //投注总金额
+            "betNum" => $betNum, //　投注总人数
+            "betDetail" => $betDetail,
+        ];
+        //中下
+        $bonus = [
+            "bonusNum" => $bonusNum, //派奖人数
+            "bonusCount" => $bonusCount, //派奖金额
+            "bonusFrequency" => $bonusFrequency, //派奖注数
+            "bonusDetail" => $bonusDetail,
+        ];
+        //顶部
+        $list = [
+            "new_register" => $register, //今日注册人数
+            "bonus_num" => $bonusNum, //派奖人数
+            "bonus_count" => $bonusCount, //派奖金额
+            "first_recharge_num" => $firstNum, //首充人数
+            "first_money" => $firstMoney, //首充金额
+            "bet_money" => $betAmount, //投注金额
+            "bet_user_number" => $betNum, //$rebate投注人数
+            "bonus" => $betAmount - $rebateNum - $bonusCount - $broker - $rebatesub - $activityWithdraw, //盈利
+        ];
+        $right = [
+            "monthIncome" => $monthIncome, //本月损益
+            "monthRate" => $monthRate, //本月毛率
+            "lastMonthIncome" => $lastMonthIncome, //上月损益
+            "lastMonthrRate" => $lastMonthRate, //上月毛率
+            "monthRevenue" => $monthProfit, //本月盈利
+            "monthRevenueRate" => $monthProfitRate, //本月盈率
+            "lastMonthRevenue" => $lastMonthProfit, //上月盈利
+            "lastMonthRevenueRate" => $lastMonthProfitRate, //上月盈率
+            "onlineUsers" => !empty($lineUser[0]['usersNum']) ? $lineUser[0]['usersNum'] : 0//在线用户
+        ];
+        $finaleResult = array_merge($list, $deposit, $withdraw, $bet, $bonus, $count, $right,$staffWithdrawalDetail);
+        $websocketAdapter->send($id, "Index/Account", $finaleResult);
+        $sql = "SELECT client_id FROM staff_session WHERE client_id=:client_id AND staff_id=:staff_id";
+        foreach ($mysqlStaff->query($sql, [":client_id" => $id, ":staff_id" => $staffId]) as $client) {
+            $id = $client["client_id"];
+            $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+            $taskAdapter->plan('Index/Account', ['staff_grade' => $StaffGrade, 'id' => $id, "master_id" => $master, "staff_id" => $staffId], time() + 600, 9);
+        }
+    }
+
+}

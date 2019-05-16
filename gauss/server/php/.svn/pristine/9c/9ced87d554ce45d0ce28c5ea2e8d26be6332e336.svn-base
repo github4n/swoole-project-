@@ -1,0 +1,70 @@
+<?php
+namespace Plat\Http\Fg;
+use Lib\Config;
+use Lib\Http\Context;
+use Lib\Http\Handler;
+use Plat\Http\Fg\Common as CommonGame;
+
+class Bet extends Handler
+{
+	/**
+	 * 下注 	  http://127.0.0.1:8080/2/Fg/Bet
+	 * @param $username   游戏平台存储的用户的member_code
+	 * @param $partnerId  代理商账号
+	 * @param $nonce_str  随机字符串
+	 * @param $sign  	  通过签名算法计算得出的签名值
+	 * @param $betId  	  注单ID
+	 * @param $betAmount  下注金额 单位为分
+	 */
+	public function onRequest(Context $context, Config $config)
+	{
+		$data = $context->requestPost();
+		parse_str($data, $params);
+		$username = isset($params['username']) ? $params['username'] : '';
+		$partnerId = isset($params['partnerId']) ? $params['partnerId'] : '';
+		$nonceStr = isset($params['nonce_str']) ? $params['nonce_str'] : '';
+		$sign = isset($params['sign']) ? $params['sign'] : '';
+		$betId = isset($params['betId']) ? $params['betId'] : '';
+		$betAmount = isset($params['betAmount']) ? $params['betAmount']/100 : '';
+		$params['fg'] = 'fg_games';
+		fwrite(STDERR, $params);
+		if (!$username || !$partnerId || !$nonceStr || !$sign || !$betId || !$betAmount) {
+			$this->responseJson($context, ['state'=>2, 'message'=>'参数异常']);
+			return;
+		}
+		if (!is_numeric($betAmount) || $betAmount <= 0) {
+			$this->responseJson($context, ['state'=>104, 'message'=>'金额非法']);
+			return;
+		}
+		//判断代理商账号是否正确
+		$common = new CommonGame();
+		$partnerIds = $common->getPartnerId($config);
+
+		if($partnerIds != $partnerId){
+			$this->responseJson($context, ['state'=>2, 'message'=>'代理商账号错误']);
+			return;
+		}
+		//签名参数
+		$params = [
+			'nonce_str' => $nonceStr,
+			'username' => $username,
+			'partnerId' => $partnerId,
+			'sign' => $sign,
+			'betId' => $betId,
+			'betAmount' => $betAmount
+		];
+		//生成签名
+		$makeSign = $common->MakeSign($params,$config);
+		//校验签名
+		if ($makeSign !== $sign) {
+			$this->responseJson($context, ['state'=>108, 'message'=>'签名异常',$makeSign]);
+			return;
+		}
+		$site_key=explode('fg',$username)[0];
+		//获取clientId
+		$clientId = $context->clientId();
+		$taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+		$taskAdapter->plan('NotifySite', ['path' => 'Fg/Bet', 'data' => ["username"=>$username,"betAmount"=>$betAmount,"betId"=>$betId,"clientId"=>$clientId,'site_key'=>$site_key]]);
+
+	}
+}

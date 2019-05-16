@@ -1,0 +1,111 @@
+<?php
+
+namespace Site\Websocket\ReportQuery;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 报表查询-月结对账报表
+ * ReportQuery/MonthlyReport {"date":"20181201"}
+ * 参数：
+ * */
+
+class MonthlyReport extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        $data = $context->getData();
+        $date = !empty($data['date']) ? $data['date'] : '';
+        $staff_grade = $context->getInfo('StaffGrade');
+
+        //检查权限
+        if ($staff_grade != 0) {
+            $context->reply(['status' => 201, 'msg' => '当前账号没有权限']);
+            return;
+        }
+
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("report_tax", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+
+        if (empty($date)) {
+            $monthly =  date('Ym', strtotime('today'));
+        } else {
+            $monthly =  date('Ym', strtotime($date));
+        }
+        $mysql = $config->data_report;
+        if($monthly == intval(date("Ym",strtotime("today")))){
+            //本月投注,派彩,损益
+            $sql = 'SELECT SUM(bet_amount) AS bet_sum,SUM(bonus_amount) AS bonus_sum,SUM(profit_amount) AS profit_sum FROM monthly_staff_lottery WHERE monthly=' . $monthly;
+            foreach ($mysql->query($sql) as $row) {
+                $statisticData['bet_amount'] = empty($row['bet_sum']) ? 0 : $row['bet_sum'];
+                $statisticData['bonus_amount'] = empty($row['bonus_sum']) ? 0 : $row['bonus_sum'];
+                $statisticData['profit_amount'] = empty($row['profit_sum']) ? 0 : $row['profit_sum'];
+            }
+
+
+            //外接口数据
+            $sql = 'SELECT SUM(bet_amount) AS bet_sum,SUM(bonus_amount) AS bonus_sum,SUM(profit_amount) AS profit_sum FROM monthly_staff_external WHERE category_key=:category_key AND monthly=' . $monthly;
+            $category_key = ['video', 'game', 'sports', 'cards'];
+            foreach ($category_key as $row) {
+                $param = [':category_key' => $row];
+                foreach ($mysql->query($sql, $param) as $item) {
+                    $statisticData[$row . '_bet_amount'] = empty($item['bet_sum']) ? 0 : $item['bet_sum'];
+                    $statisticData[$row . '_bonus_amount'] = empty($item['bonus_sum']) ? 0 : $item['bonus_sum'];
+                    $statisticData[$row . '_profit_amount'] = empty($item['profit_sum']) ? 0 : $item['profit_sum'];
+                }
+            }
+
+            //本月彩票总佣金
+            $sql = 'SELECT SUM(brokerage) AS lottery_brokerage FROM monthly_user_brokerage WHERE monthly=' . $monthly;
+
+            foreach ($mysql->query($sql) as $row) {
+                $statisticData['lottery_brokerage'] = empty($row['lottery_brokerage']) ? 0 : $row['lottery_brokerage'];
+            }
+
+            $statisticData['video_brokerage'] = 0;
+            $statisticData['game_brokerage'] = 0;
+            $statisticData['sports_brokerage'] = 0;
+            $statisticData['cards_brokerage'] = 0;
+            $statisticData['total_brokerage'] = $statisticData['lottery_brokerage'] + $statisticData['video_brokerage'] + $statisticData['game_brokerage'] + $statisticData['sports_brokerage'] + $statisticData['cards_brokerage'];
+            ;
+            $statisticData['tax_rent'] = 0;
+            $statisticData['monthly_pay'] = $statisticData['total_brokerage'] + $statisticData['tax_rent'];
+        }else{
+            $sql = "select * from  monthly_tax where monthly=".$monthly;
+            $statisticData = [];
+            foreach ($mysql->query($sql) as $row){
+                $statisticData["bet_amount"] = $row["wager_lottery"];
+                $statisticData["bonus_amount"] = $row["bonus_lottery"];
+                $statisticData["cards_bet_amount"] = $row["wager_cards"];
+                $statisticData["cards_bonus_amount"] = $row["bonus_cards"];
+                $statisticData["cards_brokerage"] = $row["tax_cards"];
+                $statisticData["cards_profit_amount"] = $row["profit_cards"];
+                $statisticData["game_bet_amount"] = $row["wager_game"];
+                $statisticData["game_bonus_amount"] = $row["bonus_game"];
+                $statisticData["game_brokerage"] = $row["tax_game"];
+                $statisticData["game_profit_amount"] = $row["profit_game"];
+                $statisticData["lottery_brokerage"] = $row["tax_lottery"];
+                $statisticData["monthly_pay"] = $row["tax_rent"]+$row["tax_total"];
+                $statisticData["profit_amount"] = $row["profit_lottery"];
+                $statisticData["sports_bet_amount"] = $row["wager_sports"];
+                $statisticData["sports_bonus_amount"] = $row["bonus_sports"];
+                $statisticData["sports_brokerage"] = $row["tax_sports"];
+                $statisticData["sports_profit_amount"] = $row["profit_sports"];
+                $statisticData["tax_rent"] = $row["tax_rent"];
+                $statisticData["total_brokerage"] = $row["tax_total"];
+                $statisticData["video_bet_amount"] = $row["wager_video"];
+                $statisticData["video_bonus_amount"] = $row["bonus_video"];
+                $statisticData["video_brokerage"] = $row["tax_video"];
+                $statisticData["video_profit_amount"] = $row["profit_video"];
+            }
+        }
+
+
+        $context->reply(['status' => 200, 'msg' => '获取成功', 'data' => $statisticData]);
+    }
+
+}

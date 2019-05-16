@@ -1,0 +1,60 @@
+<?php
+namespace Site\Websocket\Website\Index;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 网站管理--彩票推荐的列表
+ * Website/Index/LotteryList 
+ * */
+
+class LotteryList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $mysql = $config->data_staff;
+        $sql = "SELECT * FROM suggest order by display_order asc";
+        $list = [];
+        $lists = [];
+        $lottery_list = [];
+        foreach ($mysql->query($sql) as $rows){
+            $list[] = $rows;
+        }
+        if(!empty($list)){
+            foreach ($list as $key=>$val){
+                $lists[$key]["game_key"] = $val["game_key"];
+                $lists[$key]["game_name"] = $context->getInfo($val["game_key"]);
+                $lists[$key]["model_key"] = '';
+                $lists[$key]["model_name"] = '';
+                $lists[$key]["is_popular"] = $val["is_popular"];
+                $lists[$key]["display_order"] = $val["display_order"];
+                $lists[$key]["to_home"] = $val["to_home"];
+                $lists[$key]["category_key"] = $val["category_key"];
+            }
+        }
+        if(empty($lists)){
+            $game_list = json_decode($context->getInfo("GameModelList"));
+            if(!empty($game_list)){
+                foreach ($game_list as $key=>$val){
+                    $lottery["game_key"]=$val->game_key;
+                    $lottery["game_name"]=$val->game_name;
+                    $lottery["model_key"]=$val->model_key;
+                    $lottery["model_name"]=$val->model_name;
+                    $lottery["display_order"]=0;
+                    $lottery["is_popular"]=0;
+                    $lottery["to_home"]=0;
+                    $lottery["category_key"]="lottery";
+                    $lottery_list[] = $lottery;
+                }
+            }
+            $lists =  $lottery_list;
+        }
+        $context->reply(["status"=>200,"msg"=>"获取成功","list"=>$lists]);
+    }
+}

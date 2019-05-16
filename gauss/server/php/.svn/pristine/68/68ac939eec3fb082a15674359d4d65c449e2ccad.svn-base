@@ -1,0 +1,70 @@
+<?php
+namespace Site\Websocket\Website\Index;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 网站管理--通知消息列表
+ * Website/Index/MessageList {"start_time":"2018-11-22"}
+ * */
+
+class MessageList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $start = isset($data["start_time"]) ? $data["start_time"] : '';
+        $end = isset($data["end_time"]) ? $data["end_time"] : '';
+
+        $time = '';
+        $times = '';
+        //开始时间的起止时间
+        if(!empty($data["start_time"])){
+            $start = strtotime($data["start_time"]." 00:00:00");
+        }
+        if(!empty($data["end_time"])) {
+            $end = strtotime($data["end_time"]." 23:59:59");
+        }
+
+        if(!empty($start) && !empty($end)){
+            $time = " AND start_time >= ".$start." AND stop_time<=".$end;
+        }
+        if(!empty($start) && empty($end)){
+            $time = " AND start_time >= ".$start;
+        }
+        if(empty($start) && !empty($end)){
+            $time = " AND stop_time <= ".$end;
+        }
+        $sql = "SELECT * FROM announcement WHERE 1=1".$time.$times;
+        $totalsql = "SELECT announcement_id FROM announcement WHERE 1=1".$time.$times;
+        $lists = array();
+        try{
+            foreach ($mysql->query($sql) as $rows){
+                $lists[] = $rows;
+            }
+            $total = $mysql->execute($totalsql);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        $list = array();
+        if(!empty($lists)){
+            foreach ($lists as $key=>$val){
+                $list[$key]["announcement_id"] = $val["announcement_id"];
+                $list[$key]["start_time"] = date("Y-m-d H:i:s",$val["start_time"]);
+                $list[$key]["stop_time"] = date("Y-m-d H:i:s",$val["stop_time"]);
+                $list[$key]["add_time"] = date("Y-m-d H:i:s",$val["add_time"]);
+                $list[$key]["content"] = $val["content"];
+                $list[$key]["publish"] = $val["publish"];
+            }
+        }
+        $context->reply(["status"=>200,"msg"=>"获取成功","total"=>$total,"list"=>$list]);
+    }
+}

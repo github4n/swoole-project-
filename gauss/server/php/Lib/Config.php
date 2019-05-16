@@ -1,0 +1,45 @@
+<?php
+namespace Lib;
+
+class Config implements \IteratorAggregate
+{
+    private $props;
+    public function __construct(array $values = [])
+    {
+        $this->props = [];
+        foreach ($values as $name => $value) {
+            $this->$name = $value;
+        }
+    }
+    public function __set(string $name, $value)
+    {
+        if (!array_key_exists($name, $this->props)) {
+            $this->props[$name] = $value;
+        } else {
+            throw new \RuntimeException("property $name exist");
+        }
+    }
+
+    public function __get(string $name)
+    {
+        if (!isset($this->props[$name])) {
+            throw new \OutOfBoundsException("property $name not exist");
+        }
+        return $this->props[$name];
+    }
+    public function __isset(string $name): bool
+    {
+        return isset($this->props[$name]);
+    }
+    public function __unset(string $name): void
+    {
+        unset($this->props[$name]);
+    }
+
+    public function getIterator(): \Traversable
+    {
+        foreach ($this->props as $name => $value) {
+            yield $name => $value;
+        }
+    }
+}

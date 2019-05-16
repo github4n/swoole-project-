@@ -1,0 +1,107 @@
+<?php
+namespace Plat\Websocket\Roles;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 参数：
+ * 1.添加
+ * 参数：role_name:角色名称,role_auth 角色权限
+ * Roles/RolesUpdate  {"role_name":"测试管理员","role_auth":["account_admin_delete","account_admin_insert","account_admin_select","account_admin_update","account_operate_select","account_role_delete","account_role_insert","account_role_select","account_role_update","cash_list","report_analysis","report_monthly","report_site","ticket_official_select","ticket_official_update","ticket_play_select","ticket_play_update","ticket_result_select","ticket_self_select","ticket_self_update","ticket_setting_bet","ticket_setting_bonus","ticket_setting_rebate","ticket_setting_select"]}
+ *
+ * */
+class RolesUpdate extends CheckLogin {
+    function onReceiveLogined(Context $context,Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("account_role_insert",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $role_name =  trim($data['role_name']);
+        $role_auth = $data["role_auth"];
+        if (empty($role_name)){
+            $context->reply(['status' => 203, 'msg' => '角色名称不能为空']);
+            return;
+        }
+        if(empty($role_auth)){
+            $context->reply(["status"=>207,"msg"=>"分配的角色权限不能为空"]);
+            return;
+        }
+        if(!is_array($role_auth)){
+            $context->reply(["status"=>208,"msg"=>"权限参数类型不正确"]);
+            return;
+        }
+        //角色名称不能超过20位数   
+        if(strlen($role_name)>20 || strlen($role_name)<4){
+            $context->reply(["status"=>210,"msg"=>"角色名称4-20位"]);
+            return;
+        }
+        $mysql = $config->data_admin;
+        //查询角色名是否已存在
+        $sql = 'SELECT role_id FROM admin_role WHERE role_name=:role_name';
+        $params = [
+            ':role_name' => $role_name
+        ];
+        $find_name = [];
+        foreach ($mysql->query($sql, $params) as $row){
+            $find_name = $row;
+        }
+        if(!empty($find_name)){
+            $context->reply(['status' => 206, 'msg' => '角色名称已存在']);
+            return;
+        }
+
+        try {
+            $add_sql = "INSERT INTO admin_role SET role_name=:role_name";
+            $add_params = [
+                ':role_name' => $role_name
+            ];
+            $mysql->execute($add_sql, $add_params);
+            $sql = 'SELECT last_insert_id() as role_id';
+            foreach ($mysql->query($sql) as $row){
+                $role_id = $row['role_id'];
+            }
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 400, 'msg' => '添加失败']);
+            throw new \PDOException('sql run error'.$e);
+        }
+        //添加权限
+        foreach ($role_auth as $item){
+            //判断权限id是否在表中
+            $sql = "SELECT operate_name FROM operate WHERE operate_key=:operate_key";
+            $find_operate = [':operate_key' => $item];
+            $operate_data = [];
+            foreach ($mysql->query($sql,$find_operate) as $operate_row){
+                $operate_data = $operate_row;
+            }
+            if($operate_data == NULL){
+                $context->reply(['status'=>400,'msg'=>'权限分配失败']);
+                return;
+            }
+            try{
+                $sql = 'INSERT INTO admin_permit SET role_id=:role_id,operate_key=:operate_key';
+                $params = [
+                    ':role_id' => $role_id,
+                    ':operate_key' => $item
+                ];
+                $mysql->execute($sql,$params);
+            } catch(\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"权限分配失败"]) ;
+                throw new \PDOException('sql run error'.$e);
+            }
+        }
+        //添加日志
+        $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+        $params = [
+            ':admin_id' => $context->getInfo('adminId'),
+            ':operate_key' => "account_role_insert",
+            ':detail' => '添加角色'.$role_name."并分配权限"
+        ];
+        $mysql->execute($sql,$params);
+        $context->reply(['status' => 200, 'msg' => '添加成功']);
+    }
+}

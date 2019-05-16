@@ -1,0 +1,192 @@
+<?php
+
+namespace App\Websocket\User\AccountDetails;
+use Lib\Websocket\Context;
+use Lib\Config;
+use App\Websocket\CheckLogin;
+
+/*
+ * 我的-账户明细
+ * User/AccountDetails/AccountDetails {"deal_type":"bet_launch"}
+ * 搜索参数 deal_type:
+ * null:全部;
+ * bet_launch:彩票投注;
+ * bonus:彩票派奖;
+ * subsidy:彩票反水;
+ * game_bet:电子游戏投注;
+ * game_subsidy:电子游戏反水;
+ * game_bonus:电子游戏派奖
+ * transfer:额度转换；
+ * activity：活动赠送；
+ * bet_cancel：彩票和局取消订单；
+ * */
+class AccountDetails extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $guest_id = $context->getInfo("GuestId");
+        if (!empty($guest_id)) {
+            $context->reply(["status" => 500, "msg" => "游客身份，没有访问权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $deal_type = empty($data['deal_type'])?null:$data['deal_type'];
+        $userId = $context->getInfo('UserId');
+        $mysql = $config->data_user;
+        $sql = 'SELECT deal_key FROM user_info WHERE user_id=:user_id';
+        $param = [':user_id' => $userId];
+        $dealKey = '';
+        foreach ($mysql->query($sql, $param) as $row) {
+            $dealKey = $row['deal_key'];
+        }
+        $month = date('Ym', time()).' 01 00:00:00';
+        $time = strtotime($month);
+        $mysql = $config->__get('data_' . $dealKey);
+        switch ($deal_type)
+        {
+            case 'bet_launch':
+                $context->reply(['status' => 200, 'msg' => '获取成功', 'data' => $this->betLaunch($mysql,$userId,$time)]);
+                break;
+            case 'bonus':
+                $context->reply(['status' => 200, 'msg' => '获取成功', 'data' => $this->bonus($mysql,$userId,$time)]);
+                break;
+            case 'subsidy':
+                break;
+            case 'bet_cancel':
+                $context->reply(['status' => 200, 'msg' => '获取成功', 'data' => $this->betCancel($mysql,$userId,$time)]);
+                break;
+            case 'transfer':
+                break;
+            case 'activity':
+                break;
+            case 'game_bet':
+                break;
+            case 'game_subsidy':
+                break;
+            case 'game_bonus':
+                break;
+            default:
+                $bet_all_list = $this->betAll($mysql,$userId,$time);
+                $context->reply(['status' => 200, 'msg' => '获取成功', 'data' => $bet_all_list]);
+                break;
+        }
+    }
+    private function betAll($mysql,$userId,$time)
+    {
+        $list = [];
+        $bet_all_list = [];
+        $sql = 'SELECT vary_money,deal_time,deal_type,summary FROM deal WHERE user_id=:user_id AND deal_time>=:time AND deal_type IN ("bet_normal","bet_chase","bet_settle") ORDER BY deal_time DESC';
+        $param = [
+            ':user_id' => $userId,
+            ':time' => $time
+        ];
+        foreach ($mysql->query($sql,$param) as $row)
+        {
+            $list[] = $row;
+        }
+        foreach ($list as $k => $v)
+        {
+            $summary = json_decode($v['summary'],true);
+            if ($v['deal_type']=='bet_settle')
+            {
+                if ($summary['bonus']>0 )
+                {
+                    $bet_all_list[$k]['deal_type'] = 'bonus';
+                    $bet_all_list[$k]['vary_money'] = floor($v['vary_money']*100)*0.01;
+                    $bet_all_list[$k]['deal_time'] = date('Y-m-d H:i:s',$v['deal_time']);
+                }elseif($summary['bonus']= 0 && $summary['rebate']>0){
+                    $bet_all_list[$k]['deal_type'] = 'bonus';
+                    $bet_all_list[$k]['vary_money'] = floor($v['vary_money']*100)*0.01;
+                    $bet_all_list[$k]['deal_time'] = date('Y-m-d H:i:s',$v['deal_time']);
+                }else if ($summary['revert']>0)
+                {
+                    $bet_all_list[$k]['deal_type'] = 'bet_cancel';
+                    $bet_all_list[$k]['vary_money'] = floor($v['vary_money']*100)*0.01;
+                    $bet_all_list[$k]['deal_time'] = date('Y-m-d H:i:s',$v['deal_time']);
+                }else if ($summary['bonus']==0 && $summary['revert']==0 && $summary['rebate'] =0)
+                {
+                    unset($bet_all_list[$k]);
+                }
+            }else if ($v['deal_type']=='bet_normal' || $v['deal_type']=='bet_chase')
+            {
+                $bet_all_list[$k]['deal_type'] = 'bet_launch';
+                $bet_all_list[$k]['vary_money'] = floor($v['vary_money']*100)*0.01;
+                $bet_all_list[$k]['deal_time'] = date('Y-m-d H:i:s',$v['deal_time']);
+            }
+        }
+        return array_values($bet_all_list);
+    }
+    private function betLaunch($mysql,$userId,$time)
+    {
+        $list = [];
+        $bet_launch_list = [];
+        $sql = 'SELECT vary_money,deal_time FROM deal WHERE user_id=:user_id AND deal_time>=:time AND deal_type IN ("bet_normal","bet_chase") ORDER BY deal_time DESC';
+        $param = [
+            ':user_id' => $userId,
+            ':time' => $time
+        ];
+        foreach ($mysql->query($sql,$param) as $row)
+        {
+            $list[] = $row;
+        }
+        foreach ($list as $k => $v)
+        {
+            $bet_launch_list[$k]['deal_type'] = 'bet_launch';
+            $bet_launch_list[$k]['vary_money'] = floor($v['vary_money']*100)*0.01;
+            $bet_launch_list[$k]['deal_time'] = date('Y-m-d H:i:s',$v['deal_time']);
+        }
+        return $bet_launch_list;
+    }
+    private function bonus($mysql,$userId,$time)
+    {
+        $list = [];
+        $bonus_list = [];
+        $sql = 'SELECT vary_money,deal_time,summary FROM deal WHERE user_id=:user_id AND deal_time>=:time AND deal_type="bet_settle" ORDER BY deal_time DESC';
+        $param = [
+            ':user_id' => $userId,
+            ':time' => $time
+        ];
+        foreach ($mysql->query($sql,$param) as $row)
+        {
+            $list[] = $row;
+        }
+        foreach ($list as $k => $v)
+        {
+            $bonus_list[$k]['deal_type'] = 'bonus';
+            $summary = json_decode($v['summary'],true);
+            $bonus_list[$k]['vary_money'] = floor($v['vary_money']*100)*0.01;
+            $bonus_list[$k]['deal_time'] = date('Y-m-d H:i:s',$v['deal_time']);
+            if ($summary['bonus'] == 0 && $summary['rebate'] == 0)
+            {
+                unset($bonus_list[$k]);
+            }
+        }
+        return array_values($bonus_list);
+    }
+    private function betCancel($mysql,$userId,$time)
+    {
+        $list = [];
+        $bet_cancel_list = [];
+        $sql = 'SELECT vary_money,deal_time,summary FROM deal WHERE user_id=:user_id AND deal_time>=:time AND deal_type="bet_settle" ORDER BY deal_time DESC';
+        $param = [
+            ':user_id' => $userId,
+            ':time' => $time
+        ];
+        foreach ($mysql->query($sql,$param) as $row)
+        {
+            $list[] = $row;
+        }
+        foreach ($list as $k => $v)
+        {
+            $bet_cancel_list[$k]['deal_type'] = 'bet_cancel';
+            $summary = json_decode($v['summary'],true);
+            $bet_cancel_list[$k]['vary_money'] = floor($v['vary_money']*100)*0.01;
+            $bet_cancel_list[$k]['deal_time'] = date('Y-m-d H:i:s',$v['deal_time']);
+            if ($summary['revert'] == 0)
+            {
+                unset($bet_cancel_list[$k]);
+            }
+        }
+        return array_values($bet_cancel_list);
+    }
+}

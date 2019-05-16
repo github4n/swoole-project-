@@ -1,0 +1,140 @@
+<?php
+namespace Site\Websocket\Cash\ManualDeposit;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-手工出款查询
+ * 参数：
+ *  Cash/ManualDeposit/WithdrawSearch
+ * */
+
+class WithdrawSearch extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("money_manual",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("money_withdraw_select",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        $staffId = $context->getInfo('StaffId');
+        $data = $context->getData();
+        $user_key = isset($data['user_key']) ? $data['user_key'] : '';
+        $account_name = isset($data['account_name']) ? $data['account_name'] : '';
+        $start_time = isset($data['start_time']) ? $data['start_time'] : '';
+        $end_time = isset($data['end_time']) ? $data['end_time'] : '';
+        $staff_name = isset($data['staff_name']) ? $data['staff_name'] : '';
+        $withdraw_type = isset($data['withdraw_type']) ? $data['withdraw_type'] : '';
+
+
+        if(!empty($user_key)){
+            $user_key = " AND user_key = '$user_key'";
+        }
+        if(!empty($account_name)){
+            $account_name = " AND account_name = '$account_name'";
+        }
+        if(!empty($staff_name)){
+            $staff_name = " AND staff_name = '$staff_name'";
+        }
+        if(is_numeric($withdraw_type)){
+            $withdraw_type = " AND withdraw_type = '$withdraw_type'";
+        }
+        $time = '';
+        if(!empty($start_time) && !empty($end_time)){
+            $start = strtotime($start_time);
+            $end = strtotime($end_time);
+            $time = " AND launch_time BETWEEN '$start' AND '$end'";
+        }
+
+        $limit = " LIMIT 100";
+        $total = 0;
+        $money = 0;
+        $deposit_audit = 0;
+        $coupon_audit = 0;
+        $withdraw_list = [];
+        //查询数据sql
+        $sql = "SELECT user_id,user_key,account_name,withdraw_type,money,deposit_audit,deposit_audit,coupon_audit,new_money,deal_time, staff_name,memo FROM staff_withdraw_intact WHERE 1=1 ". $user_key.$account_name.$staff_name.$withdraw_type.$time.' order by deal_time desc' .$limit ;
+        //总数sql
+        $total_sql = "SELECT deal_serial FROM staff_withdraw_intact WHERE 1=1 ".$user_key. $account_name.$staff_name.$withdraw_type.$time.$limit;
+        //余额sql
+        $money_sql = "SELECT sum(money) as countMoney FROM staff_withdraw_intact WHERE 1=1 ".$user_key. $account_name.$staff_name.$withdraw_type.$time.$limit;
+        //提出充值稽核sql
+        $deposit_audit_sql = "SELECT sum(deposit_audit) as countDeposit FROM staff_withdraw_intact WHERE 1=1 ".$user_key. $account_name.$staff_name.$withdraw_type.$time.$limit;
+        //提出活动稽核sql
+        $coupon_audit_sql = "SELECT sum(coupon_audit) as countCoupon FROM staff_withdraw_intact WHERE 1=1 ".$user_key. $account_name.$staff_name.$withdraw_type.$time.$limit;
+
+        foreach ($config->deal_list as $deal){
+            $mysql = $config->__get("data_".$deal);
+
+            try{
+                //总人数
+                $total += $mysql->execute($total_sql);
+                //存入金额
+                foreach ($mysql->query($money_sql) as $row){
+                    $money += $row["countMoney"];
+                }
+                //取出充值稽核
+                foreach ($mysql->query($deposit_audit_sql) as $row){
+                    $deposit_audit += $row["countDeposit"];
+                }
+                //取出活动稽核
+                foreach ($mysql->query($coupon_audit_sql) as $row){
+                    $coupon_audit += $row["countCoupon"];
+                }
+                $list = iterator_to_array($mysql->query($sql));
+
+                if (!empty($list)) {
+                    foreach ($list as $key=>$value) {
+                        $withdraw = [
+                            'user_id'       => $value['user_id'],
+                            'user_key'      => $value['user_key'],
+                            'account_name'  => !empty($value['account_name']) ? $value['account_name'] : '',
+                            'withdraw_type' => $value['withdraw_type'],
+                            'money'         => $value['money'],
+                            'deposit_audit' => $value['deposit_audit'],
+                            'coupon_audit'  => $value['coupon_audit'],
+                            'new_money'     => $value['new_money'],
+                            'deal_time'     => !empty($value['deal_time']) ? date("Y-m-d H:i:s",$value['deal_time']) : '',
+                            'staff_name'    => $value['staff_name'],
+                            'memo'          => !empty($value['memo']) ? $value['memo'] : '',
+
+                        ];
+                        $withdraw_list[]  = $withdraw;
+                    }
+                }
+
+            }catch (\PDOException $e) {
+                $context->reply(["status"=>400,"msg"=>"获取失败"]);
+                throw new \PDOException($e);
+            }
+
+        }
+        array_multisort(array_column($withdraw_list,'deal_time'), SORT_DESC, $withdraw_list);
+
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'money_manual',
+            ':detail' =>'查看了手工出款查询',
+        ];
+        $staff_mysql = $config->data_staff;
+        $staff_mysql->execute($sql,$params);
+        $context->reply(["status"=>200,"msg"=>"获取成功","total"=>$total,"money"=>$money,"deposit"=>$deposit_audit,"coupon"=>$coupon_audit,"list"=>$withdraw_list]);
+    }
+}

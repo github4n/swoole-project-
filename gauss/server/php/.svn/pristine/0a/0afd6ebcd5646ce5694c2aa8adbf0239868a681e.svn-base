@@ -1,0 +1,64 @@
+<?php
+namespace Plat\Websocket\Staff;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 参数：admin_id 需要修改的用户的id
+ * 状态码：
+ * 200：获取成功
+ * 201：要编辑的用户的id不能为空
+ * 202：要编辑的用户的id类型不正确
+ * 400：获取失败
+ * */
+class StaffEdit extends CheckLogin {
+    function onReceiveLogined(Context $context,Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("account_admin_update",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+
+        $admin_id = trim($data['admin_id']);
+
+        if(empty($admin_id)){
+            $context->reply(['status'=>202,'msg'=>'要编辑的用户的id不能为空']);
+            return;
+        }
+        if(!is_numeric($admin_id)){
+            $context->reply(['status'=>203,'msg'=>'要编辑的用户的id类型不正确']);
+            return;
+        }
+
+        $mysql = $config->data_admin;
+        try{
+            $sql = "SELECT admin_id,admin_name,admin_key,role_map as role_name FROM admin_info_intact WHERE admin_id=:admin_id";
+            $params = [
+                ':admin_id' =>$admin_id
+            ];
+            $list = [];
+            foreach ($mysql->query($sql,$params) as $row){
+                $list = $row;
+            }
+            if(!empty($list)) {
+                foreach (json_decode($list['role_name']) as $item){
+                    $list['role_name'] = $item;
+                }
+            }
+            $rolelist=[];
+            $rolesql = "SELECT * FROM  admin_role";
+            foreach ($mysql->query($rolesql) as $row){
+                $rolelist = $row;
+            }
+            $context->reply(['status'=>200,'msg'=>'获取成功','amdininfo'=>$list,'rolelist'=>$rolelist]);
+        } catch(\PDOException $e){
+            $context->reply(['status'=>400,'msg'=>'获取失败','amdininfo'=>[]]);
+            throw new \PDOException('sql  run error'.$e);
+        }
+    }
+}

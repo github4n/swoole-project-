@@ -1,0 +1,30 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: lucy
+ * Date: 19-3-15
+ * Time: 下午3:35
+ */
+namespace Plat\Task\Fg;
+
+use Lib\Task\IHandler;
+use Lib\Task\Context;
+use Lib\Config;
+use Lib\Http\Context as a;
+
+
+class GetBalance implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        $data = $context->getData();
+
+       // $cache=new Cache($config->cache_daemon);
+        $c=new a($config->cache_daemon,$data['clientId']);
+        $json = json_encode($data['res'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $c->responseStatus(200);
+        $c->responseHeader('Content-Type', 'application/json');
+        $c->responseBody($json);
+        $c->responseFinish();
+    }
+}

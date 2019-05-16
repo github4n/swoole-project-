@@ -1,0 +1,65 @@
+<?php
+
+namespace App\Websocket\User\Recharge\Transaction;
+
+/*
+ * 便利付支付
+ *
+ * */
+
+class BianLiPay {
+
+    public function BianLiPays($passage_gate_data, $deposit_serial, $lunch_money, $way_key,$pay_callbackurl) {
+        $pay_memberid = $passage_gate_data[0]['account_number'];
+        $pay_orderid = $deposit_serial;
+        $pay_amount = $lunch_money;
+        switch ($way_key) {
+            case 'alipay':
+                $pay_applydate = date('YmdHis', time());
+                $pay_bankcode = 'ZFBZF';
+                $pay_tongdao = 'Jzfb';
+                break;
+            case 'weixin' :
+                $pay_applydate = date('YmdHis', time());
+                $pay_bankcode = 'WXZF';
+                $pay_tongdao = 'Ywx';
+                break;
+            default:
+                break;
+        }
+
+        $pay_notifyurl = 'http://127.0.0.1:8080/2/AsynchronousCallback/BianliPayCallback'; //TODO  待修改
+        $pay_callbackurl = $pay_callbackurl; //TODO  待修改
+        $pay_md5sign = $passage_gate_data[0]['signature_key'];
+        $pay_reserved1 = '';
+        //商品名称
+        $pay_productname = '测试支付';
+        //商品数量
+        $pay_productnum = 1;
+        //商品描述
+        $pay_productdesc = '测试支付';
+        //商品链接地址
+        $pay_producturl = '';
+        $jsapi = array(
+            "pay_memberid" => $pay_memberid,
+            "pay_orderid" => $pay_orderid,
+            "pay_amount" => $pay_amount,
+            "pay_applydate" => $pay_applydate,
+            "pay_bankcode" => $pay_bankcode,
+            "pay_notifyurl" => $pay_notifyurl,
+            "pay_callbackurl" => $pay_callbackurl,
+        );
+
+        ksort($jsapi);
+        $md5str = "";
+        foreach ($jsapi as $key => $val) {
+            $md5str = $md5str . $key . "=" . $val . "&";
+        }
+        $sign = strtoupper(md5($md5str . "key=" . $pay_md5sign));
+        $jsapi["sign"] = $sign;
+        $jsapi["pay_tongdao"] = $pay_tongdao; //通道
+        $jsapi["pay_productname"] = $pay_productname; //商品名称
+        return $jsapi;
+    }
+
+}

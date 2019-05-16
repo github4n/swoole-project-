@@ -1,0 +1,121 @@
+<?php
+
+namespace Site\Task\Layer;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+/*
+ * Rose-2019-04-24
+ * 代理自动升级
+ * */
+class LayerMemberAuto implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        try {
+            $mysqlReport = $config->data_report;
+            $mysqlUser = $config->data_user;
+            $daily = date('Ymd', strtotime('today') - 86400);
+
+            //新代理的升级
+            $sql = 'select layer_id from layer_info where layer_type >=102';
+            $layer_list = [];
+            foreach ($mysqlUser->query($sql) as $layer) {
+                $layer_list[] = $layer['layer_id'];
+            }
+            $sql = 'select user_id,layer_id from user_info_intact where layer_id in :layer_id';
+            $user_list = iterator_to_array($mysqlUser->query($sql, [':layer_id' => $layer_list]));
+            if (!empty($user_list)) {
+                foreach ($user_list as $k => $v) {
+                    $sql = 'select layer_type,max_day from layer_info where layer_id=:layer_id';
+                    $layer_type = 0;
+                    $max_day = 0;
+                    foreach ($mysqlUser->query($sql, [':layer_id' => $v['layer_id']]) as $row) {
+                        $layer_type = $row['layer_type'];
+                        $max_day = $row['max_day'];
+                    }
+                    if ($layer_type == 103) {
+                        //满足新代理的条件
+                        $sql = 'select start_time from invite_info where user_id = :user_id';
+                        $start_time = 0;
+                        foreach ($mysqlUser->query($sql, [':user_id' => $v['user_id']]) as $layerNew) {
+                            $start_time = $layerNew['start_time'];
+                        }
+
+
+                        if (floor((strtotime('today') - $start_time) / 86400) >= $max_day) {
+                            //新代理的数据
+                            $data_sql = 'select sum(deposit_amount) as deposit_amount,sum(wager_amount) as wager_amount,count(distinct (if(wager_amount>0,user_id,null))) as user_count from daily_user where (broker_1_id = :broker_1_id or broker_2_id = :broker_2_id or broker_3_id = :broker_3_id ) and daily <= :daily';
+                            $sql = 'select layer_id,layer_name,min_deposit_amount,min_bet_amount,min_deposit_user  from layer_info where layer_type=102 order by min_deposit_amount,min_bet_amount,min_deposit_user asc';
+                            $userData = [];
+                            foreach ($mysqlReport->query($data_sql, [':broker_1_id' => $v['user_id'], ':broker_2_id' => $v['user_id'], ':broker_3_id' => $v['user_id'], ':daily' => $daily]) as $user) {
+                                $userData = $user;
+                            }
+
+                            $layer_list = iterator_to_array($mysqlUser->query($sql));
+                            if (!empty($layer_list)) {
+                                foreach ($layer_list as $key => $val) {
+                                    if (empty($userData['deposit_amount']) ? 0 : $userData['deposit_amount'] >= $val['min_deposit_amount'] && empty($userData['wager_amount']) ? 0 : $userData['wager_amount'] >= $val['min_bet_amount'] && empty($userData['user_count']) ? 0 : $userData['user_count'] >= $val['min_deposit_user']) {
+                                        $param = [
+                                            'layer_id' => $val['layer_id'],
+                                            'user_id' => $v['user_id'],
+                                        ];
+                                        $update_user_sql = 'update user_info set layer_id = :layer_id where user_id = :user_id';
+                                        $mysqlUser->execute($update_user_sql, $param);
+                                        $params = [
+                                            'layer_id' => $val['layer_id'],
+                                            'layer_name' => $val['layer_name'],
+                                            'user_id' => $v['user_id'],
+                                        ];
+                                        $update_event_sql = 'update user_event set layer_id = :layer_id,layer_name = :layer_name where user_id = :user_id';
+                                        $mysqlReport->execute($update_event_sql, $params);
+                                        $update_cumulate_sql = 'update user_cumulate set layer_id = :layer_id,layer_name = :layer_name where user_id = :user_id';
+                                        $mysqlReport->execute($update_cumulate_sql, $params);
+                                    }
+                                }
+                            }
+                        }
+
+                    } else {
+                        $data_sql = 'select sum(deposit_amount) as deposit_amount,sum(wager_amount) as wager_amount,count(user_id) as user_count from daily_user where (broker_1_id = :user_id or broker_2_id = :user_id or broker_3_id = :user_id ) and daily <= :daily';
+                        $usersData = [];
+                        foreach ($mysqlReport->query($data_sql, [':user_id' => intval($v['user_id']), ':daily' => $daily]) as $user) {
+                            $usersData = $user;
+                        }
+                        $sql = 'select layer_id,layer_name,min_deposit_amount,min_bet_amount,min_deposit_user  from layer_info where layer_type=102 order by min_deposit_amount,min_bet_amount,min_deposit_user asc';
+                        $all_layer_list = iterator_to_array($mysqlUser->query($sql));
+                        if (!empty($all_layer_list)) {
+                            foreach ($all_layer_list as $key => $val) {
+                                if ($usersData['deposit_amount'] >= $val['min_deposit_amount'] && $usersData['wager_amount'] >= $val['min_bet_amount'] && $usersData['user_count'] >= $val['min_deposit_user']) {
+                                    $param = [
+                                        'layer_id' => $val['layer_id'],
+                                        'user_id' => $v['user_id'],
+                                    ];
+                                    $update_user_sql = 'update user_info set layer_id = :layer_id where user_id = :user_id';
+                                    $mysqlUser->execute($update_user_sql, $param);
+                                    $params = [
+                                        'layer_id' => $val['layer_id'],
+                                        'layer_name' => $val['layer_name'],
+                                        'user_id' => $v['user_id'],
+                                    ];
+                                    $update_event_sql = 'update user_event set layer_id = :layer_id,layer_name = :layer_name where user_id = :user_id';
+                                    $mysqlReport->execute($update_event_sql, $params);
+                                    $update_cumulate_sql = 'update user_cumulate set layer_id = :layer_id,layer_name = :layer_name where user_id = :user_id';
+                                    $mysqlReport->execute($update_cumulate_sql, $params);
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
+        } catch (\PDOException $e) {
+            throw new \PDOException($e);
+        } finally {
+            $adapter = $context->getAdapter();
+            $adapter->plan('Layer/LayerMemberAuto', [], strtotime('today') + 86400 + 7200, 8);
+        }
+    }
+}

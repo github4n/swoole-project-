@@ -1,0 +1,130 @@
+<?php
+
+namespace Plat\Websocket\LotteryTicket\LotteryRebateSetting;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/**
+ * LotteryRebateSettingSave class.
+ *
+ * @description   返点设置列表
+ * @Author  avery
+ * @date  2019-04-18
+ * @links  LotteryTicket/LotteryRebateSetting/LotteryRebateSettingSave {"site_list":["site1","site2"]"list":[{"game_key":"dice_fast","rebate_max":"5"},{"game_key":"tiktok_fast","rebate_max":"9"}]}
+ * @modifyAuthor   avery
+ * @modifyTime  2019-04-23
+ */
+class LotteryRebateSettingSave extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array('lottery_rebate_update', $auth)) {
+            $context->reply(['status' => 201, 'msg' => '你还没有操作权限']);
+
+            return;
+        }
+        $mysqlAdmin = $config->data_admin;
+        $mysqlPublic = $config->data_public;
+        $data = $context->getData();
+        $data_list = $data['list'];
+        $site_list = isset($data['site_list']) ? $data['site_list'] : '';
+        if (!is_array($site_list)) {
+            $context->reply(['status' => 206, 'msg' => '站点的格式不正确']);
+
+            return;
+        }
+
+        if (empty($data_list) || !is_array($data_list)) {
+            $context->reply(['status' => 202, 'msg' => '输入站点数据']);
+
+            return;
+        }
+
+        $rebateData = [];
+        $siteData = [];
+        foreach ($site_list as $item) {
+            $info = [];
+            $sql = 'SELECT site_key,status,site_name from site where site_key=:site_key';
+            foreach ($mysqlAdmin->query($sql, [':site_key' => $item]) as $row) {
+                $info = $row;
+            }
+            if (empty($info)) {
+                $context->reply(['status' => 210, 'msg' => '站点关键字错误']);
+
+                return;
+            }
+            if ($info['status'] == 0 || $info['status'] == 1) {
+                $context->reply(['status' => 211, 'msg' => '站点'.$info['site_name'].'未关闭']);
+
+                return;
+            }
+            foreach ($data_list as $key => $val) {
+                $game_key = $val['game_key'];
+                $rebate_max = $val['rebate_max'];
+                if (!is_numeric($rebate_max)) {
+                    $context->reply(['status' => 301, 'msg' => '请输入返点']);
+
+                    return;
+                }
+                if ($rebate_max > 100 || $rebate_max < 0) {
+                    $context->reply(['status' => 302, 'msg' => '请输入正确的返点']);
+
+                    return;
+                }
+                $sql = 'select model_key,acceptable,subsidy_rate from site_game where game_key=:game_key and site_key=:site_key';
+                $rebateInfo = [];
+                foreach ($mysqlAdmin->query($sql, [':game_key' => $game_key, ':site_key' => $item]) as $row) {
+                    $rebateInfo = $row;
+                }
+                if (empty($rebateInfo)) {
+                    $context->reply(['status' => 300, 'msg' => '请传入正确的数据']);
+
+                    return;
+                }
+                $rebate = [
+                    'model_key' => $rebateInfo['model_key'],
+                    'game_key' => $game_key,
+                    'acceptable' => $rebateInfo['acceptable'],
+                    'rebate_max' => $rebate_max,
+                    'subsidy_rate' => $rebateInfo['subsidy_rate'],
+                ];
+                $rebateData[] = $rebate;
+                $office = [];
+                $sql = 'select official from lottery_game where game_key=:game_key';
+                foreach ($mysqlPublic->query($sql, [':game_key' => $game_key]) as $row) {
+                    $office = $row;
+                }
+                $site = [
+                    'model_key' => $rebateInfo['model_key'],
+                    'game_key' => $game_key,
+                    'acceptable' => $rebateInfo['acceptable'],
+                    'rebate_max' => $rebate_max,
+                    'official' => $office['official'],
+                ];
+                $siteData[] = $site;
+            }
+            //记录修改日志
+            $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+            $params = [
+                ':admin_id' => $context->getInfo('adminId'),
+                ':operate_key' => 'lottery_rebate_update',
+                ':detail' => '修改了站点.'.$item.'的返点',
+            ];
+            $mysqlAdmin->execute($sql, $params);
+            $mysqlAdmin->site_game->load($rebateData, ['site_key' => $item], 'replace');
+            $mysqlStaff = $config->__get('data_'.$item.'_staff');
+            $mysqlStaff->lottery_game->load($siteData, [], 'replace');
+            $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+            $sql = 'select game_key from site_game where site_key=:site_key and acceptable=1';
+            foreach ($mysqlAdmin->query($sql, [':site_key' => $item]) as $row) {
+                $taskAdapter->plan('NotifySite', ['path' => 'Lottery/GameWin', 'data' => ['game_key' => $row['game_key']]]);
+            }
+        }
+
+        $context->reply(['status' => 200, 'msg' => '设置成功']);
+    }
+}

@@ -1,0 +1,104 @@
+<?php
+namespace Site\Websocket\Website\Index\App;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 网站管理--App弹窗消息--添加弹窗消息
+ * Website/Index/App/PopAdd {"content":"测试内容","publish":"1","start_time":"2019-02-20 16:30:00","stop_time":"2019-02-21 12:00:00"}
+ * */
+
+class PopAdd extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,'msg' => "当前账号没有操作权限权限"]);
+            return;
+        }
+
+        $auth = json_decode($context->getInfo('StaffAuth'),true);
+        if (!in_array('web_homepage',$auth))
+        {
+            $context->reply(["status"=>206,'msg' => "当前账号没有操作权限权限"]);
+            return;
+        }
+
+        //接受数据
+        $data = $context->getData();
+        $content = $data['content'];
+        $publish = $data['publish'];
+        $start_time = $data['start_time'];
+        $stop_time = $data['stop_time'];
+
+
+        if (empty($content))
+        {
+            $context->reply(['status' => 201,'msg' => '内容为空']);
+            return;
+        }
+
+        if (empty($publish))
+        {
+            $context->reply(['status' => 202,'msg' => '启用状态必选']);
+            return;
+        }
+
+        if (empty($start_time))
+        {
+            $context->reply(['status' => 203,'msg' => '开始时间必选']);
+            return;
+        }
+
+        if (empty($stop_time))
+        {
+            $context->reply(['status' => 204,'msg' => '结束时间必选']);
+            return;
+        }
+
+        if (!is_numeric($publish))
+        {
+            $context->reply(['status' => 205,'msg' => '启用状态码不是数字']);
+            return;
+        }
+        if($publish == 1){
+            $publish = 1;
+        }else{
+            $publish = 0;
+        }
+        //连接数据库
+        $staff_mysql = $config->data_staff;
+
+        //插入数据
+        $sql = 'INSERT INTO popup (content,publish,start_time,stop_time,add_time) VALUES (:content,:publish,:start_time,:stop_time,:add_time)';
+        $param = [
+            ':content' => $content,
+            ':publish' => $publish,
+            ':start_time' => strtotime($start_time),
+            ':stop_time' => strtotime($stop_time),
+            ':add_time' => time()
+        ];
+        $flag = $staff_mysql->execute($sql,$param);
+        if ($flag)
+        {
+            $context->reply(['status' => 200,'msg' => '新增成功']);
+            $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+            // $taskAdapter->plan('Index/AppPop', [],time());
+        }else
+        {
+            $context->reply(['status' => 206,'msg' => '新增失败']);
+        }
+
+        //记录日志
+        $operate_sql = 'INSERT INTO operate_log (staff_id,operate_key,detail,client_ip) VALUES (:staff_id,:operate_key,:detail,:client_ip)';
+        $operate_param = [
+            ':staff_id' => $context->getInfo('StaffId'),
+            ':operate_key' => 'web_homepage',
+            ':detail' => '新增app弹窗消息',
+            ':client_ip' => ip2long($context->getClientAddr())
+        ];
+        $staff_mysql->execute($operate_sql,$operate_param);
+    }
+}

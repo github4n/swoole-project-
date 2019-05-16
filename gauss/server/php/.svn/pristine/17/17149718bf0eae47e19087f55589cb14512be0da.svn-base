@@ -1,0 +1,120 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan,lucy
+ * Date: 19-3-11,19-3-27
+ * Time: 下午12:19.
+ */
+
+namespace App\Websocket\ExternalGame;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+/*
+ *启动三方游戏
+ *  ExternalGame/GameStart  {"interface_key":"fg","game_key":"fg_2284","game_code":"dfdc","game_type":"h5","language":"zh-cn","return_url":"http://www.baidu.com"}
+ *  ExternalGame/GameStart  {"interface_key":"ky","game_key":"ky_4654"}
+ */
+class GameStart extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $param = $context->getData();
+        $interface_key = isset($param['interface_key']) ? $param['interface_key'] : '';
+        if (empty($interface_key)) {
+            $context->reply(['status' => 400, 'msg' => '三方平台Key不能为空', $param]);
+
+            return;
+        }
+        $user_id = $context->getInfo('UserId');
+        $user_key = $context->getInfo('UserKey');
+        $adapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $ip = $context->getClientAddr();
+        switch ($interface_key) {
+            case 'fg':
+                $game_key = isset($param['game_key']) ? $param['game_key'] : '';
+                $game_type = isset($param['game_type']) ? $param['game_type'] : '';
+                $language = isset($param['language']) ? $param['language'] : 'zh-cn';
+                $return_url = isset($param['return_url']) ? $param['return_url'] : '';
+                //切割server_id
+                $server_id = substr($game_key, 3);
+                //读取游戏列表json文件
+                $file_data = file_get_contents($interface_key.'_game.json', __FILE__);
+                $data = json_decode($file_data);
+                $game_code = '';
+                foreach ($data->data as $game) {
+                    //匹配数据
+                    if ($server_id == $game->service_id) {
+                        $game_code = $game->gamecode;
+                    }
+                }
+                $ipArray = explode('.', $ip);
+                if ($ipArray[2] == 1) {
+                    $realIp = '27.116.63.114';
+                } elseif ($ipArray[2] == 2) {
+                    $realIp = '27.116.63.115';
+                } else {
+                    $realIp = '27.116.63.114';
+                }
+
+                if (empty($game_key) || empty($game_code)) {
+                    $context->reply(['status' => 401, 'msg' => '游戏参数错误', [$game_key, $game_code]]);
+
+                    return;
+                }
+                if (empty($game_type) || empty($language) || empty($return_url) || empty($ip)) {
+                    $context->reply(['status' => 402, 'msg' => '启动游戏相关参数错误']);
+
+                    return;
+                }
+                $params = [
+                    'user_id' => $user_id,
+                    'user_key' => $user_key,
+                    'game_code' => $game_code,
+                    'game_type' => $game_type,
+                    'language' => $language,
+                    'ip' => $realIp,
+                    'return_url' => $return_url,
+                    'action' => 'launch_game',
+                    'interface_key' => $interface_key,
+                    'site_action' => 'ExternalGameStart',
+                ];
+                $adapter->plan('NotifySite', ['path' => 'ExternalGame/ExternalGameSend', 'data' => ['data' => $params]], time(), 1);
+                break;
+            case 'ag':
+
+                break;
+            case 'ky':
+                $KindId = isset($param['game_key']) ? $param['game_key'] : '';
+                if (empty($KindId)) {
+                    $context->reply(['status' => 402, 'msg' => '启动游戏id不能为空']);
+
+                    return;
+                }
+                $KindId = explode('_', $KindId)[1];
+                $params = [
+                    'user_id' => $user_id,
+                    'user_key' => $user_key,
+                    'KindID' => $KindId,
+                    'money' => 0,
+                    'ip' => $ip,
+                    's' => 0,
+                    'action' => 'loginKy',
+                    'interface_key' => $interface_key,
+                    'site_action' => 'ExternalGameStart',
+                ];
+                $adapter->plan('NotifySite', ['path' => 'ExternalGame/ExternalGameSend', 'data' => ['data' => $params]], time(), 1);
+                break;
+            case 'lb':
+
+                break;
+            default:
+                $context->reply(['status' => 404, 'msg' => '非法参数']);
+
+                return;
+                break;
+        }
+    }
+}

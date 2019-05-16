@@ -1,0 +1,41 @@
+<?php
+namespace Lib\Data;
+
+use PDO;
+
+class Connection extends PDOWrapper
+{
+    // mysql://user:pass@host:port/db
+    public function __construct(string $uri)
+    {
+        $parse = parse_url($uri);
+        $host = $parse['host'] ?? 'redis';
+        $port = $parse['port'] ?? 3306;
+        $user = $parse['user'] ?? '';
+        $pass = $parse['pass'] ?? '';
+        $dbname = trim($parse['path'], '/');
+        $dsn = "mysql:host={$host};port={$port};dbname={$dbname}";
+        $this->pdo = new PDO($dsn, $user, $pass, [
+            PDO::MYSQL_ATTR_INIT_COMMAND => "set names 'utf8mb4' collate 'utf8mb4_unicode_ci'",
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+    }
+    public function query(string $sql, array $params = [])
+    {
+        $ps = $this->prepareComplex($sql, $params);
+        return $this->executeIterator($ps);
+    }
+    public function execute(string $sql, array $params = []): int
+    {
+        $ps = $this->prepareComplex($sql, $params);
+        return $this->executeEffect($ps);
+    }
+    private $tables = [];
+    public function __get(string $tableName): Table
+    {
+        if (empty($this->tables[$tableName])) {
+            $this->tables[$tableName] = new Table($this, $tableName);
+        }
+        return $this->tables[$tableName];
+    }
+}

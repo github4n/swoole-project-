@@ -1,0 +1,178 @@
+<?php
+
+namespace Site\Websocket\Member\BetRecord;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use function PHPSTORM_META\type;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员管理-FG注单
+ * Member/BetRecord/FgBetRecord {"bet_serial":"","user_key":"user123","start_time":"2018-12-18","end_time":"2018-12-20"}
+ */
+class FgBetRecord extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo("StaffId");
+        $MasterId = $context->getInfo("MasterId");
+        $staffGrade = $context->getInfo('StaffGrade');
+        $data = $context->getData();
+        $bet_serial = isset($data["bet_serial"]) ? $data["bet_serial"] : "";
+        $external_type = isset($data['external_type']) ? $data['external_type'] : 'fg';
+        $user_key = isset($data["user_key"]) ? $data["user_key"] : "";
+        $start_time = isset($data["start_time"]) ? $data["start_time"] : "";
+        $end_time = isset($data["end_time"]) ? $data["end_time"] : "";
+        $time = '';
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if ($MasterId != 0) {
+            $staffId =$MasterId;
+        }
+        if (!in_array("user_bet", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $mysql = $config->data_staff;
+        $mysqlUser = $config->data_user;
+        $user_list = 0;
+        $cache = $config->cache_site;
+        switch ($staffGrade)
+        {
+            case 0:
+                if(empty(!$MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_list = 0;
+
+                    foreach ($mysql->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+                        $layer_list = $row["layer_list"];
+                    }
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where layer_id in ($layer_list)";
+                }else{
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact";
+                }
+
+                foreach ($mysqlUser->query($user_sql) as $row){
+                    $user_list = $row["user_list"];
+                }
+                break;
+            case 1:
+                $agent_list = 0;
+                $sql = 'SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent WHERE major_id='.$staffId;
+                foreach ($mysql->query($sql) as $row)
+                {
+                    $agent_list = $row['agent_list'];
+                }
+                if(empty(!$MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_list = 0;
+                    foreach ($mysql->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+                        $layer_list = $row["layer_list"];
+                    }
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id in ($agent_list) and layer_id in ($layer_list)";
+                }else{
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id in ($agent_list)";
+                }
+
+                foreach ($mysqlUser->query($user_sql) as $row){
+                    $user_list = $row["user_list"];
+                }
+                break;
+            case 2:
+                $agent_list = 0;
+                $sql = 'SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent WHERE minor_id='.$staffId;
+                foreach ($mysql->query($sql) as $row)
+                {
+                    $agent_list = $row['agent_list'];
+                }
+                if(empty(!$MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_list = 0;
+                    foreach ($mysqlUser->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+                        $layer_list = $row["layer_list"];
+                    }
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id in ($agent_list) and layer_id in ($layer_list)";
+                }else{
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id in ($agent_list)";
+                }
+
+                foreach ($mysqlUser->query($user_sql) as $row){
+                    $user_list = $row["user_list"];
+                }
+                break;
+            case 3:
+                if(empty(!$MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_list = 0;
+                    foreach ($mysql->query($accout_sql,[":staff_id"=>$staffId]) as $row){
+                        $layer_list = $row["layer_list"];
+                    }
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id =$staffId and layer_id in ($layer_list)";
+                }else{
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id = $staffId";
+                }
+                foreach ($mysqlUser->query($user_sql) as $row){
+                    $user_list = $row["user_list"];
+                }
+                break;
+        }
+        //单号条件
+        if (!empty($bet_serial)) {
+            $bet_serial = " AND audit_serial = '$bet_serial' ";
+        }
+        //用户条件
+        if (!empty($user_key)) {
+            $user_key = " AND user_key = '$user_key' ";
+        }
+        //注单时间区间
+        if (!empty($end_time) && !empty($start_time)) {
+            $end = strtotime(date("Y-m-d",strtotime($end_time)). " 23:59:59");
+            $start = strtotime(date("Y-m-d",strtotime($start_time)). " 00:00:00");
+            $time = " AND play_time between '$start' AND '$end' ";
+        }
+        //平台类型
+        if (!empty($external_type)) {
+            $external_type = " AND external_type = '$external_type' ";
+        }
+
+        $bet_sql = "SELECT game_key,audit_serial,user_key,audit_amount,play_time,external_data,external_type from external_audit where user_id in ($user_list)" . $user_key . $time . $bet_serial . $external_type . " order by play_time desc limit 600";
+        $list = [];
+        foreach ($config->deal_list as $deal) {
+            $mysqlDeal = $config->__get("data_" . $deal);
+            foreach ($mysqlDeal->query($bet_sql) as $val) {
+                $type = $val['external_type'];
+                $game_key = $val['game_key'];
+                $game_name = $cache->hget("LotteryName",$game_key);
+                $json_data = json_decode($val['external_data'],true);
+                $result = 0;
+                switch ($type) {
+                    case 'fg' :
+                        if(isset($json_data['gt']) && $json_data['gt']=='fish'){
+                            $result = $json_data['fish_dead_chips'] - $json_data['bullet_chips'];
+                        }else if(isset($json_data['gt']) && $json_data['gt'] != 'fish'){
+                            $result = isset($json_data['result']) ? $json_data['result'] : 0;
+                        } else {
+                            $result = 0;
+                        }
+                        break;
+                    case 'ky' :
+                            $result = isset($json_data['Profit']) ? $json_data['Profit'] : 0;
+                        break;
+                    case 'lb' :
+                        break;
+                    case 'ag' :
+                        break;
+                    default:
+                        $result = 0;
+                        break;
+                }
+                $val['result'] = $result;
+                $val['game_name'] = $game_name;
+                $list[] = $val;
+            }
+        }
+        array_multisort(array_column($list,'play_time'), SORT_DESC, $list);
+        $total = count($list);
+        $context->reply(['status' => 200, 'msg' => '获取成功','list'=>$list,'total' => $total]);
+    }
+}

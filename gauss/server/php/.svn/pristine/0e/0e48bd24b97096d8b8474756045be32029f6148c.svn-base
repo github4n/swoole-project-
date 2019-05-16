@@ -1,0 +1,43 @@
+<?php
+namespace Plat\Websocket\Website\App;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * App管理
+ * 参数：site_key:站点key值
+ *
+ * */
+class AppSetting extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("website_app_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        //获取站点信息
+        $sitelist = $context->getInfo("SiteList");
+        if(empty($sitelist)){
+            $sitelist = $this->getallsite($context,$config);
+        }
+        //获取app管理的信息
+        $data = $context->getData();
+        $site_key = $data["site_key"]?:"site1";
+        $sql = "SELECT ios_address,android_address FROM site_app WHERE site_key=:site_key";
+        $param = [":site_key"=>$site_key];
+        $mysql = $config->data_admin;
+        foreach ($mysql->query($sql,$param) as $rows){
+            $list=$rows;
+        }
+        $context->reply([
+            'status'=>200,
+            'msg'=>'获取成功',
+            'sitelist'=>$sitelist,
+            'list'=>$list,
+        ]);
+    }
+}

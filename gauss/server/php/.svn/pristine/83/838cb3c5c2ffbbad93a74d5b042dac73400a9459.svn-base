@@ -1,0 +1,82 @@
+<?php
+namespace Plat\Websocket\Website\App;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 接收修改app管理的修改的信息
+ * 参数：site_key:站点,ios_address:ios的下载地址,android_address:安卓的下载地址
+ * */
+
+class AppEdit extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("website_app_update",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        if(empty(trim($data['site_key']))){
+            $context->reply(["status"=>202,"msg"=>"站点不能为空"]);
+            return;
+        }
+        if(!empty(trim($data['ios_address'])) && !empty(trim($data['android_address']))){
+            $context->reply(["status"=>205,"msg"=>"提交信息有误"]);
+            return;
+        }
+        $ios = trim($data['ios_address']);
+        $andrroid = trim($data['android_address']);
+        if(!empty($ios) && empty($andrroid)){
+            if (!preg_match('/http/i', $ios) || !preg_match('/https/i', $ios)) {
+                $context->reply(["status"=>204,"msg"=>"地址格式不正确"]);
+                return;
+            }
+            $sql = "UPDATE site_app SET ios_address=:ios_address WHERE site_key=:site_key";
+            $param = [
+                ":ios_address"=>$ios,
+                ":site_key"=>trim($data['site_key']),
+            ];
+            $detail = "编号为".$context->getInfo('adminId')."修改IOS APP的下载地址";
+        }
+        if(!empty($andrroid) && empty($ios)){
+            if (!preg_match('/http/i', $andrroid) || !preg_match('/https/i', $andrroid)) {
+                $context->reply(["status"=>204,"msg"=>"地址格式不正确"]);
+                return;
+            }
+            $sql = "UPDATE site_app SET android_address=:android_address WHERE site_key=:site_key";
+            $param = [
+                ":android_address"=>$ios,
+                ":site_key"=>trim($data['site_key']),
+            ];
+            $detail = "编号为".$context->getInfo('adminId')."修改Android APP的下载地址";
+        }
+        if(empty(trim($data['ios_address'])) && empty(trim($data['android_address']))){
+            $context->reply(["status"=>203,"msg"=>"请提交相关的修改信息"]);
+            return;
+        }
+        $canUpdate = true;
+        try{
+            $mysql = $config->data_admin;
+            $mysql->execute($sql,$param);
+            //记录修改日志
+            $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+            $param = [
+                ':admin_id' => $context->getInfo('adminId'),
+                ':operate_key' => "website_app_update",
+                ':detail' => $detail
+            ];
+            $mysql->execute($sqls,$param);
+        } catch (\PDOException $e) {
+            $context->reply(["status"=>400,"msg"=>"修改失败"]);
+            throw new \PDOException('sql run error'.$e);
+        }
+        if ($canUpdate)
+            $context->reply(['status' => 200, 'msg' => '修改成功']);
+        else
+            $context->reply(['status' => 400, 'msg' => '修改失败']);
+    }
+}

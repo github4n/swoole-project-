@@ -1,0 +1,36 @@
+<?php
+namespace Site\Websocket\AgentRebate\Brokerage;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 三级下线详情
+ * AgentRebate/Brokerage/BrokerageThree
+ *
+ * */
+
+class BrokerageThree extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("broker_select",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $broker = $data["broker_id"];
+        $daily = $data["time"];
+        if(!is_numeric($broker)){
+            $context->reply(["status"=>204,"msg"=>"参数错误"]);
+            return;
+        }
+        $report_mysql = $config->data_report;
+
+        $sql = "select user_key,bet_amount from daily_user where broker_3_id = :broker_3_id and daily=:daily" ;
+        $list = iterator_to_array($report_mysql->query($sql,[":broker_3_id"=>$broker,":daily"=>$daily]));
+        $context->reply(["status"=>200,"msg"=>"获取成功","list"=>$list]);
+    }
+}

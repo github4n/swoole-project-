@@ -1,0 +1,50 @@
+<?php
+namespace Site\Websocket\Website\Message;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 网站管理--消息管理--会员公告
+ * Website/Message/PrivateList
+ * */
+
+class PrivateList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $user_key = $data["user_key"];
+        if(!empty($user_key)){
+            $user_key = " WHERE user_key = '".$user_key."'";
+        }
+        $sql = "SELECT * FROM user_message ".$user_key;
+        $total_sql = "SELECT user_message_id FROM user_message ".$user_key;
+        $list = array();
+        try{
+            foreach ($mysql->query($sql) as $rows){
+                $list[] = $rows;
+            }
+            $total = $mysql->execute($total_sql);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        $lists = array();
+        if(!empty($list)){
+            foreach ($list as $key=>$val) {
+                $lists[$key]["user_message_id"] = $val["user_message_id"];
+                $lists[$key]["title"] = $val["title"];
+                $lists[$key]["user_key"] = $val["user_key"];
+                $lists[$key]["create_time"] = date("Y-m-d H:i:s",$val["start_time"]);
+            }
+        }
+        $context->reply(["status"=>200,"msg"=>"获取成功","total"=>$total,"list"=>$lists]);
+    }
+}

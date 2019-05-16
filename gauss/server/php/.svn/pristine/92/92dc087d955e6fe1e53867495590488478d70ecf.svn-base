@@ -1,0 +1,74 @@
+<?php
+namespace Plat\Websocket\Report;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 站点分析
+ * 参数：site_key:站点key值,date:(day:日,week:周,month:月)
+ * 按日:条形图数据返回站点从当前统计到之前10天的每天的总投注和损益
+ * 按周：条形图数据返回站点从当前周统计到前10周每周的总投注和损益
+ * 按月：条形图数据返回站点从当前月开始统计到前10个月的每月的总投注和损益
+ * Report/SiteAnalyze {"site_key":"site1","date":"day"}
+ * */
+class SiteAnalyze extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("report_analysis",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        //获取站点信息
+        $sitelist = json_decode($context->getInfo("SiteList"));
+        if(empty($sitelist)){
+            $sitelist = $this->getallsite($context,$config);
+        }
+        $data = $context->getData();
+        $site_key = $data["site_key"] ?:"site1";
+        $date = $data["date"] ?:"day";
+        if($date == "day"){
+            $day = intval(date('Ymd',time()));
+            //列表的
+            $sqls = "SELECT daily,bet_all,(bet_all-bonus_all) as profit_all FROM daily_site WHERE site_key=:site_key AND daily <= :daily limit 10";
+            //当日的
+            $sql = "SELECT user_register,bet_all,(bet_all-bonus_all) as profit_all FROM daily_site WHERE site_key=:site_key AND daily = :daily";
+            $param = [":site_key"=>$site_key,":daily"=>$day];
+        } else if($date == "week"){
+            $week = intval(date('oW',time()));
+            $sqls = "SELECT weekly,bet_all,(bet_all-bonus_all) as profit_all FROM weekly_site WHERE site_key=:site_key AND weekly <= :weekly limit 10";
+            //本周的
+            $sql = "SELECT user_register,bet_all,(bet_all-bonus_all) as profit_all FROM weekly_site WHERE site_key=:site_key AND weekly = :weekly ";
+            $param = [":site_key"=>$site_key,":weekly"=>$week];
+        }else if($date == "month"){
+            $month = intval(date('Ym',time()));
+            $sqls = "SELECT monthly,bet_all,(bet_all-bonus_all) as profit_all FROM monthly_site WHERE site_key=:site_key AND monthly <= :monthly limit 10";
+            //本月的
+            $sql = "SELECT user_register,bet_all,(bet_all-bonus_all) as profit_all FROM monthly_site WHERE site_key=:site_key AND monthly = :monthly ";
+            $param = [":site_key"=>$site_key,":monthly"=>$month];
+        }else{
+            $context->reply(["status"=>204,"msg"=>"日期参数错误"]);
+            return;
+        }
+        $mysql = $config->data_analysis;
+        $lists = array();
+        $list = array();
+        foreach ($mysql->query($sqls,$param) as $rows){
+             $lists[] = $rows;
+        }
+        foreach ($mysql->query($sql,$param) as $row){
+            $list = $row;
+        }
+         
+         $context->reply([
+             'status'=>200,
+             'msg'=>'获取成功',
+             'sitelist'=> $sitelist,
+             'info'=>$list,
+             'list'=>$lists
+         ]);
+    }
+}

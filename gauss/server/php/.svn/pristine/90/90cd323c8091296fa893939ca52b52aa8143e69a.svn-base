@@ -1,0 +1,192 @@
+<?php
+
+namespace Site\Websocket\AgentRebate\Brokerage;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 佣金统计
+ * AgentRebate/Brokerage/BrokerageCount {"start_time":"","end_time":"","setup_name":""}
+ * start_time  开始时间
+ * end_time    结束时间
+ * setup_name   要查询的名字
+ * */
+
+class BrokerageCount extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("broker_select", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $staff_mysql = $config->data_staff;
+        $data = $context->getData();
+        $start_time = isset($data['start_time']) ? $data['start_time'] : '';
+        $end_time = isset($data['end_time']) ? $data['end_time'] : '';
+        $staffGrade = $context->getInfo("StaffGrade");
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo("MasterId");
+        if ($MasterId != 0) {
+            $staffId =$MasterId;
+        }
+
+        $brokerageDate = "select daily,count(user_id) as user_all,sum(brokerage) as brokerage, sum(broker_1_bet+broker_2_bet+broker_3_bet) as bet_amount from daily_user_brokerage  ";
+        $ybrokerageDate = "select daily,count(user_id) as user_all,sum(brokerage) as ybrokerage  from daily_user_brokerage where deliver_time > 0 ";
+        $nbrokerageDate = "select daily,count(user_id) as user_all,sum(brokerage) as nbrokerage  from daily_user_brokerage where deliver_time = 0 ";
+        $betuserDate = "select daily,count(user_id) as bet_user_all from daily_user where bet_amount > 0 ";
+
+        if ($staffGrade == 0) {
+            $brokerageDate .= "where  1=1  ";
+            $ybrokerageDate .= "and 1=1 ";
+            $nbrokerageDate .= "and 1=1 ";
+            $betuserDate .= "and 1=1 ";
+        }
+        if ($staffGrade == 1) {
+            $brokerageDate .= "where  major_id='$staffId' ";
+            $ybrokerageDate .= "and major_id='$staffId' ";
+            $nbrokerageDate .= "and major_id='$staffId' ";
+            $betuserDate .= "and major_id='$staffId' ";
+        }
+        if ($staffGrade == 2) {
+            $brokerageDate .= "where  minor_id='$staffId'  ";
+            $ybrokerageDate .= "and minor_id='$staffId' ";
+            $nbrokerageDate .= "and minor_id='$staffId' ";
+            $betuserDate .= "and minor_id='$staffId' ";
+        }
+        if ($staffGrade == 3) {
+            $brokerageDate .= "where  agent_id='$staffId'  ";
+            $ybrokerageDate .= "and agent_id='$staffId' ";
+            $nbrokerageDate .= "and agent_id='$staffId' ";
+            $betuserDate .= "and agent_id='$staffId' ";
+        }
+
+        if (!empty($data["setup_name"])) {
+            $setupName=$data["setup_name"];
+            $sql = "select staff_id,staff_name,staff_grade,leader_id from staff_info where staff_name= '$setupName' ";
+            $betTranslation = iterator_to_array($staff_mysql->query($sql));
+            if (empty($betTranslation)) {
+                $context->reply(["status" => 203, "msg" => "未有该体系线，请检查输入是否正确"]);
+                return;
+            }
+
+            if ($staffGrade == 1) {//大股东
+                if ($betTranslation[0]['staff_grade'] == 2 && $betTranslation[0]['leader_id'] != $staffId) {
+                    $context->reply(["status" => 204, "msg" => "查询有误，不属于当前体系线"]);
+                    return;
+                }
+
+                if ($betTranslation[0]['staff_grade'] == 3) {
+                    $leaderId = $betTranslation[0]['leader_id'];
+                    $sql = "select leader_id from staff_info where staff_id='$leaderId' ";
+                    foreach ($staff_mysql->query($sql) as $value) {
+                        if ($value['leader_id'] != $staffId) {
+                            $context->reply(["status" => 204, "msg" => "查询有误，不属于当前体系线"]);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if ($staffGrade == 2) {//股东
+                if ($betTranslation[0]['staff_grade'] == 3 && $betTranslation[0]['leader_id'] != $staffId) {
+                    $context->reply(["status" => 204, "msg" => "查询有误，不属于当前体系线"]);
+                    return;
+                }
+            }
+
+            if ($staffGrade == 3) {//总代理
+                $context->reply(["status" => 204, "msg" => "查询有误，仅能查看当前体系线"]);
+                return;
+            }
+            if ($betTranslation[0]['staff_grade'] == 1) {
+                $brokerageDate .= "AND major_name = '$setupName'";
+                $ybrokerageDate .= "AND major_name = '$setupName' ";
+                $ybrokerageDate .= "AND major_name = '$setupName' ";
+                $betuserDate .= "AND major_name='$setupName' ";
+            }
+            if ($betTranslation[0]['staff_grade'] == 2) {
+                $brokerageDate .= "AND minor_name = '$setupName'";
+                $ybrokerageDate .= "AND minor_name = '$setupName'";
+                $nbrokerageDate .= "AND minor_name = '$setupName'";
+                $betuserDate .= "AND minor_name = '$setupName'";
+            }
+            if ($betTranslation[0]['staff_grade'] == 3) {
+                $brokerageDate .= "AND agent_name = '$setupName'";
+                $ybrokerageDate .= "AND agent_name = '$setupName'";
+                $nbrokerageDate .= "AND agent_name = '$setupName'";
+                $betuserDate .= "AND agent_name = '$setupName'";
+            }
+        }
+        if (!empty($start_time) && empty($end_time)) {
+            $brokerageDate .= "AND daily >= ".intval(date("Ymd",strtotime($start_time)));
+            $ybrokerageDate .= "AND daily >= ".intval(date("Ymd",strtotime($start_time)));
+            $nbrokerageDate .= "AND daily >= ".intval(date("Ymd",strtotime($start_time)));
+            $betuserDate .= "AND daily >= ".intval(date("Ymd",strtotime($start_time)));
+        }
+        if(empty($start_time) && !empty($end_time)){
+            $brokerageDate .= "AND daily >= ".intval(date("Ymd",strtotime($end_time)));
+            $ybrokerageDate .= "AND daily >= ".intval(date("Ymd",strtotime($end_time)));
+            $nbrokerageDate .= "AND daily >= ".intval(date("Ymd",strtotime($end_time)));
+            $betuserDate .= "AND daily >= ".intval(date("Ymd",strtotime($end_time)));
+        }
+        if(!empty($start_time) && !empty($end_time)){
+            $brokerageDate .= "AND daily between ".intval(date("Ymd",strtotime($start_time)))." AND ".intval(date("Ymd",strtotime($end_time)));
+            $ybrokerageDate .= "AND daily between ".intval(date("Ymd",strtotime($start_time)))." AND ".intval(date("Ymd",strtotime($end_time)));
+            $nbrokerageDate .= "AND daily between ".intval(date("Ymd",strtotime($start_time)))." AND ".intval(date("Ymd",strtotime($end_time)));
+            $betuserDate .= "AND daily between ".intval(date("Ymd",strtotime($start_time)))." AND ".intval(date("Ymd",strtotime($end_time)));
+        }
+        $order = " ORDER BY daily DESC";
+        $group = " group by daily";
+        $brokerageDate = $brokerageDate . $group . $order ;
+        $ybrokerageDate = $ybrokerageDate . $group . $order;
+        $nbrokerageDate = $nbrokerageDate . $group . $order;
+        $betuserDate = $betuserDate . $group . $order ;
+        $report_mysql = $config->data_report;
+        $brokerageDate=iterator_to_array($report_mysql->query($brokerageDate));
+        $ybrokerageDate = iterator_to_array($report_mysql->query($ybrokerageDate));
+        $nbrokerageDate = iterator_to_array($report_mysql->query($nbrokerageDate));
+        $betuserDate=iterator_to_array($report_mysql->query($betuserDate));
+        $list=[];
+        if(!empty($brokerageDate)){
+            foreach ($brokerageDate as $k => $v){
+                $list[$k]['daily'] = $v['daily'];
+                $list[$k]['user_all'] = $v['user_all'];
+                $list[$k]['bet_user_all'] = 0;
+                foreach ($betuserDate as $row => $item) {
+                    if ($item['daily'] == $v['daily']) {
+                        $list[$k]['bet_user_all'] = $item['bet_user_all'];
+                    }
+                }
+                $list[$k]['bet_amount'] = $v['bet_amount'];
+                $list[$k]['ybrokerage'] = 0;
+                $list[$k]['nbrokerage'] = 0;
+                $list[$k]['yuser'] = 0;
+                $list[$k]['nuser'] = 0;
+                foreach ($ybrokerageDate as $key => $val) {
+                    if ($val['daily'] == $v['daily']){
+                        $list[$k]['ybrokerage'] = $val['ybrokerage'];
+                        $list[$k]['nbrokerage'] = $v['brokerage'] - $val['ybrokerage'];
+                        $list[$k]['yuser'] = $val['user_all'];
+                        $list[$k]['nuser'] = $v['user_all'] - $val['user_all'];
+                    }
+                }
+                foreach ($nbrokerageDate as $a => $b){
+                    if ($v['daily'] == $b['daily']){
+                        $list[$k]['nbrokerage'] = $b['nbrokerage'];
+                        $list[$k]['ybrokerage'] = $v['brokerage'] - $b['nbrokerage'];
+                        $list[$k]['nuser'] = $b['user_all'];
+                        $list[$k]['yuser'] = $v['user_all'] - $b['user_all'];
+                    }
+                }
+            }
+
+
+        }
+
+        $context->reply(["status" => 200, "msg" => "获取成功", "list" => $list]);
+    }
+}

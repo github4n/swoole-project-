@@ -1,0 +1,120 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-2-14
+ * Time: 上午10:44
+ */
+
+namespace Site\Websocket\Member\Analyze;
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+class WithdrawDepositAnalysis extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("user_analysis", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        //代理层级列表
+        $layer_list = json_decode($context->getInfo("LayerList"));
+        if(empty($layer_list)){
+            $layer_list = $this->layerList($context,$config);
+        }
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $staffId = $context->getInfo('StaffId');
+        $params = $context->getData();
+        $user_key = isset($params['user_key']) ? $params['user_key'] : '';
+        $layer_id = isset($params['layer_id']) ? $params['layer_id'] : '';
+        $start_time = isset($params['start_time']) ? $params['start_time'] : '';
+        $end_time = isset($params['end_time']) ? $params['end_time'] : '';
+        $broker_1_key = isset($params['broker_1_key']) ? $params['broker_1_key'] : '';
+        $broker_2_key = isset($params['broker_2_key']) ? $params['broker_2_key'] : '';
+        $broker_3_key = isset($params['broker_3_key']) ? $params['broker_3_key'] : '';
+        $time = '';
+        if ($user_key) {
+            $user_key = " AND user_key = '$user_key'";
+        }
+
+        if ($layer_id) {
+            $layer_id = " AND layer_id = '$layer_id'";
+        }
+        if ($start_time && $end_time) {
+            $start_time = strtotime($start_time);
+            $end_time = strtotime($end_time);
+            $time = " AND daily BETWEEN '$start_time' AND '$end_time'";
+        }
+        if ($broker_1_key) {
+            $broker_1_key = " AND broker_1_key = '$broker_1_key' ";
+        }
+        if ($broker_2_key) {
+            $broker_2_key = " AND broker_2_key = '$broker_2_key' ";
+        }
+        if ($broker_3_key) {
+            $broker_3_key = " AND broker_3_key = '$broker_3_key' ";
+        }
+
+        //求账号下及会员
+        $agentMysql = $config->data_staff;
+        $agent_id = [];
+        switch ($StaffGrade)
+        {
+            case 1:
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE major_id='$staffId'";
+                foreach($agentMysql->query($sql) as $row ) {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 2:
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE minor_id='$staffId'";
+                foreach($agentMysql->query($sql) as $row ) {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 3:
+                $agent_id[] = $staffId;
+                break;
+        }
+
+        //根据总代理id查询下属的所有账号id以及所属的数据库
+        $userMysql = $config->data_user;
+        $user_id = '';
+        foreach ($agent_id as $row) {
+            $sql = "SELECT user_id,deal_key FROM user_info WHERE agent_id='$row'";
+            foreach ($userMysql->query($sql) as $item) {
+                $user_id .= $item['user_id'].',';
+                $deal_key[] = $item['deal_key'];
+            }
+        }
+        //去除重复的数据，拼接id字段作为in的查询条件
+        $ids = rtrim($user_id,',');
+        if (empty($ids)) {
+            $ids = 0;
+        }
+        $sql = "select user_key,sum(deposit_bank_count + deposit_weixin_count + deposit_alipay_count) as three_deposit_count,sum(deposit_bank_amount + deposit_weixin_amount + deposit_alipay_amount) as three_deposit_amount,sum(bank_deposit_count) as bank_deposit_count,sum(bank_deposit_coupon) as bank_deposit_coupon,sum(bank_deposit_amount) as bank_deposit_amount,sum(	simple_deposit_count) as simple_deposit_count,sum(	simple_deposit_amount) as simple_deposit_amount,sum(staff_deposit_count) as staff_deposit_count,sum(staff_deposit_amount) as staff_deposit_amount,sum(staff_withdraw_amount) as staff_withdraw_amount,sum(staff_withdraw_count) as staff_withdraw_count,sum(withdraw_amount - staff_withdraw_amount) as withdraw_amount,sum(withdraw_count - staff_withdraw_count) as withdraw_count,sum(coupon_amount) as coupon_amount from daily_user where user_id in ($ids) " . $user_key . $layer_id . $time . $broker_1_key . $broker_2_key . $broker_3_key . " group by user_key";
+
+        if ($StaffGrade == 0) {
+            $sql = "select user_key,sum(deposit_bank_count + deposit_weixin_count + deposit_alipay_count) as three_deposit_count,sum(deposit_bank_amount + deposit_weixin_amount + deposit_alipay_amount) as three_deposit_amount,sum(bank_deposit_count) as bank_deposit_count,sum(bank_deposit_coupon) as bank_deposit_coupon,sum(bank_deposit_amount) as bank_deposit_amount,sum(	simple_deposit_count) as simple_deposit_count,sum(	simple_deposit_amount) as simple_deposit_amount,sum(staff_deposit_count) as staff_deposit_count,sum(staff_deposit_amount) as staff_deposit_amount,sum(staff_withdraw_amount) as staff_withdraw_amount,sum(staff_withdraw_count) as staff_withdraw_count,sum(withdraw_amount - staff_withdraw_amount) as withdraw_amount,sum(withdraw_count - staff_withdraw_count) as withdraw_count,sum(coupon_amount) as coupon_amount from daily_user where 1=1 " . $user_key . $layer_id . $time . $broker_1_key . $broker_2_key . $broker_3_key . " group by user_key";
+        }
+
+        $mysqlReport = $config->data_report;
+        $data = [];
+        try {
+            foreach ($mysqlReport->query($sql) as $row) {
+                $data[] = $row;
+            }
+            $total = count($data);
+            $context->reply(['status' => 200,'msg' => '成功','total' => $total,'data' => $data,'layer_list' => $layer_list]);
+        } catch (\PDOException $e) {
+            $context->reply(["status"=>400,"msg"=>"获取列表失败"]);
+            throw new \PDOException($e);
+        }
+
+
+    }
+}

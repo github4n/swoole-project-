@@ -1,0 +1,209 @@
+<?php
+namespace Site\Websocket\Account\Staff;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 员工添加
+ * Account/Staff/StaffAddUpdate {"staff_key":"staff1","staff_name":"王六","password":"admin123","operate_list":["broker_layer","broker_report"],"deposit_limit":50000,"withdraw_limit":900000,"level_list":["1","2","11","12"]}
+ * */
+
+class StaffAddUpdate extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("slave_list_insert",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $MasterId = $context->getInfo("MasterId");
+        $data = $context->getData();
+        $name = $data["staff_name"];
+        $key = $data["staff_key"];
+        $password = $data["password"];
+        $deposit_limit = $data["deposit_limit"];
+        $withdraw_limit = $data["withdraw_limit"];
+        $operate_keys = $data["operate_list"];
+        $staff_level = $data["level_list"];
+        if(empty($name)){
+            $context->reply(["status"=>211,"msg"=>"添加的员工名称不能为空"]);
+            return;
+        }
+        if(empty($key)){
+            $context->reply(["status"=>203,"msg"=>"登录名称不能为空"]);
+            return;
+        }
+        // 验证规则
+        $preg = '/^(?![0-9]+$)(?![a-zA-Z]+$)[0-9A-Za-z]{6,20}$/';
+        if (!preg_match($preg, $key)) {
+            $context->reply(['status' => 204, 'msg' => '账号只能由数字字母组成，长度有效区间：[4-20]']);
+            return;
+        }
+        if(empty($password)){
+            $context->reply(["status"=>205,"msg"=>"登录密码不能为空"]) ;
+            return;
+        }
+        $preg = '/^(?![0-9]+$)(?![a-zA-Z]+$)[0-9A-Za-z]{6,40}$/';
+        if (!preg_match($preg, $password)) {
+            $context->reply(['status' => 206, 'msg' => '密码只能由数字字母组成，长度有效区间：[6-40]']);
+            return;
+        }
+        if(!empty($deposit_limit)){
+            if(!is_numeric($deposit_limit)){
+                $context->reply(["status"=>208,"msg"=>"入款金额类型不正确"]);
+                return;
+            }
+        }
+        if(!empty($withdraw_limit)){
+            if(!is_numeric($withdraw_limit)){
+                $context->reply(["status"=>209,"msg"=>"出款金额类型不正确"]);
+                return;
+            }
+        }
+        if(empty($operate_keys)){
+            $context->reply(["status"=>210,"msg"=>"操作的权限不能为空"]);
+            return;
+        }
+        //判断staff_key是否已经存在
+        $sql = "SELECT staff_key FROM staff_auth WHERE staff_key=:staff_key";
+        $param = [":staff_key"=>$key];
+        $mysql = $config->data_staff;
+        try{
+            foreach ($mysql->query($sql,$param) as $row){
+                $info = $row;
+            }
+        }catch( \PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"添加失败"]);
+            throw new \PDOException($e);
+        }
+        if(!empty($info)){
+            $context->reply(["status"=>207,"msg"=>"登录名称已经存在"]);
+            return;
+        }
+        //添加子账号的基本信息
+        $sql = "INSERT INTO staff_info SET staff_name = :staff_name, staff_grade = :staff_grade, master_id = :master_id, leader_id = :leader_id, add_time = :add_time, add_ip = :add_ip";
+        $params = [
+            ":staff_name"=>$name,
+            ":staff_grade"=>$StaffGrade,
+            ":master_id"=>$MasterId?:$staffId,
+            ":leader_id"=>$staffId,
+            ":add_time"=>time(),
+            ":add_ip"=>ip2long($context->getClientAddr()),
+        ];
+        try{
+            $mysql->execute($sql,$params);
+            $sql = 'SELECT last_insert_id() as staff_id';
+            foreach ($mysql->query($sql) as $row)
+                $staff_id = $row['staff_id'];
+            //记录日志
+            $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+            $params = [
+                ':staff_id' => $staffId,
+                ':client_ip' => ip2long($context->getClientAddr()),
+                ':operate_key' => 'slave_list_insert',
+                ':detail' =>'添加子账号编号为'.$staff_id.'基本信息',
+            ];
+            $mysql->execute($sql, $params);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>401,"msg"=>"添加失败"]);
+            throw new \PDOException($e);
+        }
+        //添加子账号的登录信息
+        $sql = "INSERT INTO staff_auth SET staff_id = :staff_id, staff_key = :staff_key, password_hash = :password_hash";
+        $param = [
+            ":staff_id"=> $staff_id,
+            ":staff_key"=> $key,
+            ":password_hash"=> $password,
+        ];
+        try{
+            $mysql->execute($sql,$param);
+            //记录日志
+            $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+            $params = [
+                ':staff_id' => $staffId,
+                ':client_ip' => ip2long($context->getClientAddr()),
+                ':operate_key' => 'slave_list_insert',
+                ':detail' =>'添加子账号编号为'.$staff_id.'登录信息',
+            ];
+            $mysql->execute($sql, $params);
+        }catch(\PDOException $e){
+            $context->reply(["status"=>402,"msg"=>"添加失败"]);
+            throw new \PDOException($e);
+        }
+        //添加员工授信额度
+        $sqls = "UPDATE staff_credit SET deposit_limit=:deposit_limit, withdraw_limit=:withdraw_limit WHERE staff_id=:staff_id";
+        $params = [
+            ":staff_id"=> $staff_id,
+            ":deposit_limit"=> $deposit_limit,
+            ":withdraw_limit"=> $withdraw_limit
+        ];
+        try{
+            $mysql->execute($sqls,$params);
+            //记录日志
+            $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+            $params = [
+                ':staff_id' => $staffId,
+                ':client_ip' => ip2long($context->getClientAddr()),
+                ':operate_key' => 'slave_list_insert',
+                ':detail' =>'添加子账号编号为'.$staff_id."出款额度为".$withdraw_limit."入款额度为".$deposit_limit,
+            ];
+            $mysql->execute($sql, $params);
+        }catch(\PDOException $e){
+            $context->reply(["status"=>403,"msg"=>"添加失败"]);
+            throw new \PDOException($e);
+        }
+        //添加员工的操作授权信息
+        foreach ($operate_keys as $item){
+            $sql = "INSERT INTO staff_permit SET staff_id=:staff_id, operate_key=:operate_key";
+            $param = [":staff_id"=>$staff_id,":operate_key"=>$item] ;
+            try{
+                $mysql->execute($sql,$param);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>404,"msg"=>"添加失败"]);
+                throw new \PDOException($e);
+            }
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'slave_list_insert',
+            ':detail' =>'添加子账号编号为'.$staff_id.'操作授权信息'.json_encode($operate_keys),
+        ];
+        $mysql->execute($sql, $params);
+       
+        //添加会员层级信息
+        if(!empty($staff_level)){
+            foreach ($staff_level as $item){
+                $sql = "INSERT INTO staff_layer SET staff_id=:staff_id,layer_id=:layer_id";
+                $param = [":staff_id"=>$staff_id,":layer_id"=>$item];
+                try{
+                    $mysql->execute($sql,$param);
+                }catch (\PDOException $e){
+                    $context->reply(["status"=>406,"msg"=>"添加失败"]);
+                    throw new \PDOException($e);
+                }
+            }
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'slave_list_insert',
+            ':detail' =>'添加子账号编号为'.$staff_id.'添加会员层级id为'.json_encode($staff_level),
+        ];
+        $mysql->execute($sql, $params);
+        $context->reply([
+            "status"=>200,
+            "msg"=>"添加成功",
+        ]);
+
+    }
+}

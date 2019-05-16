@@ -1,0 +1,96 @@
+<?php
+
+namespace Site\Websocket\Member\Analyze;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员管理-会员分析-有效会员
+ * Member/Analyze/MemberAnalyze {"start_time":"","end_time":""}
+ */
+
+class MemberAnalyze extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("user_analysis", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $staffId = $context->getInfo('StaffId');
+        $params = $context->getData();
+
+        $start_time = isset($params['start_time']) ? $params['start_time'] : '';
+        $end_time = isset($params['end_time']) ? $params['end_time'] : '';
+        $time = '';
+        if($start_time && $end_time){
+            $start_time = strtotime($start_time);
+            $end_time = strtotime($end_time);
+            $time = " AND daily BETWEEN '$start_time' AND '$end_time'";
+        }
+
+        //求账号下及会员
+        $agentMysql = $config->data_staff;
+        $agent_id = [];
+        switch ($StaffGrade)
+        {
+            case 1:
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE major_id='$staffId'";
+                foreach($agentMysql->query($sql) as $row ) {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 2:
+                $sql = "SELECT agent_id FROM staff_struct_agent WHERE minor_id='$staffId'";
+                foreach($agentMysql->query($sql) as $row ) {
+                    $agent_id[] = $row['agent_id'];
+                }
+                break;
+            case 3:
+                $agent_id[] = $staffId;
+                break;
+        }
+
+        //根据总代理id查询下属的所有账号id以及所属的数据库
+        $userMysql = $config->data_user;
+        $user_id = '';
+        foreach ($agent_id as $row) {
+            $sql = "SELECT user_id,deal_key FROM user_info WHERE agent_id='$row'";
+            foreach ($userMysql->query($sql) as $item) {
+                $user_id .= $item['user_id'].',';
+                $deal_key[] = $item['deal_key'];
+            }
+        }
+
+        //去除重复的数据，拼接id字段作为in的查询条件
+        $ids = rtrim($user_id,',');
+        if (empty($ids)) {
+            $ids = 0;
+        }
+
+        $mysqlReport = $config->data_report;
+        $sql = "select daily,count(bet_count > 0) as bet_count,count(is_today_register = 1) as is_today_register,sum(staff_deposit_amount) as staff_deposit_amount,sum(staff_deposit_count) as staff_deposit_count,sum(bank_deposit_amount) as bank_deposit_amount,sum(bank_deposit_count) as bank_deposit_count,sum(simple_deposit_amount) as simple_deposit_amount,sum(simple_deposit_count) as simple_deposit_count,sum(withdraw_amount - staff_withdraw_amount) as online_withdraw_amount,sum(withdraw_count - staff_withdraw_count) as online_withdraw_count,sum(staff_withdraw_amount) as staff_withdraw_amount ,sum(staff_withdraw_count) as staff_withdraw_count from daily_user where user_id in ($ids) " .$time . "group by daily";
+        if ($StaffGrade == 0) {
+            $sql = "select daily,count(bet_count > 0) as bet_count,count(is_today_register = 1) as is_today_register,sum(staff_deposit_amount) as staff_deposit_amount,sum(staff_deposit_count) as staff_deposit_count,sum(bank_deposit_amount) as bank_deposit_amount,sum(bank_deposit_count) as bank_deposit_count,sum(simple_deposit_amount) as simple_deposit_amount,sum(simple_deposit_count) as simple_deposit_count,sum(withdraw_amount - staff_withdraw_amount) as online_withdraw_amount,sum(withdraw_count - staff_withdraw_count) as online_withdraw_count,sum(staff_withdraw_amount) as staff_withdraw_amount ,sum(staff_withdraw_count) as staff_withdraw_count from daily_user where 1=1 " .$time . "group by daily";
+        }
+
+        $data = [];
+        try{
+            foreach ($mysqlReport->query($sql) as $row) {
+                $row['res'] = $row['staff_deposit_amount'] + $row['bank_deposit_amount'] - $row['staff_withdraw_amount']+$row["simple_deposit_amount"] - $row["online_withdraw_amount"] - $row["staff_withdraw_amount"];
+                $data[] = $row;
+            }
+            $total = count($data);
+            $context->reply(['status' => 200,'msg' => '成功','total' => $total,'data' => $data]);
+        } catch (\PDOException $e) {
+            $context->reply(["status" => 400,"msg" =>" 获取列表失败"]);
+            throw new \PDOException($e);
+        }
+
+    }
+}

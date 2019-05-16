@@ -1,0 +1,557 @@
+<?php
+
+namespace Site\Websocket\ReportQuery;
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 报表查询-彩票报表
+ * ReportQuery/LotteryReport {"date":"yesterday"}
+ * 参数:"date":today今日(NULL)，昨日yesterday，本周thisWeek，上周lastWeek，本月thisMonth，上月lastMonth,"start_time":"2018-12-10","end_time":"2018-12-15"
+ * */
+class LotteryReport extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $data = $context->getData();
+        $staffId = $context->getInfo('StaffId');
+        $staffGrade = $context->getInfo('StaffGrade');
+        switch ($staffGrade)
+        {
+            case 0:
+                $id = null;
+                break;
+            case 1:
+                $id = ' AND major_id='.$staffId.' ';
+                break;
+            case 2:
+                $id = ' AND minor_id='.$staffId.' ';
+                break;
+            case 3:
+                $id = ' AND agent_id='.$staffId.' ';
+                break;
+        }
+
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("report_lottery",$auth)) {
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        $today = date('Ymd',time());
+        $yesterday = date('Ymd',strtotime('-1 day'));
+        $thisWeek = date('oW',time());
+        $lastWeek = date('oW',strtotime('-1 week'));
+        $thisMonth = date('Ym',time());
+        $lastMonth = date('Ym',strtotime('-1 month'));
+        $date = isset($data['date']) ? $data['date'] : '';
+        $start_time = empty($data['start_time'])?null:date('Ymd',strtotime($data['start_time']));
+        $end_time = empty($data['end_time'])?null:date('Ymd',strtotime($data['end_time']));
+        if (empty($date) && (empty($start_time) && empty($end_time)))
+        {
+            $date = 'today';
+        }
+        //$context->reply($start_time." ".$end_time.$date);
+        $mysql = $config->data_report;
+        $lists = [];
+        $list = [];
+        $detail = [];
+        if (empty($start_time) && empty($end_time))
+        {
+            switch ($date)
+            {
+                case 'yesterday':
+                    $sql = 'SELECT SUM(bet_amount) AS bet_amount,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(bet_count) AS bet_count,SUM(profit_amount) AS profit_amount FROM daily_staff_lottery WHERE daily=:daily'.$id;
+                    $param = [':daily' => $yesterday];
+                    foreach($mysql->query($sql,$param) as $row)
+                    {
+                        $bet_all = empty($row['bet_amount'])?0:$row['bet_amount'];
+                        $bonus_all = empty($row['bonus_amount'])?0:$row['bonus_amount'];
+                        $subsidy_all = empty($row['subsidy_amount'])?0:$row['subsidy_amount'];
+                        $bet_count = empty($row['bet_count'])?0:$row['bet_count'];
+                        $profit_all = empty($row['profit_amount'])?0:substr(sprintf("%.3f", $row['profit_amount']), 0, -1);
+                    }
+
+                    //各彩票的统计数据
+                    $sql = 'SELECT model_name, SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(profit_amount) AS profit_all FROM daily_staff_lottery WHERE daily=:daily'.$id.' GROUP BY model_name';
+                    $param = [':daily' => $yesterday];
+                    foreach($mysql->query($sql,$param) as $row )
+                    {
+                        $lists[] = $row;
+                    }
+                    $sql =  'SELECT game_name,SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(subsidy_amount) AS subsidy_all,SUM(profit_amount) AS profit_all FROM daily_staff_lottery WHERE daily=:daily AND model_name=:model_name '.$id.'GROUP BY game_name';
+                    foreach ($lists as $k => $v)
+                    {
+                        $list[$k]['model_name'] = $v['model_name'];
+                        $list[$k]['bet_all'] = $v['bet_all'];
+                        //substr(sprintf("%.4f",$v['bet_all'] / $bet_all),0,-1)
+                        $list[$k]['bet_rate'] = $bet_all == 0 ? 0 : substr(sprintf("%.4f", $v['bet_all'] / $bet_all), 0, -1);
+                        $list[$k]['bet_count'] = $v['bet_count'];
+                        $list[$k]['bet_count_rate'] = $bet_count == 0 ? 0 : substr(sprintf("%.4f", $v['bet_count'] / $bet_count), 0, -1);
+                        $list[$k]['bonus_all'] = $v['bonus_all'];
+                        $list[$k]['profit_all'] = substr(sprintf("%.4f", $v['profit_all']), 0, -1);
+                        $param = [
+                            ':daily' => $yesterday,
+                            ':model_name' => $v['model_name']
+                        ];
+                        foreach($mysql->query($sql,$param) as $row)
+                        {
+                            $detail[] = $row;
+                        }
+                        foreach ($detail as $key => $value)
+                        {
+                            $detail[$key]['game_name'] = $value['game_name'];
+                            $detail[$key]['bet_all'] = $value['bet_all'];
+                            $detail[$key]['bet_all_rate'] = substr(sprintf("%.4f", $value['bet_all'] / $bet_all), 0, -1);
+                            $detail[$key]['bet_count'] = $value['bet_count'];
+                            $detail[$key]['bet_count_rate'] = substr(sprintf("%.4f", $value['bet_count'] / $bet_count), 0, -1);
+                            $detail[$key]['bonus_all'] = $value['bonus_all'];
+                            $detail[$key]['subsidy_all'] = $value['subsidy_all'];
+                            $detail[$key]['profit_all'] = $value['profit_all'];
+                        }
+                        $list[$k]['list'] = $detail;
+                        unset($detail);
+                    }
+                    $context->reply(['status' => 200,'msg' => '获取成功', 'data' => [
+                        'bet_all' => $bet_all,
+                        'bonus_all' =>$bonus_all,
+                        'subsidy_all' => $subsidy_all,
+                        'bet_count' => $bet_count,
+                        'profit_all' => $profit_all,
+                        'list' => $list
+                    ]]);
+                    break;
+                case 'thisWeek' :
+                    $sql = 'SELECT SUM(bet_amount) AS bet_amount,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(bet_count) AS bet_count,SUM(profit_amount) AS profit_amount FROM weekly_staff_lottery WHERE weekly=:weekly'.$id;
+                    $param = [':weekly' => $thisWeek];
+                    foreach($mysql->query($sql,$param) as $row)
+                    {
+                        $bet_all = empty($row['bet_amount'])?0:$row['bet_amount'];
+                        $bonus_all = empty($row['bonus_amount'])?0:$row['bonus_amount'];
+                        $subsidy_all = empty($row['subsidy_amount'])?0:$row['subsidy_amount'];
+                        $bet_count = empty($row['bet_count'])?0:$row['bet_count'];
+                        $profit_all = empty($row['profit_amount'])?0:substr(sprintf("%.3f", $row['profit_amount']), 0, -1);
+                    }
+
+                    //各彩票的统计数据
+                    $sql = 'SELECT model_name, SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(profit_amount) AS profit_all FROM weekly_staff_lottery WHERE weekly=:weekly'.$id.' GROUP BY model_name';
+                    $param = [':weekly' => $thisWeek];
+                    foreach($mysql->query($sql,$param) as $row )
+                    {
+                        $lists[] = $row;
+                    }
+
+                    $sql =  'SELECT game_name,SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(subsidy_amount) AS subsidy_all,SUM(profit_amount) AS profit_all FROM weekly_staff_lottery WHERE weekly=:weekly AND model_name=:model_name '.$id.'GROUP BY game_name';
+                    foreach ($lists as $k => $v)
+                    {
+                        $list[$k]['model_name'] = $v['model_name'];
+                        $list[$k]['bet_all'] = $v['bet_all'];
+                        $list[$k]['bet_rate'] = $bet_all == 0 ? 0 : substr(sprintf("%.4f", $v['bet_all'] / $bet_all), 0, -1);;
+                        $list[$k]['bet_count'] = $v['bet_count'];
+                        $list[$k]['bet_count_rate'] = $bet_count == 0 ? 0 : substr(sprintf("%.4f", $v['bet_count'] / $bet_count), 0, -1);
+                        $list[$k]['bonus_all'] = $v['bonus_all'];
+                        $list[$k]['profit_all'] = substr(sprintf("%.4f", $v['profit_all']), 0, -1);
+                        $param = [
+                            ':weekly' => $thisWeek,
+                            ':model_name' => $v['model_name']
+                        ];
+                        foreach($mysql->query($sql,$param) as $row)
+                        {
+                            $detail[] = $row;
+                        }
+                        foreach ($detail as $key => $value)
+                        {
+                            $detail[$key]['game_name'] = $value['game_name'];
+                            $detail[$key]['bet_all'] = $value['bet_all'];
+                            $detail[$key]['bet_all_rate'] = substr(sprintf("%.4f", $value['bet_all'] / $bet_all), 0, -1);
+                            $detail[$key]['bet_count'] = $value['bet_count'];
+                            $detail[$key]['bet_count_rate'] = substr(sprintf("%.4f", $value['bet_count'] / $bet_count), 0, -1);
+                            $detail[$key]['bonus_all'] = $value['bonus_all'];
+                            $detail[$key]['subsidy_all'] = $value['subsidy_all'];
+                            $detail[$key]['profit_all'] = $value['profit_all'];
+                        }
+                        $list[$k]['list'] = $detail;
+                        unset($detail);
+                    }
+                    $context->reply(['status' => 200,'msg' => '获取成功', 'data' => [
+                        'bet_all' => $bet_all,
+                        'bonus_all' =>$bonus_all,
+                        'subsidy_all' => $subsidy_all,
+                        'bet_count' => $bet_count,
+                        'profit_all' => $profit_all,
+                        'list' => $list
+                    ]]);
+                    break;
+                case 'lastWeek':
+                    $sql = 'SELECT SUM(bet_amount) AS bet_amount,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(bet_count) AS bet_count,SUM(profit_amount) AS profit_amount FROM weekly_staff_lottery WHERE weekly=:weekly'.$id;
+                    $param = [':weekly' => $lastWeek];
+                    foreach($mysql->query($sql,$param) as $row)
+                    {
+                        $bet_all = empty($row['bet_amount'])?0:$row['bet_amount'];
+                        $bonus_all = empty($row['bonus_amount'])?0:$row['bonus_amount'];
+                        $subsidy_all = empty($row['subsidy_amount'])?0:$row['subsidy_amount'];
+                        $bet_count = empty($row['bet_count'])?0:$row['bet_count'];
+                        $profit_all = empty($row['profit_amount'])?0:substr(sprintf("%.3f", $row['profit_amount']), 0, -1);
+                    }
+
+                    //各彩票的统计数据
+                    $sql = 'SELECT model_name, SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(profit_amount) AS profit_all FROM weekly_staff_lottery WHERE weekly=:weekly'.$id.' GROUP BY model_name';
+                    $param = [':weekly' => $lastWeek];
+                    foreach($mysql->query($sql,$param) as $row )
+                    {
+                        $lists[] = $row;
+                    }
+                    $sql =  'SELECT game_name,SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(subsidy_amount) AS subsidy_all,SUM(profit_amount) AS profit_all FROM weekly_staff_lottery WHERE weekly=:weekly AND model_name=:model_name '.$id.'GROUP BY game_name';
+                    foreach ($lists as $k => $v)
+                    {
+                        $list[$k]['model_name'] = $v['model_name'];
+                        $list[$k]['bet_all'] = $v['bet_all'];
+                        $list[$k]['bet_rate'] = $bet_all == 0 ? 0 : substr(sprintf("%.4f", $v['bet_all'] / $bet_all), 0, -1);
+                        $list[$k]['bet_count'] = $v['bet_count'];
+                        $list[$k]['bet_count_rate'] = $bet_count == 0 ? 0 : substr(sprintf("%.4f", $v['bet_count'] / $bet_count), 0, -1);
+                        $list[$k]['bonus_all'] = $v['bonus_all'];
+                        $list[$k]['profit_all'] = substr(sprintf("%.4f", $v['profit_all']), 0, -1);
+                        $param = [
+                            ':daily' => $lastWeek,
+                            ':model_name' => $v['model_name']
+                        ];
+                        foreach($mysql->query($sql,$param) as $row)
+                        {
+                            $detail[] = $row;
+                        }
+                        foreach ($detail as $key => $value)
+                        {
+                            $detail[$key]['game_name'] = $value['game_name'];
+                            $detail[$key]['bet_all'] = $value['bet_all'];
+                            $detail[$key]['bet_all_rate'] = substr(sprintf("%.4f", $value['bet_all'] / $bet_all), 0, -1);
+                            $detail[$key]['bet_count'] = $value['bet_count'];
+                            $detail[$key]['bet_count_rate'] = substr(sprintf("%.4f", $value['bet_count'] / $bet_count), 0, -1);
+                            $detail[$key]['bonus_all'] = $value['bonus_all'];
+                            $detail[$key]['subsidy_all'] = $value['subsidy_all'];
+                            $detail[$key]['profit_all'] = $value['profit_all'];
+                        }
+                        $list[$k]['list'] = $detail;
+                        unset($detail);
+                    }
+                    $context->reply(['status' => 200,'msg' => '获取成功', 'data' => [
+                        'bet_all' => $bet_all,
+                        'bonus_all' =>$bonus_all,
+                        'subsidy_all' => $subsidy_all,
+                        'bet_count' => $bet_count,
+                        'profit_all' => $profit_all,
+                        'list' => $list
+                    ]]);
+                    break;
+                case 'thisMonth':
+                    $sql = 'SELECT SUM(bet_amount) AS bet_amount,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(bet_count) AS bet_count,SUM(profit_amount) AS profit_amount FROM monthly_staff_lottery WHERE monthly=:monthly'.$id;
+                    $param = [':monthly' => $thisMonth];
+                    foreach($mysql->query($sql,$param) as $row)
+                    {
+                        $bet_all = empty($row['bet_amount'])?0:$row['bet_amount'];
+                        $bonus_all = empty($row['bonus_amount'])?0:$row['bonus_amount'];
+                        $subsidy_all = empty($row['subsidy_amount'])?0:$row['subsidy_amount'];
+                        $bet_count = empty($row['bet_count'])?0:$row['bet_count'];
+                        $profit_all = empty($row['profit_amount'])?0:substr(sprintf("%.3f", $row['profit_amount']), 0, -1);
+                    }
+
+                    //各彩票的统计数据
+                    $sql = 'SELECT model_name, SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(profit_amount) AS profit_all FROM monthly_staff_lottery WHERE monthly=:monthly'.$id.' GROUP BY model_name';
+                    $param = [':monthly' => $thisMonth];
+                    foreach($mysql->query($sql,$param) as $row )
+                    {
+                        $lists[] = $row;
+                    }
+                    $sql =  'SELECT game_name,SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(subsidy_amount) AS subsidy_all,SUM(profit_amount) AS profit_all FROM monthly_staff_lottery WHERE monthly=:monthly AND model_name=:model_name '.$id.'GROUP BY game_name';
+                    foreach ($lists as $k => $v)
+                    {
+                        $list[$k]['model_name'] = $v['model_name'];
+                        $list[$k]['bet_all'] = $v['bet_all'];
+                        $list[$k]['bet_rate'] = $bet_all == 0 ? 0 : substr(sprintf("%.4f", $v['bet_all'] / $bet_all), 0, -1);
+                        $list[$k]['bet_count'] = $v['bet_count'];
+                        $list[$k]['bet_count_rate'] = $bet_count == 0 ? 0 : substr(sprintf("%.4f", $v['bet_count'] / $bet_count), 0, -1);
+                        $list[$k]['bonus_all'] = $v['bonus_all'];
+                        $list[$k]['profit_all'] = substr(sprintf("%.4f", $v['profit_all']), 0, -1);
+                        $param = [
+                            ':monthly' => $thisMonth,
+                            ':model_name' => $v['model_name']
+                        ];
+                        foreach($mysql->query($sql,$param) as $row)
+                        {
+                            $detail[] = $row;
+                        }
+                        foreach ($detail as $key => $value)
+                        {
+                            $detail[$key]['game_name'] = $value['game_name'];
+                            $detail[$key]['bet_all'] = $value['bet_all'];
+                            $detail[$key]['bet_all_rate'] = substr(sprintf("%.4f", $value['bet_all'] / $bet_all), 0, -1);
+                            $detail[$key]['bet_count'] = $value['bet_count'];
+                            $detail[$key]['bet_count_rate'] = substr(sprintf("%.4f", $value['bet_count'] / $bet_count), 0, -1);
+                            $detail[$key]['bonus_all'] = $value['bonus_all'];
+                            $detail[$key]['subsidy_all'] = $value['subsidy_all'];
+                            $detail[$key]['profit_all'] = $value['profit_all'];
+                        }
+                        $list[$k]['list'] = $detail;
+                        unset($detail);
+                    }
+                    $context->reply(['status' => 200,'msg' => '获取成功', 'data' => [
+                        'bet_all' => $bet_all,
+                        'bonus_all' =>$bonus_all,
+                        'subsidy_all' => $subsidy_all,
+                        'bet_count' => $bet_count,
+                        'profit_all' => $profit_all,
+                        'list' => $list
+                    ]]);
+                    break;
+                case 'lastMonth':
+                    $sql = 'SELECT SUM(bet_amount) AS bet_amount,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(bet_count) AS bet_count,SUM(profit_amount) AS profit_amount FROM monthly_staff_lottery WHERE monthly=:monthly'.$id;
+                    $param = [':monthly' => $lastWeek];
+                    foreach($mysql->query($sql,$param) as $row)
+                    {
+                        $bet_all = empty($row['bet_amount'])?0:$row['bet_amount'];
+                        $bonus_all = empty($row['bonus_amount'])?0:$row['bonus_amount'];
+                        $subsidy_all = empty($row['subsidy_amount'])?0:$row['subsidy_amount'];
+                        $bet_count = empty($row['bet_count'])?0:$row['bet_count'];
+                        $profit_all = empty($row['profit_amount'])?0:substr(sprintf("%.3f", $row['profit_amount']), 0, -1);
+                    }
+
+                    //各彩票的统计数据
+                    $sql = 'SELECT model_name, SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(profit_amount) AS profit_all FROM monthly_staff_lottery WHERE monthly=:monthly' . $id . ' GROUP BY model_name';
+                    $param = [':monthly' => $lastWeek];
+                    foreach ($mysql->query($sql, $param) as $row)
+                    {
+                        $lists[] = $row;
+                    }
+                    $sql = 'SELECT game_name,SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(subsidy_amount) AS subsidy_all,SUM(profit_amount) AS profit_all FROM monthly_staff_lottery WHERE monthly=:monthly AND model_name=:model_name ' . $id . 'GROUP BY game_name';
+                    foreach ($lists as $k => $v)
+                    {
+                        $list[$k]['model_name'] = $v['model_name'];
+                        $list[$k]['bet_all'] = $v['bet_all'];
+                        //substr(sprintf("%.4f",$value['bet_count'] / $bet_count),0,-1)
+
+                        $list[$k]['bet_rate'] = $bet_all == 0 ? 0 : substr(sprintf("%.4f", $v['bet_all'] / $bet_all), 0, -1);
+                        $list[$k]['bet_count'] = $v['bet_count'];
+                        $list[$k]['bet_count_rate'] = $bet_count == 0 ? 0 : substr(sprintf("%.4f", $v['bet_count'] / $bet_count), 0, -1);
+                        $list[$k]['bonus_all'] = $v['bonus_all'];
+                        $list[$k]['profit_all'] = substr(sprintf("%.4f", $v['profit_all']), 0, -1);
+                        $param = [
+                            ':monthly' => $lastWeek,
+                            ':model_name' => $v['model_name']
+                        ];
+                        foreach($mysql->query($sql,$param) as $row)
+                        {
+                            $detail[] = $row;
+                        }
+                        foreach ($detail as $key => $value)
+                        {
+                            $detail[$key]['game_name'] = $value['game_name'];
+                            $detail[$key]['bet_all'] = $value['bet_all'];
+                            $detail[$key]['bet_all_rate'] = substr(sprintf("%.4f", $value['bet_all'] / $bet_all), 0, -1);
+                            $detail[$key]['bet_count'] = $value['bet_count'];
+                            $detail[$key]['bet_count_rate'] = substr(sprintf("%.4f", $value['bet_count'] / $bet_count), 0, -1);
+                            $detail[$key]['bonus_all'] = $value['bonus_all'];
+                            $detail[$key]['subsidy_all'] = $value['subsidy_all'];
+                            $detail[$key]['profit_all'] = $value['profit_all'];
+                        }
+                        $list[$k]['list'] = $detail;
+                        unset($detail);
+                    }
+                    $context->reply(['status' => 200, 'msg' => '获取成功', 'data' => [
+                        'bet_all' => $bet_all,
+                        'bonus_all' => $bonus_all,
+                        'subsidy_all' => $subsidy_all,
+                        'bet_count' => $bet_count,
+                        'profit_all' => $profit_all,
+                        'list' => $list
+                    ]]);
+                    break;
+                default:
+                    $sql = 'SELECT SUM(bet_amount) AS bet_amount,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(bet_count) AS bet_count,SUM(profit_amount) AS profit_amount FROM daily_staff_lottery WHERE daily=:daily'.$id;
+                    $param = [':daily' => $today];
+                    foreach($mysql->query($sql,$param) as $row)
+                    {
+                        $bet_all = empty($row['bet_amount'])?0:$row['bet_amount'];
+                        $bonus_all = empty($row['bonus_amount'])?0:$row['bonus_amount'];
+                        $subsidy_all = empty($row['subsidy_amount'])?0:$row['subsidy_amount'];
+                        $bet_count = empty($row['bet_count'])?0:$row['bet_count'];
+                        $profit_all = empty($row['profit_amount'])?0:substr(sprintf("%.3f", $row['profit_amount']), 0, -1);
+                    }
+
+                    //各彩票的统计数据
+                    $sql = 'SELECT model_name, SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(profit_amount) AS profit_all FROM daily_staff_lottery WHERE daily=:daily'.$id.' GROUP BY model_name';
+                    $param = [':daily' => $today];
+                    foreach($mysql->query($sql,$param) as $row )
+                    {
+                        $lists[] = $row;
+                    }
+
+                    $sql =  'SELECT game_name,SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(subsidy_amount) AS subsidy_all,SUM(profit_amount) AS profit_all FROM daily_staff_lottery WHERE daily=:daily AND model_name=:model_name '.$id.'GROUP BY game_name';
+                    foreach ($lists as $k => $v)
+                    {
+                        $list[$k]['model_name'] = $v['model_name'];
+                        $list[$k]['bet_all'] = $v['bet_all'];
+                        //substr(sprintf("%.4f",$value['bet_count'] / $bet_count),0,-1)
+                        $list[$k]['bet_rate'] = $bet_all==0?0:substr(sprintf("%.4f",$v['bet_all'] / $bet_all),0,-1);
+                        $list[$k]['bet_count'] = $v['bet_count'];
+                        $list[$k]['bet_count_rate'] = $bet_count==0?0:substr(sprintf("%.4f",$v['bet_count'] / $bet_count),0,-1);
+                        $list[$k]['bonus_all'] = $v['bonus_all'];
+                        $list[$k]['profit_all'] = substr(sprintf("%.4f", $v['profit_all']), 0, -1);
+                        $param = [
+                            ':daily' => $today,
+                            ':model_name' => $v['model_name']
+                        ];
+                        foreach($mysql->query($sql,$param) as $row)
+                        {
+                            $detail[] = $row;
+                        }
+                        foreach ($detail as $key => $value)
+                        {
+                            $detail[$key]['game_name'] = $value['game_name'];
+                            $detail[$key]['bet_all'] = $value['bet_all'];
+                            $detail[$key]['bet_all_rate'] = substr(sprintf("%.4f",$value['bet_all'] / $bet_all),0,-1);
+                            $detail[$key]['bet_count'] = $value['bet_count'];
+                            $detail[$key]['bet_count_rate'] = substr(sprintf("%.4f",$value['bet_count'] / $bet_count),0,-1);
+                            $detail[$key]['bonus_all'] = $value['bonus_all'];
+                            $detail[$key]['subsidy_all'] = $value['subsidy_all'];
+                            $detail[$key]['profit_all'] = $value['profit_all'];
+                        }
+                        $list[$k]['list'] = $detail;
+                        unset($detail);
+                    }
+                    $context->reply(['status' => 200,'msg' => '获取成功', 'data' => [
+                        'bet_all' => $bet_all,
+                        'bonus_all' =>$bonus_all,
+                        'subsidy_all' => $subsidy_all,
+                        'bet_count' => $bet_count,
+                        'profit_all' => $profit_all,
+                        'list' => $list
+                    ]]);
+                    break;
+            }
+        }else if(!empty($start_time))
+        {
+            if (!empty($end_time))
+            {
+                $time = ' daily BETWEEN '.$start_time.' AND '.$end_time;
+            }else
+            {
+                $time = ' daily BETWEEN '.$start_time.' AND '.$today;
+
+            }
+            $sql = 'SELECT SUM(bet_amount) AS bet_amount,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(bet_count) AS bet_count,SUM(profit_amount) AS profit_amount FROM daily_staff_lottery WHERE '.$time.$id;
+            foreach($mysql->query($sql) as $row)
+            {
+                $bet_all = empty($row['bet_amount'])?0:$row['bet_amount'];
+                $bonus_all = empty($row['bonus_amount'])?0:$row['bonus_amount'];
+                $subsidy_all = empty($row['subsidy_amount'])?0:$row['subsidy_amount'];
+                $bet_count = empty($row['bet_count'])?0:$row['bet_count'];
+                $profit_all = empty($row['profit_amount'])?0:substr(sprintf("%.3f", $row['profit_amount']), 0, -1);
+            }
+
+            //各彩票的统计数据
+            $sql = 'SELECT model_name, SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(profit_amount) AS profit_all FROM daily_staff_lottery WHERE '.$time.$id.' GROUP BY model_name';
+            foreach($mysql->query($sql) as $row )
+            {
+                $lists[] = $row;
+            }
+            $sql =  'SELECT game_name,SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(subsidy_amount) AS subsidy_all,SUM(profit_amount) AS profit_all FROM daily_staff_lottery WHERE '.$time.' AND model_name=:model_name '.$id.'GROUP BY game_name';
+            foreach ($lists as $k => $v)
+            {
+                $list[$k]['model_name'] = $v['model_name'];
+                $list[$k]['bet_all'] = $v['bet_all'];
+                //substr(sprintf("%.4f",$value['bet_count'] / $bet_count),0,-1)
+                $list[$k]['bet_rate'] = $bet_all==0?0:substr(sprintf("%.4f",$v['bet_all'] / $bet_all),0,-1);
+                $list[$k]['bet_count'] = $v['bet_count'];
+                $list[$k]['bet_count_rate'] = $bet_count==0?0:substr(sprintf("%.4f",$v['bet_count'] / $bet_count),0,-1);
+                $list[$k]['bonus_all'] = $v['bonus_all'];
+                $list[$k]['profit_all'] = substr(sprintf("%.4f", $v['profit_all']), 0, -1);
+                $param = [':model_name' => $v['model_name']];
+                foreach($mysql->query($sql,$param) as $row)
+                {
+                    $detail[] = $row;
+                }
+                foreach ($detail as $key => $value)
+                {
+                    $detail[$key]['game_name'] = $value['game_name'];
+                    $detail[$key]['bet_all'] = $value['bet_all'];
+                    $detail[$key]['bet_all_rate'] = substr(sprintf("%.4f",$value['bet_all'] / $bet_all),0,-1);
+                    $detail[$key]['bet_count'] = $value['bet_count'];
+                    $detail[$key]['bet_count_rate'] = substr(sprintf("%.4f",$value['bet_count'] / $bet_count),0,-1);
+                    $detail[$key]['bonus_all'] = $value['bonus_all'];
+                    $detail[$key]['subsidy_all'] = $value['subsidy_all'];
+                    $detail[$key]['profit_all'] = $value['profit_all'];
+                }
+                $list[$k]['list'] = $detail;
+                unset($detail);
+            }
+            $context->reply(['status' => 200,'msg' => '获取成功', 'data' => [
+                'bet_all' => $bet_all,
+                'bonus_all' =>$bonus_all,
+                'subsidy_all' => $subsidy_all,
+                'bet_count' => $bet_count,
+                'profit_all' => $profit_all,
+                'list' => $list
+            ]]);
+        }else
+        {
+            if (!empty($end_time))
+            {
+                $time = ' daily <='.$end_time;
+                $sql = 'SELECT SUM(bet_amount) AS bet_amount,SUM(bonus_amount) AS bonus_amount,SUM(subsidy_amount) AS subsidy_amount,SUM(bet_count) AS bet_count,SUM(profit_amount) AS profit_amount FROM daily_staff_lottery WHERE '.$time.$id;
+                foreach($mysql->query($sql) as $row)
+                {
+                    $bet_all = empty($row['bet_amount'])?0:$row['bet_amount'];
+                    $bonus_all = empty($row['bonus_amount'])?0:$row['bonus_amount'];
+                    $subsidy_all = empty($row['subsidy_amount'])?0:$row['subsidy_amount'];
+                    $bet_count = empty($row['bet_count'])?0:$row['bet_count'];
+                    $profit_all = empty($row['profit_amount'])?0:substr(sprintf("%.3f", $row['profit_amount']), 0, -1);
+                }
+
+                //各彩票的统计数据
+                $sql = 'SELECT model_name, SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(profit_amount) AS profit_all FROM daily_staff_lottery WHERE '.$time.$id.' GROUP BY model_name';
+                foreach($mysql->query($sql) as $row )
+                {
+                    $lists[] = $row;
+                }
+                $sql =  'SELECT game_name,SUM(bet_amount) AS bet_all,SUM(bet_count) AS bet_count,SUM(bonus_amount) AS bonus_all,SUM(subsidy_amount) AS subsidy_all,SUM(profit_amount) AS profit_all FROM daily_staff_lottery WHERE '.$time.' AND model_name=:model_name '.$id.'GROUP BY game_name';
+                foreach ($lists as $k => $v)
+                {
+                    $list[$k]['model_name'] = $v['model_name'];
+                    $list[$k]['bet_all'] = $v['bet_all'];
+                    //substr(sprintf("%.4f",$value['bet_count'] / $bet_count),0,-1)
+                    $list[$k]['bet_rate'] = empty($bet_all)?0:substr(sprintf("%.4f",$v['bet_all'] / $bet_all),0,-1);
+                    $list[$k]['bet_count'] = $v['bet_count'];
+                    $list[$k]['bet_count_rate'] = empty($bet_count)?0:substr(sprintf("%.4f",$v['bet_count'] / $bet_count),0,-1);
+                    $list[$k]['bonus_all'] = $v['bonus_all'];
+                    $list[$k]['profit_all'] = substr(sprintf("%.4f", $v['profit_all']), 0, -1);
+                    $param = [':model_name' => $v['model_name']];
+                    foreach($mysql->query($sql,$param) as $row)
+                    {
+                        $detail[] = $row;
+                    }
+                    foreach ($detail as $key => $value)
+                    {
+                        $detail[$key]['game_name'] = $value['game_name'];
+                        $detail[$key]['bet_all'] = $value['bet_all'];
+                        $detail[$key]['bet_all_rate'] = substr(sprintf("%.4f",$value['bet_all'] / $bet_all),0,-1);
+                        $detail[$key]['bet_count'] = $value['bet_count'];
+                        $detail[$key]['bet_count_rate'] = substr(sprintf("%.4f",$value['bet_count'] / $bet_count),0,-1);
+                        $detail[$key]['bonus_all'] = $value['bonus_all'];
+                        $detail[$key]['subsidy_all'] = $value['subsidy_all'];
+                        $detail[$key]['profit_all'] = $value['profit_all'];
+                    }
+                    $list[$k]['list'] = $detail;
+                    unset($detail);
+                }
+                $context->reply(['status' => 200,'msg' => '获取成功', 'data' => [
+                    'bet_all' => $bet_all,
+                    'bonus_all' =>$bonus_all,
+                    'subsidy_all' => $subsidy_all,
+                    'bet_count' => $bet_count,
+                    'profit_all' => $profit_all,
+                    'list' => $list
+                ]]);
+            }
+        }
+    }
+}

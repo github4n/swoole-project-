@@ -1,0 +1,247 @@
+<?php
+namespace Site\Websocket\System\SystemReport;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use function PHPSTORM_META\type;
+use Site\Websocket\CheckLogin;
+
+/** 
+* @description: 体系分红报表 - 个人分红列表接口 
+* @author： leo
+* @date：   2019-04-08   
+* @link：   System/SystemReport/PersonalBonus {"staff_name":"name","start_time":"2018-10-24","end_time":"2018-10-29","is_settle":1,"page":1,"num":10,"gonum":0}
+* @modifyAuthor: 交接负责人：暂无
+* @modifyTime: 交接时间：暂无
+* @param string staff_nam： 用户名 （可不传）
+* @param int    is_settle: 派发(1为已结算，0为待结算)
+* @param string start_time： 开始时间 （可不传）
+* @param string end_time： 结束时间 （可不传）
+* @param string page：  当前页数
+* @param string num： 每页显示的数量
+* @param string go_num： 跳转的页数
+* @returnData: json;
+*/
+
+class PersonalBonus extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if ($StaffGrade == 0) {
+            $context->reply(["status" => 209, "msg" => "当前登录账号是站长，不需要查看个人分红"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("staff_report_self", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $mysqlReport = $config->data_report;
+        $cache = $config->cache_site;
+        $page = !empty($data["page"]) ? $data["page"] : 1;
+        $num = !empty($data["num"]) ? $data["num"] : 10;
+        $go_num = !empty($data["go_num"]) ? $data["go_num"] : 1;
+        $is_settle = isset($data["is_settle"]) ? $data["is_settle"] : '';
+        if (!is_numeric($page) && $page <= 0) {
+            $context->reply(["status" => 202, "msg" => "当前页数不正确"]);
+            return;
+        }
+        if (!is_numeric($num)) {
+            $context->reply(["status" => 203, "msg" => "每页显示的数量不正确"]);
+            return;
+        }
+        $list = [];
+        if ($is_settle == 0) { //未结算
+            if ($StaffGrade == 1) {
+                $sql = "SELECT major_id as staff_id,major_name as staff_name 
+                    FROM staff_struct_major WHERE major_id = :major_id";
+                $param = [":major_id" => $staffId];
+                //计算投注额
+                $sqls = "SELECT sum(wager_amount) as bet_all FROM monthly_staff 
+                    WHERE major_id = :major_id AND monthly = :monthly";
+                $params = [
+                    ":major_id" => $staffId,
+                    ":monthly" => intval(date("Ym",strtotime("today")))
+                ];
+                foreach ($mysqlReport->query($sqls, $params) as $row) {
+                    $bet_all = $row["bet_all"];
+                }
+                if (empty($bet_all)) {
+                    $bet_all = 0;
+                }
+                $total = 1;
+                foreach ($mysql->query($sql, $param) as $k => $v) {
+                    $rate = json_decode($cache->hget("SystemSetting",$v["staff_id"]),true);
+                    if (empty($rate)) {
+                        $rate = json_decode($cache->hget("SystemSetting",1),true);
+                    }
+                    $list[] = [
+                        "staff_name" => $v["staff_name"],
+                        "major_name" => "",
+                        "minor_name" => "",
+                        "staff_id" => $v["staff_id"],
+                        "staff_grade" => $StaffGrade,
+                        "bet_amount" => $bet_all,
+                        "bet_rate" => $rate["grade1_bet_rate"],
+                        "profit_amount" => "",
+                        "profit_rate" => $rate["grade1_profit_rate"],
+                        "fee_rate" => $rate["grade1_fee_rate"],
+                        "tax_rate" => $rate["grade1_tax_rate"],
+                        "dividend" => 0,
+                        "is_settle" => 0,
+                        "deliver_time" => "",
+                        "settle_time" => "",
+                    ];
+                }
+            }
+            if ($StaffGrade == 2) {
+                $sql = "SELECT minor_id,minor_name,major_id,major_name 
+                    FROM staff_struct_minor WHERE minor_id = :minor_id";
+                $param = [":minor_id" => $staffId];
+                //计算投注额
+                $sqls = "SELECT sum(wager_amount) as bet_all FROM monthly_staff 
+                    WHERE minor_id = :minor_id AND monthly = :monthly";
+                $params = [
+                    ":minor_id" => $staffId,
+                    ":monthly" => intval(date("Ym",strtotime("today")))
+                ];
+                foreach ($mysqlReport->query($sqls, $params) as $row) {
+                    $bet_all = $row["bet_all"];
+                }
+                if (empty($bet_all)) {
+                    $bet_all = 0;
+                }
+                $total = 1;
+                foreach ($mysql->query($sql, $param) as $k => $v) {
+                    $rate = json_decode($cache->hget("SystemSetting",$v["minor_id"]),true);
+                    if (empty($rate)) {
+                        $rate = json_decode($cache->hget("SystemSetting",$v["major_id"]),true);
+                    }
+                    if (empty($rate)) {
+                        $rate = json_decode($cache->hget("SystemSetting",1),true);
+                    }
+                    $list[] = [
+                        "staff_name" => $v["minor_name"],
+                        "major_name" => $v["major_name"],
+                        "minor_name" => "",
+                        "staff_id" => $v["minor_id"],
+                        "staff_grade" => $StaffGrade,
+                        "bet_amount" => $bet_all,
+                        "bet_rate" => $rate["grade2_bet_rate"],
+                        "profit_amount" => "",
+                        "profit_rate" => $rate["grade2_profit_rate"],
+                        "fee_rate" => $rate["grade2_fee_rate"],
+                        "tax_rate" => $rate["grade2_tax_rate"],
+                        "dividend" => 0,
+                        "is_settle" => 0,
+                        "deliver_time" => "",
+                        "settle_time" => "",
+                    ];
+                }
+            }
+            if ($StaffGrade == 3) {
+                $sql = "SELECT agent_id,agent_name,minor_id,minor_name,major_id,major_name 
+                    FROM staff_struct_agent WHERE agent_id = :agent_id";
+                $param = [":agent_id" => $staffId];
+                //计算投注额
+                $sqls = "SELECT sum(wager_amount) as bet_all FROM monthly_staff 
+                    WHERE agent_id = :agent_id AND monthly = :monthly";
+                $params = [
+                    ":agent_id" => $staffId,
+                    ":monthly" => intval(date("Ym",strtotime("today")))
+                ];
+                foreach ($mysqlReport->query($sqls, $params) as $row) {
+                    $bet_all = $row["bet_all"];
+                }
+                if (empty($bet_all)) {
+                    $bet_all = 0;
+                }
+                $total = 1;
+                foreach ($mysql->query($sql, $param) as $k => $v) {
+                    $rate = json_decode($cache->hget("SystemSetting",$v["agent_id"]),true);
+                    if (empty($rate)) {
+                        $rate = json_decode($cache->hget("SystemSetting",$v["minor_id"]),true);
+                    }
+                    if (empty($rate)) {
+                        $rate = json_decode($cache->hget("SystemSetting",$v["major_id"]),true);
+                    }
+                    if (empty($rate)) {
+                        $rate = json_decode($cache->hget("SystemSetting",1),true);
+                    }
+                    $list[] = [
+                        "staff_name" => $v["agent_name"],
+                        "major_name" => $v["major_name"],
+                        "minor_name" => $v["minor_name"],
+                        "staff_id" => $v["agent_id"],
+                        "staff_grade" => $StaffGrade,
+                        "bet_amount" => $bet_all,
+                        "bet_rate" => $rate["grade3_bet_rate"],
+                        "profit_amount" => "",
+                        "profit_rate" => $rate["grade3_profit_rate"],
+                        "fee_rate" => $rate["grade3_fee_rate"],
+                        "tax_rate" => $rate["grade3_tax_rate"],
+                        "dividend" => 0,
+                        "is_settle" => 0,
+                        "deliver_time" => "",
+                        "settle_time" => "",
+                    ];
+                }
+            }
+        }
+        if ($is_settle == 1) {  //已结算
+            if ($StaffGrade == 1) {
+                $sql = "SELECT major_name as staff_name,major_id as staff_id,bet_amount,bet_rate,profit_amount,profit_rate,fee_rate,dividend_result,deliver_time,settle_time FROM dividend_settle_major WHERE major_id = :major_id";
+                $total_sql = "SELECT staff_key FROM dividend_settle_major WHERE major_id = :major_id";
+                $param = [":major_id" => $staffId];
+            }
+            if ($StaffGrade == 2) {
+                $sql = "SELECT major_name,minor_name as staff_name, minor_id as staff_id bet_amount,bet_rate,profit_amount,profit_rate,fee_rate,dividend_result,deliver_time,settle_time FROM dividend_settle_minor WHERE minor_id = :minor_id";
+                $total_sql = "SELECT staff_key FROM dividend_settle_minor WHERE minor_id = :minor_id";
+                $param = [":minor_id" => $staffId];
+            }
+            if ($StaffGrade == 3) {
+                $sql = "SELECT major_name,minor_name,agent_name as staff_name,agent_id as staff_id,bet_amount,bet_rate,profit_amount,profit_rate,fee_rate,dividend_result,deliver_time,settle_time FROM dividend_settle_agent WHERE agent_id = :agent_id";
+                $total_sql = "SELECT staff_key FROM dividend_settle_agent WHERE agent_id = :agent_id";
+                $param = [":minor_id" => $staffId];
+            }
+            $lists = array();
+            try {
+                foreach ($mysql->query($sql, $param) as $rows) {
+                    $lists[] = $rows;
+                }
+                $total = $mysql->execute($total_sql, $param);
+            } catch (\PDOException $e) {
+                $context->reply(["status" => 400,"msg" => "获取列表失败"]);
+                return;
+            }
+            foreach ($lists as $key => $val) {
+                $list[$key]["staff_name"] = $val["staff_name"];
+                $list[$key]["major_name"] = empty($val["major_name"]) ? "" : $val["major_name"];
+                $list[$key]["minor_name"] = empty($val["minor_name"]) ? "" : $val["minor_name"];
+                $list[$key]["staff_grade"] = $StaffGrade;
+                $list[$key]["staff_id"] = $val["staff_id"];
+                $list[$key]["bet_amount"] = $val["bet_amount"];
+                $list[$key]["bet_rate"] = $val["bet_rate"];
+                $list[$key]["profit_amount"] = $val["profit_amount"];
+                $list[$key]["profit_rate"] = $val["profit_rate"];
+                $list[$key]["fee_rate"] = $val["fee_rate"];
+                $list[$key]["dividend"] = $val["dividend_result"];
+                $list[$key]["is_settle"] = 1;
+                $list[$key]["deliver_time"] = empty($val["deliver_time"]) ? 0 : $val["deliver_time"];
+                $list[$key]["settle_time"] = date("Y-m-d H:i:s",$val["settle_time"]);
+            }
+        }
+        $context->reply([
+            "status" => 200,
+            "msg" => "获取成功",
+            "total" => $total,
+            "totalpage" => ceil($total/$num),
+            "list" => $list
+        ]);
+    }
+}

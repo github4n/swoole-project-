@@ -1,0 +1,53 @@
+<?php
+namespace Site\Websocket\Website\Index;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 网站管理--停用/启用  1启用2停用
+ * */
+
+class BannerChange extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $carousel_id = $data["carousel_id"];
+        if(!is_numeric($carousel_id)){
+            $context->reply(["status"=>205,"msg"=>"参数错误"]);
+            return;
+        }
+        $acceptable = $data["acceptable"];
+        if(!empty($acceptable)){
+            if($acceptable == 1){
+                $publish = 1;
+            }elseif ($acceptable == 2){
+                $publish = 0;
+            }else{
+                $context->reply(["status"=>204,"msg"=>"应用状态有误"]);
+                return;
+            }
+        }else{
+            $context->reply(["status"=>206,"msg"=>"提交修改的信息"]);
+            return;
+        }
+        $sql = "UPDATE carousel SET publish=:publish  WHERE carousel_id=:carousel_id";
+        $param = [":carousel_id"=>$carousel_id,":publish"=>$publish];
+        try{
+            $mysql->execute($sql,$param);
+        }catch(\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"修改失败"]);
+            throw new \PDOException($e);
+        }
+        $context->reply(["status"=>200,"msg"=>"修改成功"]);
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $taskAdapter->plan('Index/AppBanner', [],time());
+    }
+}

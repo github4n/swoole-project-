@@ -1,0 +1,66 @@
+<?php
+namespace Plat\Task\Lottery;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+/*
+ * 平台修改彩票触发任务修改站点的彩票任务
+ *
+ * */
+
+class SiteLottery implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        $admin_mysql = $config->data_admin;
+        $public_mysql = $config->data_public;
+        foreach ($config->site_list as $site){
+            $data_site = "data_{$site}_staff";
+            $site_staff_mysql =  $config->{$data_site};
+
+            $sql = "SELECT group_concat(game_key) as game_key FROM lottery_game WHERE acceptable = 0";
+            $game_list = iterator_to_array($public_mysql->query($sql));
+            $game_sqls = "UPDATE lottery_game SET plat_acceptable=(game_key not in :game_key)";
+            $game_param = [":game_key"=>$game_list];
+            try{
+                $site_staff_mysql->execute($game_sqls,$game_param);
+            }catch (\PDOException $e){
+                throw new \PDOException($e);
+            }
+
+            $site_game_sql = "SELECT group_concat(game_key) as game_key FROM site_game WHERE site_key=:site_key AND acceptable = 0";
+            $param = [":site_key"=>$site];
+            $site_game = iterator_to_array($admin_mysql->query($site_game_sql,$param));
+            $site_game_sqls = "UPDATE lottery_game SET site_acceptable=(game_key not in :game_key)";
+            $site_game_params = [":game_key"=>$site_game];
+            try{
+                $site_staff_mysql->execute($site_game_sqls,$site_game_params);
+            }catch (\PDOException $e){
+                throw new \PDOException($e);
+            }
+
+            $all_game = "SELECT game_key FROM lottery_game";
+            $all_game_list = iterator_to_array($public_mysql->query($all_game));
+            foreach ($all_game_list as $key=>$val){
+                $sql = "SELECT play_key FROM lottery_game_play WHERE game_key=:game_key AND acceptable = 0  ";
+                foreach ($public_mysql->query($sql,[":game_key"=>$val["game_key"]]) as $row){
+                    $plays_sqls = "UPDATE lottery_game_play SET plat_acceptable=0 WHERE play_key = :play_list and game_key=:game_key";
+                    $games_param = [":game_key"=>$val["game_key"],":play_list"=>$row["play_key"]];
+                    $site_staff_mysql->execute($plays_sqls,$games_param);
+                }
+            }
+
+            foreach ($all_game_list as $k=>$v){
+                $site_game_sql = "SELECT play_key FROM site_play WHERE site_key=:site_key AND acceptable = 0 AND game_key=:game_key";
+                $param = [":site_key"=>$site,":game_key"=>$v["game_key"]];
+                foreach ($admin_mysql->query($site_game_sql,$param) as $row){
+                    $site_play_sqls = "UPDATE lottery_game_play SET site_acceptable=0 WHERE game_key=:game_key and play_key = :play_key";
+                    $site_game_params = [":play_key"=>$row["play_key"],":game_key"=>$v["game_key"]];
+                    $site_staff_mysql->execute($site_play_sqls,$site_game_params);
+                }
+            }
+
+        }
+    }
+}

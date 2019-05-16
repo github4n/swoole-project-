@@ -1,0 +1,70 @@
+<?php
+
+namespace App\Websocket\ExternalGame\Fg;
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+/*
+ * 启动游戏
+ * ExternalGame/Fg/FgGameStart  {"interface_key":"fg","game_code":"dfdc","game_type":"h5","language":"zh-cn","ip":"192.168.1.2","return_url":"http://www.baidu.com"}
+ */
+class FgGameStart extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $param = $context->getData();
+        $interface_key = isset($param['interface_key']) ? $param['interface_key'] : '';
+        $game_code = isset($param['game_code']) ? $param['game_code'] : '';
+        $game_type = isset($param['game_type']) ? $param['game_type'] : '';
+        $language = isset($param['language']) ? $param['language'] : '';
+        $ip = isset($param['ip']) ? $param['ip'] : '';
+        $return_url = isset($param['return_url']) ? $param['return_url'] : '';
+        $fg_member_code = $context->getInfo('fg_member_code');
+        if (empty($interface_key)) {
+            $context->reply(['status' => 400,'msg'=>'启动游戏失败,缺少启动游戏参数']);
+            return;
+        }
+        if (empty($game_code)) {
+            $context->reply(['status' => 401,'msg'=>'启动游戏失败,缺少启动游戏参数']);
+            return;
+        }
+        if (empty($game_type)) {
+            $context->reply(['status' => 402,'msg'=>'启动游戏失败,缺少启动游戏参数']);
+            return;
+        }
+        if (empty($language)) {
+            $context->reply(['status' => 403,'msg'=>'启动游戏失败,缺少启动游戏参数']);
+            return;
+        }
+        if (empty($return_url)) {
+            $context->reply(['status' => 404,'msg'=>'启动游戏失败,缺少启动游戏参数']);
+            return;
+        }
+        if (empty($fg_member_code)) {
+            $context->reply(['status' => 405,'msg'=>'启动游戏失败,缺少启动游戏参数']);
+            return;
+        }
+        if (empty($ip)) {
+            $context->reply(['status' => 406,'msg'=>'启动游戏失败,缺少启动游戏参数']);
+            return;
+        }
+        //实例任务通知
+        $adapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $params = [
+            'member_code' => $fg_member_code,
+            'game_code' => $game_code,
+            'game_type' => $game_type,
+            'language' => $language,
+            'ip' => $ip,
+            'return_url' => $return_url,
+            'action' => 'launch_game',
+            'client_id' => $context->clientId(),
+            'interface_key' => $interface_key,
+            'method' => 'GameStart'
+        ];
+        //启动通知任务
+        $adapter->plan('ExternalGame/Fg/GameStart',['data' => $params],time(),1);
+
+    }
+}

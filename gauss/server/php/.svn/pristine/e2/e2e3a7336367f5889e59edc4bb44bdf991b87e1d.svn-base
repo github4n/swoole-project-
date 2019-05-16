@@ -1,0 +1,28 @@
+<?php
+namespace Plat\Websocket\Website\Site;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+
+ *
+ * */
+
+class SiteList extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("website_lottery_select", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+
+        $context->reply([
+            'status'=>200,
+            'msg'=>'获取成功',
+            
+        ]);
+    }
+}

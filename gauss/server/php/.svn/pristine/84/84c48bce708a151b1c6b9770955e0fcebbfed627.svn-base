@@ -1,0 +1,271 @@
+<?php
+
+namespace Site\Websocket\Member\BetRecord;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use function PHPSTORM_META\type;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员管理-投注记录
+ * Member/BetRecord/BetRecordAll {"game_key":"six_hk","result":"0","start_time":"2018-12-18","end_time":"2018-12-20","chase":"1","user_key":"user123"}
+ * 参数：page:当前页数,num:每页显示的数量,go_num:跳转的页数
+ *搜索参数：period:期号，game_key:彩票类型，result:订单状态，launch_time:下注时间，chase_mode:是否追号，user_key:会员账号
+ */
+class BetRecordAll extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $data = $context->getData();
+        $num = empty($data["num"])?8:$data["num"];
+        $search_period = empty($data['period'])?null:$data['period'];
+        $gameKey = empty($data['game_key'])?null:$data['game_key'];
+        $result = empty($data['result'])?null:$data['result'];
+        $start_time = empty($data['start_time'])?null:$data['start_time'];
+        $end_time = empty($data['end_time'])?null:$data['end_time'];
+        $chase = empty($data['chase'])?null:$data['chase'];
+        $userKey = empty($data['user_key'])?null:$data['user_key'];
+        $staffId = $context->getInfo('StaffId');
+        $staffGrade = $context->getInfo('StaffGrade');
+        $gameList = json_decode($context->getInfo('GameList'));
+        $MasterId = $context->getInfo("MasterId");
+        if ($MasterId != 0) {
+            $staffId =$MasterId;
+        }
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+
+        if (!in_array("user_bet", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+
+        $mysql = $config->data_staff;
+        $mysqlUser = $config->data_user;
+        $cache = $config->cache_site;
+        switch ($staffGrade)
+        {
+            case 0:
+                if(empty(!$MasterId)){
+                   $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_list = 0;
+
+                    foreach ($mysql->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+                        $layer_list = $row["layer_list"];
+                    }
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where layer_id in ($layer_list)";
+                }else{
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact";
+                }
+
+                foreach ($mysqlUser->query($user_sql) as $row){
+                    $user_list = $row["user_list"];
+                }
+                if(empty($user_list)){
+                    $user_list = 0;
+                }
+                break;
+            case 1:
+                $sql = 'SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent WHERE major_id='.$staffId;
+                foreach ($mysql->query($sql) as $row)
+                {
+                    $agent_list = $row['agent_list'];
+                }
+                if(empty(!$MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_list = 0;
+                    foreach ($mysql->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+                        $layer_list = $row["layer_list"];
+                    }
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id in ($agent_list) and layer_id in ($layer_list)";
+                }else{
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id in ($agent_list)";
+                }
+
+                foreach ($mysqlUser->query($user_sql) as $row){
+                    $user_list = $row["user_list"];
+                }
+                if(empty($user_list)){
+                    $user_list = 0;
+                }
+                break;
+            case 2:
+                $sql = 'SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent WHERE minor_id='.$staffId;
+                foreach ($mysql->query($sql) as $row)
+                {
+                    $agent_list = $row['agent_list'];
+                }
+                if(empty(!$MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_list = 0;
+                    foreach ($mysqlUser->query($accout_sql,[":staff_id"=>$context->getInfo('StaffId')]) as $row){
+                        $layer_list = $row["layer_list"];
+                    }
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id in ($agent_list) and layer_id in ($layer_list)";
+                }else{
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id in ($agent_list)";
+                }
+
+                foreach ($mysqlUser->query($user_sql) as $row){
+                    $user_list = $row["user_list"];
+                }
+                if(empty($user_list)){
+                    $user_list = 0;
+                }
+                break;
+            case 3:
+                if(empty(!$MasterId)){
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_list = 0;
+                    foreach ($mysql->query($accout_sql,[":staff_id"=>$staffId]) as $row){
+                        $layer_list = $row["layer_list"];
+                    }
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id =$staffId and layer_id in ($layer_list)";
+                }else{
+                    $user_sql = "select group_concat(user_id) as user_list from user_info_intact where agent_id = $staffId";
+                }
+                foreach ($mysqlUser->query($user_sql) as $row){
+                    $user_list = $row["user_list"];
+                }
+                if(empty($user_list)){
+                    $user_list = 0;
+                }
+                break;
+        }
+        
+
+        $bet_game_key = "";
+        $bet_chase = "";
+        $user_key = "";
+        $bet_result = "";
+        $time = "";
+        $bet_period = "";
+
+        if (!empty($search_period))
+        {
+            $bet_period = 'AND period='."'$search_period'".' ';
+        }
+
+        if (!empty($gameKey))
+        {
+            $bet_game_key = "AND game_key='".$gameKey."'";
+        }
+        if ($chase == 1)
+        {
+            $bet_chase = " AND period_list IS NOT NULL";
+        }elseif ($chase ==2)
+        {
+            $bet_chase = " AND period_list IS NULL";
+        }
+
+        if (!empty($userKey))
+        {
+            $user_key = " AND user_key='".$userKey."'";
+        }
+        if (is_numeric($result))
+        {
+            $bet_result = " AND result='".$result."'";
+        }
+        if(!empty($start_time)){
+            $start = $start_time;
+            if(!empty($end_time)) {
+                $end = $end_time;
+                $time = " AND launch_time BETWEEN ".strtotime($start)."  AND ".strtotime($end)." ";
+            } else{
+                $time = " AND launch_time BETWEEN ".strtotime($start)."  AND ".time()." ";
+            }
+        }
+        if(!empty($end_time) && empty($start_time)) {
+            $end = $end_time;
+            $time = " AND launch_time <= ".strtotime($end);
+        }
+        $betList = array();
+        // $total = 0;
+
+        $deal_list = $config->deal_list;
+
+        $sql = "SELECT bet_serial,user_id,user_key,launch_time,period,game_key,play_key,number,quantity,period_list,chase_mode,result,bet_launch,bonus,rebate,revert,(bonus-bet_launch+rebate) AS bet_profit FROM bet_unit_intact WHERE user_id in ($user_list) ".$bet_period.$bet_game_key.$user_key.$bet_result.$bet_chase.$time." Order By `launch_time` Desc, `period` Desc LIMIT 100";
+
+        foreach ($deal_list as $deal)
+        {
+            $mysql = $config->__get("data_" . $deal);
+            // $total += $mysql->execute($sql);
+            foreach ($mysql->query($sql) as $row)
+            {
+                $list[] = $row;
+            }
+            if (!empty($list))
+            {
+                foreach($list as $key => $val)
+                {
+                    $play_key = $val['play_key'];
+                    $betList[$key]['bet_serial'] = $val['bet_serial'];
+                    $betList[$key]['user_id'] = $val['user_id'];
+                    $betList[$key]['user_key'] = $val['user_key'];
+                    $betList[$key]['launch_time'] = date('Y-m-d H:i:s',$val['launch_time']);
+                    $betList[$key]['period'] = $val['period'];
+                    $betList[$key]['game_name'] = $context->getInfo($val['game_key']);
+                    $betList[$key]['play_key'] = $val['play_key'];
+                    $betList[$key]['play_name'] = $context->getInfo($val['play_key']);
+                    $tmp_number = json_decode($val['number'],true);
+                    $res  = [];
+                    $tmp_num = [];
+                    $number = $this->NumberSettle($tmp_number,$res);
+                    foreach ($number as $k => $v)
+                    {
+                        $tmp_num[] = $cache->hget("WinList",$play_key."-".$v);
+                    }
+                    $betList[$key]['number'] = $tmp_num;
+                    $betList[$key]['quantity'] = $val['quantity'];
+                    $period = json_decode($val['period_list'],true);
+                    $betList[$key]['chase_num'] = empty($period)?0:count($period);
+                    $chase_mode = json_decode($val['chase_mode'],true);
+                    $betList[$key]['step'] = $chase_mode['step'];
+                    $betList[$key]['type'] = $chase_mode['type'];
+                    $betList[$key]['multiple'] = $chase_mode['multiple'];
+                    $betList[$key]['result'] = $val['result'];
+                    $betList[$key]['bet_launch'] = $val['bet_launch'];
+                    $betList[$key]['bonus'] = $val['bonus'];
+                    $betList[$key]['rebate'] = $val['rebate'];
+                    $betList[$key]['revert'] = $val['revert'];
+                    $betList[$key]['bet_profit'] = $val['bet_profit'];
+                    $chase_num =  empty($period)?0:count($period);
+                    if(!empty($chase_num) && !empty($val['revert'])){
+                        $betList[$key]['result'] = 4;
+                    }
+                    if(!empty($val['revert'])){
+                        $betList[$key]['bet_profit'] = 0;
+                    }
+
+
+                }
+            }
+
+        }
+        array_multisort(array_column($betList,'launch_time'), SORT_DESC, $betList);
+        $total = count($betList);
+        $context->reply(['status' => 200,
+            'msg' => '获取成功',
+            'game_list' =>  $gameList,
+            'totalRecord' => $total,
+            'totalPage' => ceil($total/$num),
+            'data' => $betList]
+        );
+    }
+
+    private function NumberSettle($arr,&$res)
+    {
+        foreach ($arr as $k => $v)
+        {
+            if (is_array($v))
+            {
+                $this->NumberSettle($v,$res);
+            }else
+            {
+                $res[] = $v;
+            }
+        }
+        return $res;
+    }
+}

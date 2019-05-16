@@ -1,0 +1,184 @@
+<?php
+namespace Site\Websocket\Cash\DepositRecord;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-入款记录-确认收到
+ * 参数：Cash/DepositRecord/DepositBankFinish {"deposit_serial":"181228085128000003","deal_key":"deal3","user_id":1}
+ * status 1等待入款 2入款成功 3入款失败
+ * */
+
+class DepositBankFinish extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("money_deposit_deal",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $staff_mysql = $config->data_staff;
+        $mysqlUser = $config->data_user;
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo("MasterId");
+        $data = $context->getData();
+        $deposit_serial = $data["deposit_serial"];
+        $deal_key = $data["deal_key"];
+        $user_id = $data["user_id"];
+        if(empty($deposit_serial)){
+            $context->reply(["status"=>204,"msg"=>"参数错误"]);
+            return;
+        }
+        if(empty($deal_key)){
+            $context->reply(["status"=>205,"msg"=>"关键字不能为空"]);
+            return;
+        }
+        if(!is_numeric($user_id)){
+            $context->reply(["status"=>206,"msg"=>"用户参数错误"]);
+            return;
+        }
+        $user_sql = "select deal_key,layer_id from user_info_intact where user_id=:user_id";
+        $user_info = [];
+        foreach ($mysqlUser->query($user_sql,[":user_id"=>$user_id]) as $row){
+            $user_info = $row;
+        }
+        if(empty($user_info)){
+            $context->reply(["status"=>300,"msg"=>"会员参数错误"]);
+            return;
+        }
+        $deal_key = $user_info["deal_key"];
+        //查找是否有享受优惠的权限
+        $sql = "select operate_key from layer_permit where layer_id=:layer_id and operate_key = 'promotion_stop'";
+        $auth = [];
+        foreach ($mysqlUser->query($sql,[":layer_id"=>$user_info["layer_id"]]) as $row){
+            $auth = $row;
+        }
+        $coupon_money = 0;
+        $mysql = $config->__get("data_".$deal_key);
+        $moneyInfo = [];
+        if(empty($auth)) {
+            $sql = "SELECT launch_money,passage_id,route_id,launch_money,launch_time FROM deposit_launch WHERE deposit_serial=:deposit_serial";
+            $param = [":deposit_serial"=>$deposit_serial];
+            
+            try{
+                foreach ($mysql->query($sql,$param) as $row){
+                    $moneyInfo =  $row ;
+                }
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"参数错误"]);
+                throw new \PDOException($e);
+            }
+            $sql = "select coupon_rate,coupon_max,coupon_times,coupon_audit_rate from deposit_route_bank_intact where route_id=:route_id";
+            $info = [];
+            foreach ($staff_mysql->query($sql,[":route_id"=>$moneyInfo["route_id"]]) as $row){
+                $info = $row;
+            }
+            $start = strtotime(date("Ymd",$moneyInfo["launch_time"])." 00:00:00");
+            $end = strtotime(date("Ymd",$moneyInfo["launch_time"])." 23:59:59");
+            //查询判断已经享受的优惠次数及金额
+            $sql = "select sum(finish_money-launch_money) as money,count(user_id) as user_id from deposit_bank_intact where launch_time between '$start' and '$end'  and user_id=:user_id and finish_time>0";
+           
+            $money_info = [];
+            foreach ($mysql->query($sql,[":user_id"=>$user_id]) as $rows){
+                $money_info =  $rows;
+            }
+            if($money_info["money"] >= $info["coupon_max"] || $money_info["user_id"] >= $info["coupon_times"]) {
+                $coupon_money = 0 ;
+            }else{
+                $coupon_money = $moneyInfo["launch_money"] * $info["coupon_rate"] *0.01;
+                if(($money_info["money"] + $coupon_money) > $info["coupon_max"]){
+                    $coupon_money =  $info["coupon_max"] - $money_info["money"];
+                }
+            }
+            $coupon_audit_rate = $info["coupon_audit_rate"];
+        }
+        $passage_id = isset($moneyInfo['passage_id']) ? $moneyInfo['passage_id'] : '';
+        $finish_money = isset($moneyInfo["launch_money"]) ? $moneyInfo['launch_money'] : '';
+        if($MasterId != 0){
+
+            $sql = "SELECT deposit_limit FROM staff_credit WHERE staff_id=:staff_id";
+            $param = [":staff_id"=>$staffId];
+            $deposit = 0;
+            foreach ($staff_mysql->query($sql,$param) as $row){
+                $deposit = $row["deposit_limit"];
+            }
+            if($finish_money>$deposit){
+                $context->reply(["status"=>207,"msg"=>"该流水单号的入款限额大于当前登录账号的操作限额"]);
+                return;
+            }
+        }
+        $sqls = "INSERT INTO deposit_finish SET deposit_serial=:deposit_serial, finish_money=:finish_money,deposit_audit=:deposit_audit,coupon_audit=:coupon_audit, finish_staff_id=:finish_staff_id,finish_staff_name=:finish_staff_name";
+        $params = [
+            ":deposit_serial"=> $deposit_serial,
+            ":finish_money"=> $finish_money+$coupon_money,
+            ":coupon_audit"=>$coupon_audit_rate*$coupon_money,
+            ":finish_staff_id"=> $staffId,
+            ":deposit_audit"=> $finish_money,
+            ":finish_staff_name"=>$context->getInfo("StaffKey"),
+        ];
+
+        try{
+            $mysql->execute($sqls,$params);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>401,"msg"=>"操作失败"]);
+            throw new \PDOException($e);
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'money_deposit_deal',
+            ':detail' =>'收到入款单号为'.$deposit_serial."的入款",
+        ];
+        $staff_mysql = $config->data_staff;
+        $staff_mysql->execute($sql, $params);
+        //更新用户累计数据
+        $sql = "UPDATE user_cumulate SET money = money+:money,deposit_count = deposit_count+1,deposit_amount =  deposit_amount+:deposit_amount WHERE user_id=:user_id";
+        $param = [
+            ":money"=>$finish_money+$coupon_money,
+            ":deposit_amount"=>$finish_money+$coupon_money,
+            ":user_id"=>$user_id
+            ];
+        $data_report = $config->data_report;
+        try{
+            $data_report->execute($sql,$param);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>402,"msg"=>"操作失败"]);
+            throw new \PDOException($e);
+        }
+        //更新事件数据
+        $sql = "UPDATE user_event SET last_deposit_time=unix_timestamp() WHERE user_id=:user_id";
+        $param = [":user_id"=>$user_id];
+        try{
+            $data_report->execute($sql,$param);
+        }catch (\PDOException $e) {
+            $context->reply(["status" => 403, "msg" => "操作失败"]);
+            throw new \PDOException($e);
+        }
+        $context->reply(["status"=>200,"msg"=>"操作成功"]);
+
+        
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $user_mysql = $config->data_user;
+        $sql = "SELECT client_id FROM user_session WHERE user_id=:user_id";
+        $param = ['user_id' => $user_id];
+        foreach ($user_mysql->query($sql,$param) as $row){
+            $id =  $row['client_id'] ;
+            $taskAdapter->plan('NotifyApp', ['path'=>'User/Balance','data' =>['user_id'=>$user_id,"id"=>$id,"deal_key"=>$deal_key]]);
+        }
+        //更新账户的目前存款
+        $sql = "update deposit_passage set cumulate = cumulate+:cumulate where passage_id=:passage_id";
+        $staff_mysql->execute($sql,[":cumulate"=>$finish_money,":passage_id"=>$passage_id]);
+        //检测入款通道是否已经达到风控金额
+        $taskAdapter->plan('Cash/Passage', [],time(),9);
+
+    }
+}

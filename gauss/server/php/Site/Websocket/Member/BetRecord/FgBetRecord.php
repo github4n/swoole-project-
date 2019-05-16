@@ -1,0 +1,203 @@
+<?php
+
+namespace Site\Websocket\Member\BetRecord;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/**
+ * FgBetRecord class.
+ *
+ * @description   会员管理-FG注单
+ * @Author  blake
+ * @date  2019-05-08
+ * @links  Member/BetRecord/FgBetRecord {"bet_serial":"","user_key":"user123","start_time":"2018-12-18","end_time":"2018-12-20"}
+ * @modifyAuthor   blake
+ * @modifyTime  2019-05-08
+ */
+class FgBetRecord extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo('MasterId');
+        $staffGrade = $context->getInfo('StaffGrade');
+        $data = $context->getData();
+        $bet_serial = isset($data['bet_serial']) ? $data['bet_serial'] : '';
+        $external_type = isset($data['external_type']) ? $data['external_type'] : 'fg';
+        $user_key = isset($data['user_key']) ? $data['user_key'] : '';
+        $start_time = isset($data['start_time']) ? $data['start_time'] : '';
+        $end_time = isset($data['end_time']) ? $data['end_time'] : '';
+        $time = '';
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if ($MasterId != 0) {
+            $staffId = $MasterId;
+        }
+        if (!in_array('user_bet', $auth)) {
+            $context->reply(['status' => 202, 'msg' => '你还没有操作权限']);
+
+            return;
+        }
+        $mysql = $config->data_staff;
+        $mysqlUser = $config->data_user;
+        $cache = $config->cache_site;
+        $agent_list = [0];
+        $layer_list = [0];
+        switch ($staffGrade) {
+            case 0:
+                if (empty(!$MasterId)) {
+                    $accout_sql = 'select layer_id from staff_layer where staff_id=:staff_id';
+                    foreach ($mysql->query($accout_sql, [':staff_id' => $context->getInfo('StaffId')]) as $row) {
+                        $layer_list[] = $row['layer_id'];
+                    }
+                    $user_sql = 'select user_id from user_info_intact where layer_id in :layer_list';
+                    $query = $mysqlUser->query($user_sql, [':layer_list' => $layer_list]);
+                } else {
+                    $user_sql = 'select user_id  from user_info_intact';
+                    $query = $mysqlUser->query($user_sql);
+                }
+
+                $user_list = [];
+                foreach ($query as $row) {
+                    $user_list[] = $row['user_id'];
+                }
+                break;
+            case 1:
+                $sql = 'SELECT agent_id FROM staff_struct_agent WHERE major_id=:major_id';
+                $agent_list = [];
+                foreach ($mysql->query($sql, [':major_id' => $staffId]) as $row) {
+                    $agent_list[] = $row['agent_id'];
+                }
+                $agent_list = empty($agent_list) ? [0] : $agent_list;
+                if (empty(!$MasterId)) {
+                    $accout_sql = 'select layer_id from staff_layer where staff_id=:staff_id';
+                    foreach ($mysql->query($accout_sql, [':staff_id' => $context->getInfo('StaffId')]) as $row) {
+                        $layer_list[] = $row['layer_id'];
+                    }
+                    $layer_list = empty($layer_list) ? [0] : $layer_list;
+                    $user_sql = 'select user_id from user_info_intact where agent_id in :agent_list and layer_id in :layer_list';
+                    $query = $mysqlUser->query($user_sql, [':agent_list' => $agent_list, ':layer_list' => $layer_list]);
+                } else {
+                    $user_sql = 'select user_id from user_info_intact where agent_id in :agent_list';
+                    $query = $mysqlUser->query($user_sql, [':agent_list' => $agent_list]);
+                }
+
+                $user_list = [];
+                foreach ($query as $row) {
+                    $user_list[] = $row['user_id'];
+                }
+                break;
+            case 2:
+                $sql = 'SELECT agent_id FROM staff_struct_agent WHERE minor_id=:major_id';
+                foreach ($mysql->query($sql, [':major_id' => $staffId]) as $row) {
+                    $agent_list[] = $row['agent_id'];
+                }
+                $agent_list = empty($agent_list) ? [0] : $agent_list;
+                if (empty(!$MasterId)) {
+                    $accout_sql = 'select layer_id from staff_layer where staff_id=:staff_id';
+                    foreach ($mysql->query($accout_sql, [':staff_id' => $context->getInfo('StaffId')]) as $row) {
+                        $layer_list[] = $row['layer_id'];
+                    }
+                    $layer_list = empty($layer_list) ? [0] : $layer_list;
+                    $user_sql = 'select user_id from user_info_intact where agent_id in :agent_list and layer_id in :layer_list';
+                    $query = $mysqlUser->query($user_sql, [':agent_list' => $agent_list, ':layer_list' => $layer_list]);
+                } else {
+                    $user_sql = 'select user_id from user_info_intact where agent_id in :agent_list';
+                    $query = $mysqlUser->query($user_sql, [':agent_list' => $agent_list]);
+                }
+
+                $user_list = [];
+                foreach ($query as $row) {
+                    $user_list[] = $row['user_id'];
+                }
+                break;
+            case 3:
+                if (empty(!$MasterId)) {
+                    $accout_sql = 'select layer_id from staff_layer where staff_id=:staff_id';
+                    $layer_list = [];
+                    foreach ($mysql->query($accout_sql, [':staff_id' => $context->getInfo('StaffId')]) as $row) {
+                        $layer_list[] = $row['layer_id'];
+                    }
+                    $layer_list = empty($layer_list) ? [0] : $layer_list;
+                    $user_sql = 'select user_id from user_info_intact where agent_id =:agent_id and layer_id in :layer_list';
+                    $query = $mysqlUser->query($user_sql, [':layer_list' => $layer_list, ':agent_id' => $staffId]);
+                } else {
+                    $user_sql = 'select user_id from user_info_intact where agent_id = :agent_id';
+                    $query = $mysqlUser->query($user_sql, [':agent_id' => $staffId]);
+                }
+
+                $user_list = [];
+                foreach ($query as $row) {
+                    $user_list[] = $row['user_id'];
+                }
+                break;
+        }
+
+        if (empty($user_list)) {
+            $user_list = [0];
+        }
+
+        //单号条件
+        if (!empty($bet_serial)) {
+            $param[':bet_serial'] = $bet_serial;
+            $bet_serial = ' AND audit_serial = :bet_serial';
+        }
+        //用户条件
+        if (!empty($user_key)) {
+            $param[':user_key'] = $user_key;
+            $user_key = ' AND user_key = :user_key ';
+        }
+        //注单时间区间
+        if (!empty($end_time) && !empty($start_time)) {
+            $end = strtotime(date('Y-m-d', strtotime($end_time)).' 23:59:59');
+            $start = strtotime(date('Y-m-d', strtotime($start_time)).' 00:00:00');
+            $param[':start'] = $start;
+            $param[':end'] = $end;
+            $time = ' AND play_time between :start AND :end ';
+        }
+        $param[':user_list'] = $user_list;
+
+        $bet_sql = "SELECT game_key,audit_serial,user_key,audit_amount,play_time,external_data,external_type from external_audit where user_id in :user_list and external_type='fg' ".$user_key.$time.$bet_serial.' order by play_time desc limit 200 ';
+        $list = [];
+        foreach ($config->deal_list as $deal) {
+            $mysqlDeal = $config->__get('data_'.$deal);
+            foreach ($mysqlDeal->query($bet_sql, $param) as $val) {
+                $type = $val['external_type'];
+                $game_key = $val['game_key'];
+                $game_name = $cache->hget('LotteryName', $game_key)?$cache->hget('LotteryName', $game_key):'';
+                $json_data = json_decode($val['external_data'], true);
+                $result = 0;
+                switch ($type) {
+                    case 'fg':
+                        if (isset($json_data['gt']) && $json_data['gt'] == 'fish') {
+                            $result = $json_data['fish_dead_chips'] - $json_data['bullet_chips'];
+                        } elseif (isset($json_data['gt']) && $json_data['gt'] != 'fish') {
+                            $result = isset($json_data['result']) ? $json_data['result'] : 0;
+                        } else {
+                            $result = 0;
+                        }
+                        break;
+                    case 'ky':
+                        break;
+                    case 'lb':
+                        break;
+                    case 'ag':
+                        break;
+                    default:
+                        $result = 0;
+                        break;
+                }
+                $val['result'] = $this->intercept_num($result);
+                $val['game_name'] = $game_name;
+                $val['audit_amount'] = $this->intercept_num($val['audit_amount']);
+                unset($val['external_data']);
+                unset($val['external_type']);
+                $list[] = $val;
+            }
+        }
+        array_multisort(array_column($list, 'play_time'), SORT_DESC, $list);
+        $total = count($list);
+        $context->reply(['status' => 200, 'msg' => '获取成功', 'list' => $list, 'total' => $total]);
+    }
+}

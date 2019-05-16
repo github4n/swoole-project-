@@ -1,0 +1,215 @@
+<?php
+
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-2-14
+ * Time: 上午10:14
+ */
+
+namespace Site\Websocket\Member\Analyze;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * User : rose
+ * Date : 2019-04-10
+ * 会员查询 Member/Analyze/MemberSearch  user_key layer_id start_time end_time broker_1_key broker_2_key broker_3_key
+ */
+
+class MemberSearch extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("user_analysis", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        //代理层级列表
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo("MasterId");
+        if ($MasterId != 0) {
+            $staffId = $MasterId;
+        }
+
+        $params = $context->getData();
+        $user_key = isset($params['user_key']) ? $params['user_key'] : '';
+        $layer_id = isset($params['layer_id']) ? $params['layer_id'] : '';
+        $start_time = isset($params['start_time']) ? $params['start_time'] : '';
+        $end_time = isset($params['end_time']) ? $params['end_time'] : '';
+        $broker_1_key = isset($params['broker_1_key']) ? $params['broker_1_key'] : '';
+        $broker_2_key = isset($params['broker_2_key']) ? $params['broker_2_key'] : '';
+        $broker_3_key = isset($params['broker_3_key']) ? $params['broker_3_key'] : '';
+        $times = '';
+        if ($user_key) {
+            $user_key = " AND user_key = '$user_key'";
+        }
+
+        if ($layer_id) {
+            $layer_id = " AND layer_id = '$layer_id'";
+        }
+        if ($start_time && $end_time) {
+            $times = " AND register_time BETWEEN " . strtotime($start_time) . " AND " . strtotime($end_time) ;
+        }
+        if ($broker_1_key) {
+            $broker_1_key = " AND broker_1_key = '$broker_1_key' ";
+        }
+        if ($broker_2_key) {
+            $broker_2_key = " AND broker_2_key = '$broker_2_key' ";
+        }
+        if ($broker_3_key) {
+            $broker_3_key = " AND broker_3_key = '$broker_3_key' ";
+        }
+
+        //求账号下及会员
+        $agentMysql = $config->data_staff;
+        $userMysql = $config->data_user;
+        $mysqlReport = $config->data_report;
+        $mysqlPublic = $config->data_public;
+        $layer_lists = 0;
+        $agent_list = 0;
+        switch ($StaffGrade) {
+            case 0:
+                if (!empty($MasterId)) {
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_lists = 0;
+
+                    foreach ($agentMysql->query($accout_sql, [":staff_id" => $context->getInfo('StaffId')]) as $row) {
+                        $layer_lists = $row["layer_list"];
+                    }
+                } else {
+                    $accout_sql = "select group_concat(layer_id) as layer_list from layer_info";
+                    foreach ($userMysql->query($accout_sql) as $row) {
+                        $layer_lists = $row["layer_list"];
+                    }
+                }
+                $sql = "SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent";
+                foreach ($agentMysql->query($sql) as $row) {
+                    $agent_list = $row['agent_list'];
+                }
+                break;
+            case 1:
+                if (!empty($MasterId)) {
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_lists = 0;
+
+                    foreach ($agentMysql->query($accout_sql, [":staff_id" => $context->getInfo('StaffId')]) as $row) {
+                        $layer_lists = $row["layer_list"];
+                    }
+                } else {
+                    $accout_sql = "select group_concat(layer_id) as layer_list from layer_info";
+                    foreach ($userMysql->query($accout_sql) as $row) {
+                        $layer_lists = $row["layer_list"];
+                    }
+                }
+                $sql = "SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent WHERE major_id='$staffId'";
+                foreach ($agentMysql->query($sql) as $row) {
+                    $agent_list = $row['agent_list'];
+                }
+                break;
+            case 2:
+                if (!empty($MasterId)) {
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_lists = 0;
+
+                    foreach ($agentMysql->query($accout_sql, [":staff_id" => $context->getInfo('StaffId')]) as $row) {
+                        $layer_lists = $row["layer_list"];
+                    }
+                } else {
+                    $accout_sql = "select group_concat(layer_id) as layer_list from layer_info";
+                    foreach ($userMysql->query($accout_sql) as $row) {
+                        $layer_lists = $row["layer_list"];
+                    }
+                }
+                $sql = "SELECT group_concat(agent_id) as agent_list FROM staff_struct_agent WHERE minor_id='$staffId'";
+                foreach ($agentMysql->query($sql) as $row) {
+                    $layer_lists = $row['agent_list'];
+                }
+                break;
+            case 3:
+                if (!empty($MasterId)) {
+                    $accout_sql = "select group_concat(layer_id) as layer_list from staff_layer where staff_id=:staff_id";
+                    $layer_lists = 0;
+
+                    foreach ($agentMysql->query($accout_sql, [":staff_id" => $context->getInfo('StaffId')]) as $row) {
+                        $layer_lists = $row["layer_list"];
+                    }
+                } else {
+                    $accout_sql = "select group_concat(layer_id) as layer_list from layer_info";
+                    foreach ($userMysql->query($accout_sql) as $row) {
+                        $layer_lists = $row["layer_list"];
+                    }
+                }
+                $agent_list = $staffId;
+                break;
+        }
+
+        //根据总代理id查询下属的所有账号id以及所属的数据库
+         $order = " order by user_id desc ";
+        $user_sql = "select user_id,broker_1_key,broker_2_key,broker_3_key,user_key,user_name,register_ip,register_time,login_ip,login_time,money,login_count from user_cumulate where agent_id in ($agent_list) and layer_id in ($layer_lists) " . $user_key . $layer_id . $broker_1_key . $broker_2_key . $broker_3_key.$times.$order;
+        $user_list = iterator_to_array($mysqlReport->query($user_sql));
+        $row_data = [];
+        foreach ($user_list as $key => $val) {
+            $sql = "select sum(deposit_count) as deposit_count,sum(deposit_amount) as deposit_amount,max(deposit_max) as deposit_max,sum(withdraw_count) as withdraw_count,sum(withdraw_amount) as withdraw_amount,max(withdraw_max) as withdraw_max from daily_user where user_id=:user_id" ;
+
+            $user_info = [];
+            foreach ($mysqlReport->query($sql, ["user_id" => $val["user_id"]]) as $row) {
+                $user_info = $row;
+            }
+            $row["user_id"] = $val["user_id"];
+            $row["user_key"] = $val["user_key"];
+            $row["user_name"] = empty($val["user_name"]) ? "" : $val["user_name"];
+            $row["broker_1_key"] = empty($val["broker_1_key"]) ? "" : $val["broker_1_key"];
+            $row["broker_2_key"] = empty($val["broker_2_key"]) ? "" : $val["broker_2_key"];
+            $row["broker_3_key"] = empty($val["broker_3_key"]) ? "" : $val["broker_3_key"];
+            $row["money"] = $val["money"];
+            $row["login_count"] = $val["login_count"];
+            $row["deposit_count"] = empty($user_info["deposit_count"]) ? 0:$user_info["deposit_count"];
+            $row["deposit_amount"] = empty($user_info["deposit_amount"]) ? 0 : $user_info["deposit_amount"];
+            $row["deposit_max"] = empty($user_info["deposit_max"]) ? 0 : $user_info["deposit_max"];
+            $row["withdraw_count"] = empty($user_info["withdraw_count"]) ? 0 : $user_info["withdraw_count"];
+            $row["withdraw_amount"] = empty($user_info["withdraw_amount"]) ? 0 : $user_info["withdraw_amount"];
+            $row["register_ip"] = empty($val["register_ip"]) ? "" :long2ip($val["register_ip"]);
+            $row["withdraw_max"] = empty($user_info["withdraw_max"]) ? 0 : $user_info["withdraw_max"];
+            $row["register_time"] = empty($val["register_time"]) ? "" : date("Y-m-d H:i:s",$val["register_time"]);
+            $row["login_ip"] = empty($val["login_ip"]) ? "" :long2ip($val["login_ip"]);
+            $row["login_time"] = empty($val["login_time"]) ? "" : date("Y-m-d H:i:s",$val["login_time"]);
+            $row["res"] = $user_info["deposit_amount"]-$user_info["withdraw_amount"];
+            //登录IP地址
+            if(!empty($row["login_ip"])){
+                $login_ip = ip2long($row["login_ip"])>>8;
+                $sql = "select * from ip_address where ip_net=:ip_net";
+                $login_ip_info = [];
+                foreach ($mysqlPublic->query($sql,[":ip_net"=>$login_ip]) as $rows){
+                    $login_ip_info = $rows;
+                }
+            }
+            //注册ip
+            if(!empty($row["register_ip"])){
+                $register_ip = ip2long($row["register_ip"])>>8;
+                $sql = "select * from ip_address where ip_net=:ip_net";
+                $register_ip_info = [];
+                foreach ($mysqlPublic->query($sql,[":ip_net"=>$register_ip]) as $rows){
+                    $login_ip_info = $rows;
+                }
+            }
+            $row["login_region"] = empty($login_ip_info["region"]) ? "" : $login_ip_info["region"];
+            $row["login_city"] = empty($login_ip_info["city"]) ? "" : $login_ip_info["city"];
+            $row["login_country"] = empty($login_ip_info["country"]) ? "" : $login_ip_info["country"];
+
+            $row["register_region"] = empty($register_ip_info["region"]) ? "" : $register_ip_info["region"];
+            $row["register_city"] = empty($register_ip_info["city"]) ? "" : $register_ip_info["city"];
+            $row["register_country"] = empty($register_ip_info["country"]) ? "" : $register_ip_info["country"];
+            $row_data[] = $row;
+
+        }
+        $total = count($row_data);
+        $layer_list = $this->LayerManage($context,$config);
+        $context->reply(["status"=>200,"msg"=>"获取成功","total"=>$total,"data"=>$row_data,"layer_list"=>$layer_list]);
+    }
+}

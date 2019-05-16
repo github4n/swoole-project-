@@ -1,0 +1,16 @@
+[program:SERVICE_DAEMON]
+command=php -f /etc/supervisor.d/DAEMON.php %(process_num)d /etc/supervisor.d/SERVICE.json
+process_name=%(program_name)s-%(process_num)d
+numprocs=PARALLEL
+priority=3
+autostart=true
+startsecs=10
+startretries=3
+autorestart=true
+user=nobody
+stdout_logfile=/var/log/SERVICE/out.DAEMON%(process_num)d
+stdout_logfile_maxbytes=1MB
+stdout_logfile_backups=9
+stderr_logfile=/var/log/SERVICE/err.DAEMON%(process_num)d
+stderr_logfile_maxbytes=1MB
+stderr_logfile_backups=9

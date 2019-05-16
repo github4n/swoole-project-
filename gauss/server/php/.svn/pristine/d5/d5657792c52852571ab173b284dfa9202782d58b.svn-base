@@ -1,0 +1,18 @@
+<?php
+namespace App\Websocket\Game;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Lib\Websocket\IHandler;
+/*
+ * Pc端的棋牌搜索接口
+ * Game/CardsSearch
+ * */
+
+class CardsSearch implements IHandler
+{
+    public function onReceive(Context $context, Config $config)
+    {
+
+    }
+}

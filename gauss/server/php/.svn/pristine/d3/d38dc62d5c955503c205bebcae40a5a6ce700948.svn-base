@@ -1,0 +1,62 @@
+<?php
+namespace Site\Websocket\Cash\ManualDeposit;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-手工存提款-手工存入
+ * 参数：Cash/ManualDeposit/Import {"deposit_list":[{"user_key":"user","money":12,"user_name":"张三"},{"user_key":"user123","money":12,"user_name":"张三"}]}
+ *
+ * */
+
+class Import extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("money_manual",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $deposit_list = $data["deposit_list"];
+        $userlist = array();
+        $total_user = 0;
+        $total_money = 0;
+        foreach ($deposit_list as $item){
+            $user_info = array();
+            $user_key = $item["user_key"];
+            $money = $item["money"];
+            if(!is_numeric($money)){
+                $context->reply(["status"=>400,"msg"=>"导入失败存入钱数参数错误"]);
+                return;
+            }
+            $user_name = $item["user_name"];
+            $sql = "SELECT user_key,layer_name,user_id FROM user_info_intact WHERE user_key=:user_key";
+            $param = [":user_key"=>$user_key];
+            foreach ($mysql->query($sql,$param) as $row){
+                $layer_name = $row["layer_name"];
+                $user_id = $row["user_id"];
+            }
+            if(!empty($layer_name)){
+                $total_user ++;
+                $total_money += $money;
+            }
+            $user_info["user_id"]=$user_id;
+            $user_info["user_key"]=$user_key;
+            $user_info["layer_name"]=$layer_name?:'';
+            $user_info["user_name"]=$user_name;
+            $user_info["money"]= $money;
+            $userlist[] = $user_info;
+        }
+        $context->reply(["status"=>200,"msg"=>"获取成功","total_user"=>$total_user,"total_money"=>$total_money,"list"=>$userlist]);
+    }
+}

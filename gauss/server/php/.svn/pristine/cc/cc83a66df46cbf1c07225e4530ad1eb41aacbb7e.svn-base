@@ -1,0 +1,125 @@
+<?php
+
+namespace Site\Websocket\Account\Logs;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 日志列表
+ * Account/Logs/LogsList {"page":1,"num":20}
+ * 参数：staff_name:员工名,start_time:开始时间,end_time:结束时间 page:当前页数,num:每页显示的数量,gon_um:跳转的页数,
+ * {"staff_name":"name","start_time":"2018-10-25","end_time":"2018-10-26","page":1,"num":20,"gonum":3}
+ * */
+
+class LogsList extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("slave_log", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $masterId = $context->getInfo('MasterId');
+        $cache = $config->cache_site;
+        $public_mysql = $config->data_public;
+        $staff_id = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $master_id = $masterId == 0 ? $staff_id : $masterId;
+        $data = $context->getData();
+        $page = $data["page"];
+        $num = $data["num"];
+        $go_num = !empty($data["go_num"]) ? $data["go_num"] : '';
+        $staff_name = !empty($data["staff_name"]) ? $data["staff_name"] : '';
+        $start_time = !empty($data["start_time"]) ? $data["start_time"] : '';
+        $end_time = !empty($data["end_time"]) ? $data["end_time"] : '';
+        $staff_names = '';
+        $time = '';
+
+        if (!is_numeric($page)) {
+            $context->reply(["status" => 202, "msg" => "当前页数不正确"]);
+            return;
+        }
+        if (!is_numeric($num)) {
+            $context->reply(["status" => 203, "msg" => "每页显示数量不正确"]);
+            return;
+        }
+        $limit = ' LIMIT ' . ($page - 1) * $num . ',' . $num;
+        //跳转的页数
+        if (!empty($go_num) && is_numeric($go_num)) {
+            $limit = ' LIMIT ' . ($go_num - 1) * $num . ',' . $num;
+        }
+        if (!empty($staff_name)) {
+            $staff_names = " AND staff_name = '" . $staff_name . "'";
+        }
+        //只有开始时间的话那就查询那目前时间的数据，如果只有结束时间的话就只查询在从这个时间之前的数据，两个参数都有的话就查询之间的数据
+        if (!empty($start_time)) {
+            $start = $start_time ;
+            if (!empty($end_time)) {
+                $end = $end_time ;
+                $time = " AND log_time BETWEEN " . strtotime($start) . "  AND " . strtotime($end);
+            } else {
+                $time = " AND log_time BETWEEN " . strtotime($start) . "  AND " . time();
+            }
+        }
+        if (!empty($end_time) && empty($start_time)) {
+            $end = $end_time ;
+            $time = " AND log_time <= " . strtotime($end);
+        }
+        $order = " ORDER BY log_id DESC";
+        $mysql = $config->data_staff;
+        if ($StaffGrade == 0) {
+            $total_sql = "select log_id from operate_log_intact WHERE 1=1 " . $staff_names . $time;
+            $sql = "SELECT staff_id,log_id,staff_name,leader_name,detail,log_time,client_ip,operate_key FROM operate_log_intact WHERE 1=1" . $staff_names . $time . $order . $limit;
+        } else {
+            $sql = "SELECT staff_id,log_id,staff_name,leader_name,detail,log_time,client_ip,operate_key FROM operate_log_intact WHERE master_id = :master_id" . $staff_names . $time . $order . $limit;
+            $total_sql = "select log_id from operate_log_intact WHERE master_id = :master_id " . $staff_names . $time;
+        }
+        $param = [":master_id" => $master_id];
+        try {
+            $list = array();
+
+            foreach ($mysql->query($sql, $param) as $row) {
+                $list[] = $row;
+            }
+            if (!empty($list)) {
+                $sql = "select operate_key,operate_name from operate ";
+
+                $operateList = [];
+                foreach ($mysql->query($sql) as $value) {
+                    $operateList += [$value['operate_key'] => $value['operate_name']];
+                }
+                foreach ($list as $key => $val) {
+                    $staff_id = $val['staff_id'];
+                    $list[$key]['log_time'] = date("Y-m-d H:i:s", $val['log_time']);
+                    $operateKey = $val['operate_key'];
+                    $list[$key]['features'] = $operateList[$operateKey];
+                    $ip = $val['client_ip'];
+                    if ($ip != 0) {
+                        $ipTranslation = substr($ip, 0, 8);
+                        $ip = long2ip($ip);
+                        $ipSaved = json_decode($cache->hget("ipList", $ipTranslation));
+                        if (!empty($ipSaved)) {
+                            $ip .= " " . "(" . $ipSaved[0]->region . " " . $ipSaved[0]->city . ")";
+                        } else {
+                            $ip_sql = "select * from ip_address where ip_net='$ipTranslation' ";
+                            $ip_result = iterator_to_array($public_mysql->query($ip_sql));
+                            if (!empty($ip_result)) {
+                                $ip .= " " . "(" . $ip_result[0]['region'] . " " . $ip_result[0]['city'] . ")";
+                                $cache->hset("ipList", $ipTranslation, json_encode($ip_result));
+                            }
+                        }
+                    }
+                    $list[$key]['ip'] = $ip;
+                }
+            }
+            $total = $mysql->execute($total_sql, $param);
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 400, 'msg' => '获取失败']);
+            throw new \PDOException($e);
+        }
+        $context->reply(['status' => 200, 'msg' => '获取成功', 'total' => $total, 'totalpage' => ceil($total / $num), 'loglist' => $list]);
+    }
+
+}

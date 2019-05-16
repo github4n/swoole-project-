@@ -1,0 +1,114 @@
+<?php
+namespace Plat\Websocket\Report;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 月结对账报表
+ * 参数：site_key:站点key值,date:结算日期
+ * Report/SiteBill
+ * */
+class SiteBill extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("report_monthly", $auth)) {
+            $context->reply(["status" => 201, "msg" => "你还没有操作权限"]);
+            return;
+        }
+
+
+        $data = $context->getData();
+        $billlist = array();
+        $mysqls = $config->data_analysis;
+        $mysqlAdmin = $config->data_admin;
+
+        //获取站点信息
+        $sql = "select site_key,site_name from site";
+        $sitelist = iterator_to_array($mysqlAdmin->query($sql));
+        // 计算总的服务费和应收总额tax表 每个月的
+        $date = isset($data['date']) ? $data['date'] : "";
+        $site_key = isset($data['site_key']) ? $data['site_key'] : "";
+        if(empty($date)){
+            $date = intval("Ym",strtotime("today"));
+        }
+        $site_key = empty($site_key) ? "site1" : $site_key;
+        $sql = "SELECT * FROM monthly_tax WHERE monthly=:monthly AND site_key=:site_key";
+        $param = [
+            ":monthly" => $date,
+            ":site_key" => $site_key,
+        ];
+        $list = [];
+        foreach ($mysqls->query($sql, $param) as $row) {
+            $list = $row;
+        }
+        if(!empty($list)) {
+            $billlist["bet"]["lottery"] = $list[""];
+            $billlist["bet"]["video"] = $list[""];
+            $billlist["bet"]["game"] = $list[""];
+            $billlist["bet"]["sports"] = $list[""];
+            $billlist["bet"]["cards"] = $list[""];
+            $billlist["bonus"]["lottery"] = $list[""];
+            $billlist["bonus"]["video"] = $list[""];
+            $billlist["bonus"]["game"] = $list[""];
+            $billlist["bonus"]["sports"] = $list[""];
+            $billlist["bonus"]["cards"] = $list[""];
+            $billlist["profit"]["lottery"] = $list["profit_lottery"];
+            $billlist["profit"]["video"] = $list["profit_video"];
+            $billlist["profit"]["game"] = $list["profit_game"];
+            $billlist["profit"]["sports"] = $list["profit_sports"];
+            $billlist["profit"]["cards"] = $list["profit_cards"];
+            $billlist["tax"]["lottery"] = $list["tax_lottery"];
+            $billlist["tax"]["video"] = $list["tax_video"];
+            $billlist["tax"]["game"] = $list["tax_game"];
+            $billlist["tax"]["sports"] = $list["tax_sports"];
+            $billlist["tax"]["cards"] = $list["tax_cards"];
+            $total = $list["tax_total"];
+            $rent = $list["tax_rent"];
+        } else{
+
+            $sql = "select month_rent from site_rent_config where site_key=:site_key";
+            foreach ($mysqlAdmin->query($sql,[":site_key"=>$site_key]) as $row){
+                $month_rent = $row["month_rent"];
+            }
+            $sql = "select bonus_all,bet_all from monthly_site where site_key=:site_key";
+            foreach ($mysqls->query($sql,[":site_key"=>$site_key]) as $rows){
+                $bet = $rows;
+            }
+            $billlist["bet"]["lottery"] = $bet["bet_all"];
+            $billlist["bet"]["video"] = "";
+            $billlist["bet"]["game"] = "";
+            $billlist["bet"]["sports"] = "";
+            $billlist["bet"]["cards"] = "";
+            $billlist["bonus"]["lottery"] = $bet["bonus_all"];
+            $billlist["bonus"]["video"] = "";
+            $billlist["bonus"]["game"] = "";
+            $billlist["bonus"]["sports"] = "";
+            $billlist["bonus"]["cards"] = "";
+            $billlist["profit"]["lottery"] = $bet["bet_all"]-$bet["bonus_all"];
+            $billlist["profit"]["video"] = "";
+            $billlist["profit"]["game"] = "";
+            $billlist["profit"]["sports"] = "";
+            $billlist["profit"]["cards"] = "";
+            $billlist["tax"]["lottery"] = "";
+            $billlist["tax"]["video"] = "";
+            $billlist["tax"]["game"] = "";
+            $billlist["tax"]["sports"] = "";
+            $billlist["tax"]["cards"] = "";
+            $total = "0";
+            $rent = $month_rent;
+        }
+        $context->reply([
+            'status' => 200,
+            'msg' => '获取成功',
+            'site_list'=>$sitelist,
+            'rent' => $rent,
+            'total' => $total,
+            'list' => $billlist,
+        ]);
+    }
+}

@@ -1,0 +1,254 @@
+<?php
+/**
+ * UserBrokerage.php.
+ *
+ * @description   用户返佣日报插入数据任务
+ * @Author  nathan
+ * @date  2019-04-07
+ * @links  Initialize.php
+ * @modifyAuthor   Luis
+ * @modifyTime  2019-04-23
+ */
+
+namespace Site\Task\Report;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class UserBrokerage implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['time' => $time] = $context->getData();
+        $adapter = $context->getAdapter();
+        $daily = intval(date('Ymd', $time));
+        $mysqlReport = $config->data_report;
+        $mysqlUser = $config->data_user;
+
+        //检测数据是否锁定
+        $dailyInfo = [];
+        $sql = 'select daily from daily_status where daily=:daily and frozen=1';
+        foreach ($mysqlReport->query($sql, [':daily' => $daily]) as $row) {
+            $dailyInfo = $row;
+        }
+        if (!empty($dailyInfo)) {
+            $adapter->plan('Report/UserBrokerage', ['time' => $time + 86400], time(), 9);
+
+            return;
+        }
+
+        $allrow = [];
+        $user_sql = 'select user_id,user_key,layer_id from user_info_intact where invite_code>0';
+        $userList = iterator_to_array($mysqlUser->query($user_sql));
+        if (!empty($userList)) {
+            foreach ($userList as $k => $v) {
+                $sql = 'select major_id,major_name,minor_id,minor_name,agent_id,agent_name from user_cumulate where user_id=:user_id';
+                $user_info = [];
+                foreach ($mysqlReport->query($sql, [':user_id' => $v['user_id']]) as $row) {
+                    $user_info = $row;
+                }
+
+                //活跃人数
+                $active_sql = 'select user_id from daily_user where broker_1_id = :user_id AND is_active=1 AND daily=:daily';
+                $activeNum = $mysqlReport->execute($active_sql, [':user_id' => $v['user_id'], ':daily' => $daily]);
+                if ($activeNum != 0 && !empty($user_info)) {
+                    $row = [
+                        'user_id' => $v['user_id'],
+                        'layer_id' => $v['layer_id'],
+                        'user_key' => $v['user_key'],
+                        'major_id' => $row['major_id'],
+                        'major_name' => $row['major_name'],
+                        'minor_id' => $row['minor_id'],
+                        'minor_name' => $row['minor_name'],
+                        'agent_id' => $row['agent_id'],
+                        'agent_name' => $row['agent_name'],
+                        'vigor_count' => $activeNum,
+                  ];
+
+
+                    //下线人数及投注金额
+                    $oneSql = 'SELECT count(distinct user_id) as user_id,sum(wager_amount) as bet,count(bet_amount>0 or null) as bet_user FROM daily_user WHERE broker_1_id=:user_id AND daily=:daily';
+                    $twoSql = 'SELECT count(distinct user_id) as user_id,sum(wager_amount) as bet,count(bet_amount>0 or null) as bet_user FROM daily_user WHERE broker_2_id=:user_id AND daily=:daily and bet_amount>0';
+                    $threeSql = 'SELECT count(distinct user_id) as user_id,sum(wager_amount) as bet,count(bet_amount>0 or null) as bet_user FROM daily_user WHERE broker_3_id=:user_id AND daily=:daily and bet_amount>0';
+                    $broker_1_rate = 0;
+                    $broker_2_rate = 0;
+                    $broker_3_rate = 0;
+                    $brokerageOne_user = 0;
+                    $brokerageOne_bet = 0;
+                    $brokerageOne_bet_user = 0;
+                    $brokerageTwo_user = 0;
+                    $brokerageTwo_bet = 0;
+                    $brokerageTwo_bet_user = 0;
+                    $brokerageThree_user = 0;
+                    $brokerageThree_bet = 0;
+                    $brokerageThree_bet_user = 0;
+                    //求佣金比例
+                    $brokerage_rate_sql = 'select vigor_count,broker_1_rate,broker_2_rate,broker_3_rate from brokerage_rate where layer_id = :layer_id and  vigor_count <= :vigor_count order by vigor_count desc limit 1';
+                    if (!empty(iterator_to_array($mysqlUser->query($brokerage_rate_sql, [':layer_id' => $v['layer_id'], ':vigor_count' => $activeNum])))) {
+                        foreach ($mysqlUser->query($brokerage_rate_sql, [':layer_id' => $v['layer_id'], ':vigor_count' => $activeNum]) as $brokerageInfo) {
+                            $broker_1_rate = $brokerageInfo['broker_1_rate'];
+                            $broker_2_rate = $brokerageInfo['broker_2_rate'];
+                            $broker_3_rate = $brokerageInfo['broker_3_rate'];
+                        }
+                    }
+                    foreach ($mysqlReport->query($oneSql, [':user_id' => $v['user_id'], ':daily' => $daily]) as $one) {
+                        $brokerageOne_user = $one['user_id'];
+                        $brokerageOne_bet = $one['bet'];
+                        $brokerageOne_bet_user = $one['bet_user'];
+                    }
+                    foreach ($mysqlReport->query($twoSql, [':user_id' => $v['user_id'], ':daily' => $daily]) as $two) {
+                        $brokerageTwo_user = $two['user_id'];
+                        $brokerageTwo_bet = $two['bet'];
+                        $brokerageTwo_bet_user = $two['bet_user'];
+                    }
+                    foreach ($mysqlReport->query($threeSql, [':user_id' => $v['user_id'], ':daily' => $daily]) as $three) {
+                        $brokerageThree_user = $three['user_id'];
+                        $brokerageThree_bet = $three['bet'];
+                        $brokerageThree_bet_user = $three['bet_user'];
+                    }
+                    //一级下线佣金
+                    $brokerage_1 = 0;
+                    if ($brokerageOne_bet && $broker_1_rate) {
+                        $brokerage_1 = $brokerageOne_bet * $broker_1_rate * 0.01;
+                    }
+                    //二级下线佣金
+                    $brokerage_2 = 0;
+                    if ($brokerageTwo_bet && $broker_2_rate) {
+                        $brokerage_2 = $brokerageTwo_bet * $broker_2_rate * 0.01;
+                    }
+                    //三级下线佣金
+                    $brokerage_3 = 0;
+                    if ($brokerageThree_bet && $broker_3_rate) {
+                        $brokerage_3 = $brokerageThree_bet * $broker_3_rate * 0.01;
+                    }
+                    //当天佣金
+                    $brokerage = $brokerage_1 + $brokerage_2 + $brokerage_3;
+
+                    //累计佣金
+                    $start_time = strtotime($daily.' 23:59:59');
+                    $brokerageCountSql = 'select sum(brokerage) as brokerage from daily_user_brokerage where user_id= :user_id and daily <= :daily and (deliver_time <= :start_time and deliver_time>0)';
+                    $cumulate_brokerage = 0;
+                    foreach ($mysqlReport->query($brokerageCountSql, [':user_id' => $v['user_id'], ':daily' => $daily,':start_time'=>$start_time]) as $count) {
+                        $cumulate_brokerage = !empty($count['brokerage']) ? $count['brokerage'] : 0;
+                    }
+
+                    $row += [
+                          'brokerage' => !empty($brokerage) ? $brokerage : 0,
+                          'brokerage_1' => !empty($brokerage_1) ? $brokerage_1 : 0,
+                          'brokerage_2' => !empty($brokerage_2) ? $brokerage_2 : 0,
+                          'brokerage_3' => !empty($brokerage_3) ? $brokerage_3 : 0,
+                          'cumulate_brokerage' => $cumulate_brokerage,
+                          'broker_1_user' => !empty($brokerageOne_user) ? $brokerageOne_user : 0,
+                          'broker_1_bet_user' => !empty($brokerageOne_bet_user) ? $brokerageOne_bet_user : 0,
+                          'broker_1_bet' => !empty($brokerageOne_bet) ? $brokerageOne_bet : 0,
+                          'broker_2_user' => !empty($brokerageTwo_user) ? $brokerageTwo_user : 0,
+                          'broker_2_bet_user' => !empty($brokerageTwo_bet_user) ? $brokerageTwo_bet_user : 0,
+                          'broker_2_bet' => !empty($brokerageTwo_bet) ? $brokerageTwo_bet : 0,
+                          'broker_3_user' => !empty($brokerageThree_user) ? $brokerageThree_user : 0,
+                          'broker_3_bet_user' => !empty($brokerageThree_bet_user) ? $brokerageThree_bet_user : 0,
+                          'broker_3_bet' => !empty($brokerageThree_bet) ? $brokerageThree_bet : 0,
+                          'deliver_time' => 0,
+                          'broker_1_rate' => empty($broker_1_rate) ? 0 : $broker_1_rate,
+                          'broker_2_rate' => empty($broker_2_rate) ? 0 : $broker_2_rate,
+                          'broker_3_rate' => empty($broker_3_rate) ? 0 : $broker_3_rate,
+                      ];
+
+                    $allrow[] = $row;
+                }
+            }
+        }
+
+        $mysqlReport->daily_user_brokerage->load($allrow, ['daily' => $daily], 'replace');
+
+        $weekly = intval(date('oW', $time));
+        $first_day = intval(date('Ymd', strtotime('-1 week Monday', $time)));
+        $last_day = intval(date('Ymd', strtotime('+0 week Sunday', $time)));
+
+        $sql = 'select user_key, user_id,layer_id  ,major_id ,major_name ,minor_id ,minor_name, agent_id ,agent_name ,'.
+            ' sum(brokerage) as brokerage ,sum(brokerage_1) as brokerage_1 ,sum(brokerage_2) as brokerage_2 ,sum(brokerage_3)as brokerage_3, sum(broker_1_user) as broker_1_user ,sum(broker_2_user) as broker_2_user,sum(broker_3_user)as broker_3_user,'.
+            'sum(broker_1_bet) as  broker_1_bet,sum(broker_2_bet) as broker_2_bet ,sum(broker_3_bet) as broker_3_bet,  '.
+            'sum(broker_1_bet_user) as broker_1_bet_user,sum(broker_2_bet_user) as broker_2_bet_user,sum(broker_3_bet_user) as broker_3_bet_user'.
+            ' from daily_user_brokerage where daily between :first_day  and :last_day  group by user_id ,layer_id, major_id ,major_name ,minor_id ,minor_name, agent_id, agent_name,user_key ';
+
+        $generator = [];
+        $generatorTranslation = iterator_to_array($mysqlReport->query($sql, [':first_day' => $first_day, ':last_day' => $last_day]));
+        if (!empty($generatorTranslation)) {
+            foreach ($generatorTranslation as $v) {
+                $one_bet_user = 0;
+                $two_bet_user = 0;
+                $three_bet_user = 0;
+                $one_user = 0;
+                $two_user = 0;
+                $three_user = 0;
+                $user_id = $v['user_id'];
+                $oneSql = 'SELECT count(distinct user_id) as user_id,count(distinct(if(bet_amount>0,user_id,0))) as bet_user FROM daily_user WHERE broker_1_id=:user_id AND daily between :first_day  and :last_day ';
+                $twoSql = 'SELECT count(distinct user_id) as user_id,count(distinct(if(bet_amount>0,user_id,0))) as bet_user FROM daily_user WHERE broker_2_id=:user_id AND daily between :first_day  and :last_day ';
+                $threeSql = 'SELECT count(distinct user_id) as user_id,count(distinct(if(bet_amount>0,user_id,0))) as bet_user FROM daily_user WHERE broker_3_id=:user_id AND daily between :first_day  and :last_day ';
+                $parame = [':first_day' => $first_day, ':last_day' => $last_day, ':user_id' => $user_id];
+                $one_bet_user += iterator_to_array($mysqlReport->query($oneSql, $parame))[0]['bet_user'];
+                $two_bet_user += iterator_to_array($mysqlReport->query($twoSql, $parame))[0]['bet_user'];
+                $three_bet_user += iterator_to_array($mysqlReport->query($threeSql, $parame))[0]['bet_user'];
+                $one_user += iterator_to_array($mysqlReport->query($oneSql, $parame))[0]['user_id'];
+                $two_user += iterator_to_array($mysqlReport->query($twoSql, $parame))[0]['user_id'];
+                $three_user += iterator_to_array($mysqlReport->query($threeSql, $parame))[0]['user_id'];
+                $generator[] = [
+                        //'daily' => $daily,
+                        'user_id' => $v['user_id'],
+                        'layer_id' => $v['layer_id'],
+                        'user_key' => $v['user_key'],
+                        'major_id' => $v['major_id'],
+                        'major_name' => $v['major_name'],
+                        'minor_id' => $v['minor_id'],
+                        'minor_name' => $v['minor_name'],
+                        'agent_id' => $v['agent_id'],
+                        'agent_name' => $v['agent_name'],
+                        'brokerage' => $v['brokerage'],
+                        'brokerage_1' => $v['brokerage_1'],
+                        'brokerage_2' => $v['brokerage_2'],
+                        'brokerage_3' => $v['brokerage_3'],
+
+                        'broker_1_user' => $one_user,
+                        'broker_1_bet_user' => $one_bet_user,
+                        'broker_1_bet' => $v['broker_1_bet'],
+                        'broker_2_user' => $two_user,
+                        'broker_2_bet_user' => $two_bet_user,
+                        'broker_2_bet' => $v['broker_2_bet'],
+                        'broker_3_user' => $three_user,
+                        'broker_3_bet_user' => $three_bet_user,
+                        'broker_3_bet' => $v['broker_3_bet'],
+                ];
+            }
+        }
+
+        if (!empty($generator)) {
+            $mysqlReport->weekly_user_brokerage->load($generator, [
+                'weekly' => $weekly,
+            ], 'replace');
+        }
+
+        $monthly = intval(date('Ym', $time));
+        $first_day = date('Ym01', $time);
+        $last_day = date('Ymd', strtotime(date('Y-m-01', $time).' +1 month -1 day'));
+
+        $sql = 'select user_key, user_id,layer_id ,major_id ,major_name ,minor_id ,minor_name, agent_id ,agent_name ,'.
+            ' sum(brokerage)as brokerage ,sum(brokerage_1) as brokerage_1 ,sum(brokerage_2) as brokerage_2 ,'.
+            'sum(brokerage_3) as brokerage_3, sum(broker_1_user)as broker_1_user ,sum(broker_2_user) as broker_2_user,'.
+            'sum(broker_3_user)as broker_3_user,sum(broker_1_bet) as  broker_1_bet,sum(broker_2_bet) as broker_2_bet ,'.
+            'sum(broker_1_bet_user) as broker_1_bet_user,sum(broker_2_bet_user) as broker_2_bet_user,sum(broker_3_bet_user) as broker_3_bet_user,'.
+            'sum(broker_3_bet) as broker_3_bet from daily_user_brokerage where daily between :first_day and :last_day group by user_id ,layer_id, major_id ,major_name ,minor_id ,minor_name, agent_id, agent_name,user_key ';
+        $generator = $mysqlReport->query($sql, [':first_day' => $first_day, ':last_day' => $last_day]);
+        if (!empty($generator)) {
+            $mysqlReport->monthly_user_brokerage->import($generator, [
+                'monthly' => $monthly,
+            ], 'replace');
+        }
+
+        if (time() > $time + 86400) {
+            $adapter->plan('Report/UserBrokerage', ['time' => $time + 86400], time(), 9);
+        }
+        if (time() < $time + 86400 + 3600) {
+            $adapter->plan('Report/UserBrokerage', ['time' => $time], time() + 600, 9);
+        }
+    }
+}

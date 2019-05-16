@@ -1,0 +1,55 @@
+<?php
+namespace Site\Task\Lottery;
+
+use Lib\Calender;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Number implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['game_key' => $game_key, 'period' => $period] = $context->getData();
+        $adapter = $context->getAdapter();
+        $pushData = [];
+        $mysql = $config->data_public;
+        $sql = 'select * from lottery_number where game_key=:game_key and period=:period';
+        $params = ['game_key' => $game_key, 'period' => $period];
+        foreach ($mysql->query($sql, $params) as $row) {
+            $pushData = [
+                'game_key' => $game_key,
+                'period' => $row['period'],
+                'open_time' => $row['open_time'],
+            ];
+            //获取生肖对应数字放入六合彩
+            $zodiacList = Calender::getZodiacList($row['open_time']);
+            $sx = isset($zodiacList[1]) ? $zodiacList[1] : '';
+            if (in_array('six', explode('_', $game_key))) {
+                $pushData['sx'] = $sx;
+            }
+            for ($i = 1; $i <= 20; $i++) {
+                $key = 'normal' . $i;
+                if (-1 != $row[$key]) {
+                    $pushData[$key] = $row[$key];
+                }
+            }
+            for ($i = 1; $i <= 2; $i++) {
+                $key = 'special' . $i;
+                if (-1 != $row[$key]) {
+                    $pushData[$key] = $row[$key];
+                }
+            }
+        }
+        $adapter->plan('NotifyApp', ['path' => 'Lottery/Number', 'data' => ['game_key' => $game_key, 'pushData' => $pushData]]);
+
+        $adapter->plan('Report/LotteryPeriod',['game_key'=>$pushData['game_key'],'period'=>$pushData['period'],'open_time'=>$pushData['open_time']],time()+120,9);
+
+        $adapter->plan('Lottery/Trend',['game_key'=>$game_key]);
+        $deal_list = $config->deal_list;
+        array_push($deal_list,'guest');
+        foreach ($deal_list as $deal_key) {
+            $adapter->plan('Lottery/Settle', ['deal_key' => $deal_key, 'game_key' => $game_key, 'period' => $pushData['period']]);
+        }
+    }
+}

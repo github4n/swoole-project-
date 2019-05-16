@@ -1,0 +1,1869 @@
+delimiter ;;
+
+drop table if exists monthly_staff;;
+create table monthly_staff(
+    monthly int unsigned not null comment '月 php:intval(date(Ym))',
+    major_id int unsigned not null comment '大股东id',
+    major_name varchar(20) not null comment '大股东姓名',
+    minor_id int unsigned not null comment '股东id',
+    minor_name varchar(20) not null comment '股东姓名',
+    agent_id int unsigned not null comment '总代理id',
+    agent_name varchar(20) not null comment '总代理姓名',
+    user_all int unsigned not null comment '用户数',
+    user_register int unsigned not null comment '新注册用户数',
+    user_first_deposit int unsigned not null comment '首充用户数',
+    amount_first_deposit double not null comment '首充金额',
+    user_active int unsigned not null comment '活跃用户数',
+    deposit_count int not null comment '成功入款次数',
+    deposit_user int not null comment '成功入款人数',
+    deposit_amount double not null comment '成功入款金额',
+    deposit_bank_count int not null comment '网银成功入款次数',
+    deposit_bank_user int not null comment '网银成功入款人数',
+    deposit_bank_amount double not null comment '网银成功入款金额',
+    deposit_weixin_count int not null comment '微信成功入款次数',
+    deposit_weixin_user int not null comment '微信成功入款人数',
+    deposit_weixin_amount double not null comment '微信成功入款金额',
+    deposit_alipay_count int not null comment '支付宝成功入款次数',
+    deposit_alipay_user int not null comment '支付宝成功入款人数',
+    deposit_alipay_amount double not null comment '支付宝成功入款金额',
+    bank_deposit_count int not null comment '公司入款次数',
+    bank_deposit_user int not null comment '公司入款人数',
+    bank_deposit_amount double not null comment '公司入款金额',
+    staff_deposit_count int not null comment '人工入款次数',
+    staff_deposit_user int not null comment '人工入款人数',
+    staff_deposit_amount double not null comment '人工入款金额',
+    withdraw_count int not null comment '成功出款次数',
+    withdraw_user int not null comment '成功出款人数',
+    withdraw_amount double not null comment '成功出款金额',
+    staff_withdraw_count int not null comment '人工出款次数',
+    staff_withdraw_user int not null comment '人工出款人数',
+    staff_withdraw_amount double not null comment '人工出款金额',
+    coupon_user int not null comment '活动礼金总人数',
+    coupon_amount double not null comment '活动礼金总额',
+    brokerage_user int not null comment '返佣总人数',
+    brokerage_amount int not null comment '返佣总金额',
+    bet_count int not null comment '总注单数量',
+    bet_user int not null comment '总投注人数',
+    bet_amount double not null comment '总投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_user int not null comment '有效投注人数',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '总派奖单数',
+    bonus_user int not null comment '总派奖人数',
+    bonus_amount double not null comment '总派奖金额',
+    rebate_count int not null comment '总返点单数',
+    rebate_user int not null comment '总返点人数',
+    rebate_amount double not null comment '总返点金额',
+    subsidy_user int not null comment '总返水人数',
+    subsidy_amount double not null comment '总返水金额',
+    profit_amount double not null comment '总损益金额',
+    index(major_id,minor_id,agent_id,monthly),
+    primary key(monthly,major_id,minor_id,agent_id)
+) comment '体系月报';;
+
+drop table if exists monthly_staff_lottery;;
+create table monthly_staff_lottery(
+    monthly int unsigned not null comment '月 php:intval(date(Ym))',
+    major_id int unsigned not null comment '大股东id',
+    major_name varchar(20) not null comment '大股东姓名',
+    minor_id int unsigned not null comment '股东id',
+    minor_name varchar(20) not null comment '股东姓名',
+    agent_id int unsigned not null comment '总代理id',
+    agent_name varchar(20) not null comment '总代理姓名',
+    model_key varchar(10) not null comment '彩票类型key',
+    model_name varchar(20) not null comment '彩票类型名字',
+    game_key varchar(20) not null comment '彩种key',
+    game_name varchar(20) not null comment '彩种名字',
+    bet_count int not null comment '注单数量',
+    bet_user int not null comment '投注人数',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_user int not null comment '有效投注人数',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_user int not null comment '派奖人数',
+    bonus_amount double not null comment '派奖金额',
+    rebate_count int not null comment '返点单数',
+    rebate_user int not null comment '返点人数',
+    rebate_amount double not null comment '返点金额',
+    subsidy_user int not null comment '返水人数',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id,monthly,game_key),
+    primary key(monthly,major_id,minor_id,agent_id,game_key)
+) comment '体系分彩种月报';;
+
+drop table if exists monthly_staff_external;;
+create table monthly_staff_external(
+    monthly int unsigned not null comment '月 php:intval(date(Ym))',
+    major_id int unsigned not null comment '大股东id',
+    major_name varchar(20) not null comment '大股东姓名',
+    minor_id int unsigned not null comment '股东id',
+    minor_name varchar(20) not null comment '股东姓名',
+    agent_id int unsigned not null comment '总代理id',
+    agent_name varchar(20) not null comment '总代理姓名',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    interface_key varchar(10) not null comment '外接口： fg-FunGaming，ky-开元棋牌，lb-Lebo体育，ag-AsiaGaming',
+    game_key varchar(20) not null comment '外接口key',
+    game_name varchar(20) not null comment '外接口名字',
+    bet_count int not null comment '注单数量',
+    bet_user int not null comment '投注人数',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_user int not null comment '有效投注人数',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_user int not null comment '派奖人数',
+    bonus_amount double not null comment '派奖金额',
+    subsidy_user int not null comment '返水人数',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id,monthly,game_key),
+    primary key(monthly,major_id,minor_id,agent_id,game_key)
+) comment '体系外接口月报';;
+
+drop table if exists lottery_period;;
+create table lottery_period(
+    game_key varchar(20) not null comment '彩种key',
+    period varchar(20) not null comment '期号',
+    open_time int unsigned not null comment '实际开奖时间',
+    user_count int unsigned not null comment '投注人数',
+    bet_count int unsigned not null comment '注单数',
+    bet_amount double not null comment '投注金额',
+    wager_count int unsigned not null comment '有效注单',
+    wager_amount double not null comment '有效投注金额',
+    rebate_amount double not null comment '返点总额',
+    bonus_amount double not null comment '中奖总额',
+    profit_amount double not null comment '损益总额',
+    primary key(game_key,period)
+) comment '彩票期数据';;
+
+drop table if exists daily_staff;;
+create table daily_staff(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    major_id int unsigned not null comment '大股东id',
+    major_name varchar(20) not null comment '大股东姓名',
+    minor_id int unsigned not null comment '股东id',
+    minor_name varchar(20) not null comment '股东姓名',
+    agent_id int unsigned not null comment '总代理id',
+    agent_name varchar(20) not null comment '总代理姓名',
+    user_all int unsigned not null comment '用户数',
+    user_register int unsigned not null comment '新注册用户数',
+    user_first_deposit int unsigned not null comment '首充用户数',
+    amount_first_deposit double not null comment '首充金额',
+    user_active int unsigned not null comment '活跃用户数',
+    deposit_count int not null comment '成功入款次数',
+    deposit_user int not null comment '成功入款人数',
+    deposit_amount double not null comment '成功入款金额',
+    deposit_bank_count int not null comment '网银成功入款次数',
+    deposit_bank_user int not null comment '网银成功入款人数',
+    deposit_bank_amount double not null comment '网银成功入款金额',
+    deposit_weixin_count int not null comment '微信成功入款次数',
+    deposit_weixin_user int not null comment '微信成功入款人数',
+    deposit_weixin_amount double not null comment '微信成功入款金额',
+    deposit_alipay_count int not null comment '支付宝成功入款次数',
+    deposit_alipay_user int not null comment '支付宝成功入款人数',
+    deposit_alipay_amount double not null comment '支付宝成功入款金额',
+    bank_deposit_count int not null comment '公司入款次数',
+    bank_deposit_user int not null comment '公司入款人数',
+    bank_deposit_amount double not null comment '公司入款金额',
+    staff_deposit_count int not null comment '人工入款次数',
+    staff_deposit_user int not null comment '人工入款人数',
+    staff_deposit_amount double not null comment '人工入款金额',
+    withdraw_count int not null comment '成功出款次数',
+    withdraw_user int not null comment '成功出款人数',
+    withdraw_amount double not null comment '成功出款金额',
+    staff_withdraw_count int not null comment '人工出款次数',
+    staff_withdraw_user int not null comment '人工出款人数',
+    staff_withdraw_amount double not null comment '人工出款金额',
+    coupon_user int not null comment '活动礼金总人数',
+    coupon_amount double not null comment '活动礼金总额',
+    brokerage_user int not null comment '返佣总人数',
+    brokerage_amount int not null comment '返佣总金额',
+    bet_count int not null comment '总注单数量',
+    bet_user int not null comment '总投注人数',
+    bet_amount double not null comment '总投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_user int not null comment '有效投注人数',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '总派奖单数',
+    bonus_user int not null comment '总派奖人数',
+    bonus_amount double not null comment '总派奖金额',
+    rebate_count int not null comment '总返点单数',
+    rebate_user int not null comment '总返点人数',
+    rebate_amount double not null comment '总返点金额',
+    subsidy_user int not null comment '总返水人数',
+    subsidy_amount double not null comment '总返水金额',
+    profit_amount double not null comment '总损益金额',
+    index(major_id,minor_id,agent_id,daily),
+    primary key(daily,major_id,minor_id,agent_id)
+) comment '体系日报';;
+
+drop table if exists daily_staff_lottery;;
+create table daily_staff_lottery(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    major_id int unsigned not null comment '大股东id',
+    major_name varchar(20) not null comment '大股东姓名',
+    minor_id int unsigned not null comment '股东id',
+    minor_name varchar(20) not null comment '股东姓名',
+    agent_id int unsigned not null comment '总代理id',
+    agent_name varchar(20) not null comment '总代理姓名',
+    model_key varchar(10) not null comment '彩票类型key',
+    model_name varchar(20) not null comment '彩票类型名字',
+    game_key varchar(20) not null comment '彩种key',
+    game_name varchar(20) not null comment '彩种名字',
+    bet_count int not null comment '注单数量',
+    bet_user int not null comment '投注人数',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_user int not null comment '有效投注人数',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_user int not null comment '派奖人数',
+    bonus_amount double not null comment '派奖金额',
+    rebate_count int not null comment '返点单数',
+    rebate_user int not null comment '返点人数',
+    rebate_amount double not null comment '返点金额',
+    subsidy_user int not null comment '返水人数',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id,daily,game_key),
+    primary key(daily,major_id,minor_id,agent_id,game_key)
+) comment '体系分彩种日报';;
+
+drop table if exists daily_staff_external;;
+create table daily_staff_external(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    major_id int unsigned not null comment '大股东id',
+    major_name varchar(20) not null comment '大股东姓名',
+    minor_id int unsigned not null comment '股东id',
+    minor_name varchar(20) not null comment '股东姓名',
+    agent_id int unsigned not null comment '总代理id',
+    agent_name varchar(20) not null comment '总代理姓名',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    interface_key varchar(10) not null comment '外接口： fg-FunGaming，ky-开元棋牌，lb-Lebo体育，ag-AsiaGaming',
+    game_key varchar(20) not null comment '外接口key',
+    game_name varchar(20) not null comment '外接口名字',
+    bet_count int not null comment '注单数量',
+    bet_user int not null comment '投注人数',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_user int not null comment '有效投注人数',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_user int not null comment '派奖人数',
+    bonus_amount double not null comment '派奖金额',
+    subsidy_user int not null comment '返水人数',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id,daily,game_key),
+    primary key(daily,major_id,minor_id,agent_id,game_key)
+) comment '体系外接口日报';;
+
+drop table if exists monthly_user;;
+create table monthly_user(
+    monthly int unsigned not null comment '月 php:intval(date(Ym))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    deposit_count int not null comment '成功入款次数',
+    deposit_amount double not null comment '成功入款金额',
+    deposit_bank_count int not null comment '网银成功入款次数',
+    deposit_bank_amount double not null comment '网银成功入款金额',
+    deposit_weixin_count int not null comment '微信成功入款次数',
+    deposit_weixin_amount double not null comment '微信成功入款金额',
+    deposit_alipay_count int not null comment '支付宝成功入款次数',
+    deposit_alipay_amount double not null comment '支付宝成功入款金额',
+    bank_deposit_count int not null comment '公司入款次数',
+    bank_deposit_amount double not null comment '公司入款金额',
+    staff_deposit_count int not null comment '人工入款次数',
+    staff_deposit_amount double not null comment '人工入款金额',
+    withdraw_count int not null comment '成功出款次数',
+    withdraw_amount double not null comment '成功出款金额',
+    staff_withdraw_count int not null comment '人工出款次数',
+    staff_withdraw_amount double not null comment '人工出款金额',
+    coupon_amount double not null comment '活动礼金总额',
+    bet_count int not null comment '注单数量',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_amount double not null comment '派奖金额',
+    rebate_count int not null comment '返点单数',
+    rebate_amount double not null comment '返点金额',
+    subsidy_amount double not null comment '返水金额',
+    brokerage_amount double not null comment '返佣总额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id),
+    index(user_id,monthly),
+    primary key(monthly,user_id)
+) comment '用户月报';;
+
+drop table if exists monthly_user_lottery;;
+create table monthly_user_lottery(
+    monthly int unsigned not null comment '月 php:intval(date(Ym))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    model_key varchar(10) not null comment '彩票类型key',
+    model_name varchar(20) not null comment '彩票类型名字',
+    game_key varchar(20) not null comment '彩种key',
+    game_name varchar(20) not null comment '彩种名字',
+    bet_count int not null comment '注单数量',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_amount double not null comment '派奖金额',
+    rebate_count int not null comment '返点单数',
+    rebate_amount double not null comment '返点金额',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id),
+    index(user_id,monthly,game_key),
+    primary key(monthly,user_id,game_key)
+) comment '用户分彩种月报';;
+
+drop table if exists monthly_user_external;;
+create table monthly_user_external(
+    monthly int unsigned not null comment '月 php:intval(date(Ym))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    interface_key varchar(10) not null comment '外接口： fg-FunGaming，ky-开元棋牌，lb-Lebo体育，ag-AsiaGaming',
+    game_key varchar(20) not null comment '外接口key',
+    game_name varchar(20) not null comment '外接口名字',
+    bet_count int not null comment '注单数量',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_amount double not null comment '派奖金额',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    primary key(monthly,user_id,game_key)
+) comment '用户外接口月报';;
+
+drop table if exists daily_user_brokerage;;
+create table daily_user_brokerage(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    layer_id int unsigned not null comment '代理层级id',
+    vigor_count int unsigned not null comment '活跃会员个数',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_rate double not null comment '一级下线佣金比例',
+    broker_2_rate double not null comment '二级下线佣金比例',
+    broker_3_rate double not null comment '三级下线佣金比例',
+    brokerage double not null comment '当天佣金',
+    brokerage_1 double not null comment '一级下线佣金',
+    brokerage_2 double not null comment '二级下线佣金',
+    brokerage_3 double not null comment '三级下线佣金',
+    cumulate_brokerage double not null comment '累计佣金',
+    broker_1_user double not null comment '一级下线会员人数',
+    broker_2_user double not null comment '二级下线会员人数',
+    broker_3_user double not null comment '三级下线会员人数',
+    broker_1_bet double not null comment '一级下线投注金额',
+    broker_2_bet double not null comment '二级下线投注金额',
+    broker_3_bet double not null comment '三级下线投注金额',
+    broker_1_bet_user double not null comment '一级下线投注人数',
+    broker_2_bet_user double not null comment '二级下线投注人数',
+    broker_3_bet_user double not null comment '三级下线投注人数',
+    deliver_time int unsigned not null comment '派发时间，0表示未派发',
+    primary key(daily,user_id)
+) comment '会员反水日报';;
+
+drop table if exists weekly_user_brokerage;;
+create table weekly_user_brokerage(
+    weekly int unsigned not null comment '周 php:intval(date(oW))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    layer_id int unsigned not null comment '代理层级id',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    brokerage double not null comment '当天佣金',
+    brokerage_1 double not null comment '一级下线佣金',
+    brokerage_2 double not null comment '二级下线佣金',
+    brokerage_3 double not null comment '三级下线佣金',
+    broker_1_user double not null comment '一级下线会员人数',
+    broker_2_user double not null comment '二级下线会员人数',
+    broker_3_user double not null comment '三级下线会员人数',
+    broker_1_bet double not null comment '一级下线投注金额',
+    broker_2_bet double not null comment '二级下线投注金额',
+    broker_3_bet double not null comment '三级下线投注金额',
+    broker_1_bet_user double not null comment '一级下线投注人数',
+    broker_2_bet_user double not null comment '二级下线投注人数',
+    broker_3_bet_user double not null comment '三级下线投注人数',
+    primary key(weekly,user_id)
+) comment '会员反水周报';;
+
+drop table if exists monthly_user_brokerage;;
+create table monthly_user_brokerage(
+    monthly int unsigned not null comment '月 php:intval(date(Ym))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    layer_id int unsigned not null comment '代理层级id',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    brokerage double not null comment '当天佣金',
+    brokerage_1 double not null comment '一级下线佣金',
+    brokerage_2 double not null comment '二级下线佣金',
+    brokerage_3 double not null comment '三级下线佣金',
+    broker_1_user double not null comment '一级下线会员人数',
+    broker_2_user double not null comment '二级下线会员人数',
+    broker_3_user double not null comment '三级下线会员人数',
+    broker_1_bet double not null comment '一级下线投注金额',
+    broker_2_bet double not null comment '二级下线投注金额',
+    broker_3_bet double not null comment '三级下线投注金额',
+    broker_1_bet_user double not null comment '一级下线投注人数',
+    broker_2_bet_user double not null comment '二级下线投注人数',
+    broker_3_bet_user double not null comment '三级下线投注人数',
+    primary key(monthly,user_id)
+) comment '会员反水周报';;
+
+drop table if exists user_cumulate;;
+create table user_cumulate(
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    register_invite varchar(10) not null comment '注册使用的邀请码',
+    register_time int unsigned not null comment '注册时间',
+    register_ip int unsigned not null comment '注册ip',
+    register_device tinyint unsigned not null comment '注册设备类型：0-PC，1-手机浏览器，2-苹果手机app，3-安卓手机app',
+    login_time int unsigned not null comment '登陆时间',
+    login_ip int unsigned not null comment '登陆ip',
+    login_device tinyint unsigned not null comment '登录设备类型：0-PC，1-手机浏览器，2-苹果手机app，3-安卓手机app',
+    login_count int unsigned not null default 0 comment '登陆次数',
+    phone_number varchar(20) not null default '' comment '手机号',
+    invite_code varchar(10) not null comment '邀请码',
+    money double not null comment '账户余额',
+    deposit_count int not null comment '成功入款次数',
+    deposit_amount double not null comment '成功入款金额',
+    withdraw_count int not null comment '成功出款次数',
+    withdraw_amount double not null comment '成功出款金额',
+    subsidy double not null comment '反水',
+    brokerage double not null comment '代理佣金',
+    bet_all double not null comment '有效投注',
+    bet_lottery double not null comment '彩票投注',
+    bet_video double not null comment '真人视讯投注',
+    bet_game double not null comment '电子游戏投注',
+    bet_sports double not null comment '体育投注',
+    bet_cards double not null comment '棋牌投注',
+    bonus_all double not null comment '派奖',
+    bonus_lottery double not null comment '彩票派奖',
+    bonus_video double not null comment '真人视讯派奖',
+    bonus_game double not null comment '电子游戏派奖',
+    bonus_sports double not null comment '体育派奖',
+    bonus_cards double not null comment '棋牌派奖',
+    profit_all double not null comment '损益',
+    profit_lottery double not null comment '彩票损益',
+    profit_video double not null comment '真人视讯损益',
+    profit_game double not null comment '电子游戏损益',
+    profit_sports double not null comment '体育损益',
+    profit_cards double not null comment '棋牌损益',
+    index(major_id,minor_id,agent_id),
+    primary key(user_id)
+) comment '用户累计数据';;
+
+drop table if exists weekly_user;;
+create table weekly_user(
+    weekly int unsigned not null comment '周 php:intval(date(oW))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    deposit_count int not null comment '成功入款次数',
+    deposit_amount double not null comment '成功入款金额',
+    deposit_bank_count int not null comment '网银成功入款次数',
+    deposit_bank_amount double not null comment '网银成功入款金额',
+    deposit_weixin_count int not null comment '微信成功入款次数',
+    deposit_weixin_amount double not null comment '微信成功入款金额',
+    deposit_alipay_count int not null comment '支付宝成功入款次数',
+    deposit_alipay_amount double not null comment '支付宝成功入款金额',
+    bank_deposit_count int not null comment '公司入款次数',
+    bank_deposit_amount double not null comment '公司入款金额',
+    staff_deposit_count int not null comment '人工入款次数',
+    staff_deposit_amount double not null comment '人工入款金额',
+    withdraw_count int not null comment '成功出款次数',
+    withdraw_amount double not null comment '成功出款金额',
+    staff_withdraw_count int not null comment '人工出款次数',
+    staff_withdraw_amount double not null comment '人工出款金额',
+    coupon_amount double not null comment '活动礼金总额',
+    bet_count int not null comment '注单数量',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_amount double not null comment '派奖金额',
+    rebate_count int not null comment '返点单数',
+    rebate_amount double not null comment '返点金额',
+    subsidy_amount double not null comment '返水金额',
+    brokerage_amount double not null comment '返佣总额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id),
+    index(user_id,weekly),
+    primary key(weekly,user_id)
+) comment '用户周报';;
+
+drop table if exists weekly_user_lottery;;
+create table weekly_user_lottery(
+    weekly int unsigned not null comment '周 php:intval(date(oW))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    model_key varchar(10) not null comment '彩票类型key',
+    model_name varchar(20) not null comment '彩票类型名字',
+    game_key varchar(20) not null comment '彩种key',
+    game_name varchar(20) not null comment '彩种名字',
+    bet_count int not null comment '注单数量',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_amount double not null comment '派奖金额',
+    rebate_count int not null comment '返点单数',
+    rebate_amount double not null comment '返点金额',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id),
+    index(user_id,weekly,game_key),
+    primary key(weekly,user_id,game_key)
+) comment '用户分彩种周报';;
+
+drop table if exists weekly_user_external;;
+create table weekly_user_external(
+    weekly int unsigned not null comment '周 php:intval(date(oW))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    interface_key varchar(10) not null comment '外接口： fg-FunGaming，ky-开元棋牌，lb-Lebo体育，ag-AsiaGaming',
+    game_key varchar(20) not null comment '外接口key',
+    game_name varchar(20) not null comment '外接口名字',
+    bet_count int not null comment '注单数量',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_amount double not null comment '派奖金额',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    primary key(weekly,user_id,game_key)
+) comment '用户外接口周报';;
+
+drop table if exists monthly_tax;;
+create table monthly_tax(
+    monthly int unsigned not null comment '月份:intval(date(Ym))',
+    tax_total double unsigned not null comment '应收总金额',
+    tax_rent double unsigned not null comment '服务费',
+    wager_lottery double not null comment '彩票有效投注金额',
+    bonus_lottery double not null comment '彩票派奖金额',
+    profit_lottery double not null comment '彩票损益',
+    setting_lottery json not null comment '彩票提成比例',
+    tax_lottery double unsigned not null comment '彩票提成',
+    wager_video double not null comment '真人有效投注金额',
+    bonus_video double not null comment '真人派奖金额',
+    profit_video double not null comment '真人损益',
+    setting_video json not null comment '真人提成比例',
+    tax_video double unsigned not null comment '真人提成',
+    wager_game double not null comment '电子有效投注金额',
+    bonus_game double not null comment '电子派奖金额',
+    profit_game double not null comment '电子损益',
+    setting_game json not null comment '电子提成比例',
+    tax_game double unsigned not null comment '电子提成',
+    wager_sports double not null comment '体育有效投注金额',
+    bonus_sports double not null comment '体育派奖金额',
+    profit_sports double not null comment '体育损益',
+    setting_sports json not null comment '体育提成比例',
+    tax_sports double unsigned not null comment '体育提成',
+    wager_cards double not null comment '棋牌有效投注金额',
+    bonus_cards double not null comment '棋牌派奖金额',
+    profit_cards double not null comment '棋牌损益',
+    setting_cards json not null comment '棋牌提成比例',
+    tax_cards double unsigned not null comment '棋牌提成',
+    primary key(monthly)
+) comment '月结对账';;
+
+drop table if exists user_event;;
+create table user_event(
+    user_id int unsigned auto_increment not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    register_time int unsigned not null comment '注册时间',
+    first_deposit_time int unsigned not null default 0 comment '首充时间',
+    second_deposit_time int unsigned not null default 0 comment '二充时间',
+    third_deposit_time int unsigned not null default 0 comment '三充时间',
+    last_deposit_time int unsigned not null default 0 comment '最后成功充值时间',
+    last_withdraw_time int unsigned not null default 0 comment '最后成功出款时间',
+    index(major_id,minor_id,agent_id),
+    primary key(user_id)
+) comment '用户事件';;
+
+drop table if exists daily_layer_brokerage;;
+create table daily_layer_brokerage(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    layer_id int unsigned not null comment '层级id',
+    layer_name varchar(20) not null comment '层级名称',
+    user_count int not null comment '代理人数',
+    brokerage_count int not null comment '获得佣金人数',
+    brokerage_amount double not null comment '返佣总额',
+    auto_deliver tinyint not null comment '自动派发',
+    deliver_staff_id int unsigned not null comment '派发人id',
+    deliver_staff_name varchar(20) not null comment '派发人姓名',
+    deliver_launch_time int unsigned not null comment '开始派发时间',
+    deliver_finish_time int unsigned not null comment '完成派发时间',
+    primary key(daily,layer_id)
+) comment '佣金结算';;
+
+drop table if exists daily_user_coupon;;
+create table daily_user_coupon(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    coupon_type varchar(20) not null comment '活动类型： daily-每日加奖，upgrade1-会员晋级奖励，upgrade2-代理晋级奖励，deposit-充值送彩金',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    coupon_money double not null comment '奖励金额',
+    coupon_audit double not null comment '活动稽核',
+    offer_time int unsigned not null comment '发放时间',
+    take_time int unsigned not null comment '领取时间',
+    index(major_id,minor_id,agent_id,daily,coupon_type),
+    index(user_id,daily,coupon_type),
+    primary key(daily,user_id,coupon_type)
+) comment '每日加奖用户日报';;
+
+drop table if exists daily_staff_coupon;;
+create table daily_staff_coupon(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    coupon_type varchar(20) not null comment '活动类型： daily-每日加奖，upgrade1-会员晋级奖励，upgrade2-代理晋级奖励，deposit-充值送彩金',
+    major_id int unsigned not null comment '大股东id',
+    major_name varchar(20) not null comment '大股东姓名',
+    minor_id int unsigned not null comment '股东id',
+    minor_name varchar(20) not null comment '股东姓名',
+    agent_id int unsigned not null comment '总代理id',
+    agent_name varchar(20) not null comment '总代理姓名',
+    offer_money double not null comment '发放金额',
+    offer_count int not null comment '发放人数',
+    take_money double not null comment '领取金额',
+    take_count int not null comment '领取人数',
+    unique(major_id,minor_id,agent_id,daily,coupon_type),
+    primary key(daily,major_id,minor_id,agent_id,coupon_type)
+) comment '每日加奖体系日报';;
+
+drop table if exists daily_layer_subsidy;;
+create table daily_layer_subsidy(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    layer_id int unsigned not null comment '层级id',
+    layer_name varchar(20) not null comment '层级名称',
+    bet_all double not null comment '投注总额',
+    subsidy_all double not null comment '反水总额',
+    bet_lottery double not null comment '彩票投注总额',
+    subsidy_lottery double not null comment '彩票反水总额',
+    bet_video double not null comment '真人投注总额',
+    subsidy_video double not null comment '真人反水总额',
+    bet_game double not null comment '电子投注总额',
+    subsidy_game double not null comment '电子反水总额',
+    bet_sports double not null comment '体育投注总额',
+    subsidy_sports double not null comment '体育反水总额',
+    bet_cards double not null comment '棋牌投注总额',
+    subsidy_cards double not null comment '棋牌反水总额',
+    auto_deliver tinyint not null comment '自动派发',
+    deliver_staff_id int unsigned not null comment '派发人id',
+    deliver_staff_name varchar(20) not null comment '派发人姓名',
+    deliver_launch_time int unsigned not null comment '开始派发时间',
+    deliver_finish_time int unsigned not null comment '完成派发时间',
+    primary key(daily,layer_id)
+) comment '反水结算';;
+
+drop table if exists daily_user_subsidy;;
+create table daily_user_subsidy(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理层级id',
+    layer_name varchar(20) not null comment '层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    subsidy double not null comment '当期反水',
+    cumulate_subsidy double not null comment '累计反水总额',
+    deliver_time int unsigned not null comment '派发时间，0表示未派发',
+    primary key(daily,user_id)
+) comment '会员反水日报';;
+
+drop table if exists daily_user_game_subsidy;;
+create table daily_user_game_subsidy(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理层级id',
+    layer_name varchar(20) not null comment '层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    game_key varchar(20) not null comment '彩种或外接口key',
+    bet_amount double not null comment '有效投注',
+    subsidy double not null comment '反水金额',
+    primary key(daily,user_id,game_key)
+) comment '会员各游戏反水日报';;
+
+drop table if exists weekly_user_subsidy;;
+create table weekly_user_subsidy(
+    weekly int unsigned not null comment '周 php:intval(date(oW))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理层级id',
+    layer_name varchar(20) not null comment '层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    subsidy double not null comment '当期反水',
+    cumulate_subsidy double not null comment '累计反水总额',
+    primary key(weekly,user_id)
+) comment '会员反水日报';;
+
+drop table if exists weekly_user_game_subsidy;;
+create table weekly_user_game_subsidy(
+    weekly int unsigned not null comment '周 php:intval(date(oW))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理层级id',
+    layer_name varchar(20) not null comment '层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    game_key varchar(20) not null comment '彩种或外接口key',
+    bet_amount double not null comment '有效投注',
+    subsidy double not null comment '反水金额',
+    primary key(weekly,user_id,game_key)
+) comment '会员各游戏反水日报';;
+
+drop table if exists monthly_user_subsidy;;
+create table monthly_user_subsidy(
+    monthly int unsigned not null comment '月 php:intval(date(Ym))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理层级id',
+    layer_name varchar(20) not null comment '层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    subsidy double not null comment '当期反水',
+    cumulate_subsidy double not null comment '累计反水总额',
+    primary key(monthly,user_id)
+) comment '会员反水日报';;
+
+drop table if exists monthly_user_game_subsidy;;
+create table monthly_user_game_subsidy(
+    monthly int unsigned not null comment '月 php:intval(date(Ym))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理层级id',
+    layer_name varchar(20) not null comment '层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    game_key varchar(20) not null comment '彩种或外接口key',
+    bet_amount double not null comment '有效投注',
+    subsidy double not null comment '反水金额',
+    primary key(monthly,user_id,game_key)
+) comment '会员各游戏反水日报';;
+
+drop table if exists weekly_staff;;
+create table weekly_staff(
+    weekly int unsigned not null comment '周 php:intval(date(oW))',
+    major_id int unsigned not null comment '大股东id',
+    major_name varchar(20) not null comment '大股东姓名',
+    minor_id int unsigned not null comment '股东id',
+    minor_name varchar(20) not null comment '股东姓名',
+    agent_id int unsigned not null comment '总代理id',
+    agent_name varchar(20) not null comment '总代理姓名',
+    user_all int unsigned not null comment '用户数',
+    user_register int unsigned not null comment '新注册用户数',
+    user_first_deposit int unsigned not null comment '首充用户数',
+    amount_first_deposit double not null comment '首充金额',
+    user_active int unsigned not null comment '活跃用户数',
+    deposit_count int not null comment '成功入款次数',
+    deposit_user int not null comment '成功入款人数',
+    deposit_amount double not null comment '成功入款金额',
+    deposit_bank_count int not null comment '网银成功入款次数',
+    deposit_bank_user int not null comment '网银成功入款人数',
+    deposit_bank_amount double not null comment '网银成功入款金额',
+    deposit_weixin_count int not null comment '微信成功入款次数',
+    deposit_weixin_user int not null comment '微信成功入款人数',
+    deposit_weixin_amount double not null comment '微信成功入款金额',
+    deposit_alipay_count int not null comment '支付宝成功入款次数',
+    deposit_alipay_user int not null comment '支付宝成功入款人数',
+    deposit_alipay_amount double not null comment '支付宝成功入款金额',
+    bank_deposit_count int not null comment '公司入款次数',
+    bank_deposit_user int not null comment '公司入款人数',
+    bank_deposit_amount double not null comment '公司入款金额',
+    staff_deposit_count int not null comment '人工入款次数',
+    staff_deposit_user int not null comment '人工入款人数',
+    staff_deposit_amount double not null comment '人工入款金额',
+    withdraw_count int not null comment '成功出款次数',
+    withdraw_user int not null comment '成功出款人数',
+    withdraw_amount double not null comment '成功出款金额',
+    staff_withdraw_count int not null comment '人工出款次数',
+    staff_withdraw_user int not null comment '人工出款人数',
+    staff_withdraw_amount double not null comment '人工出款金额',
+    coupon_user int not null comment '活动礼金总人数',
+    coupon_amount double not null comment '活动礼金总额',
+    brokerage_user int not null comment '返佣总人数',
+    brokerage_amount int not null comment '返佣总金额',
+    bet_count int not null comment '总注单数量',
+    bet_user int not null comment '总投注人数',
+    bet_amount double not null comment '总投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_user int not null comment '有效投注人数',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '总派奖单数',
+    bonus_user int not null comment '总派奖人数',
+    bonus_amount double not null comment '总派奖金额',
+    rebate_count int not null comment '总返点单数',
+    rebate_user int not null comment '总返点人数',
+    rebate_amount double not null comment '总返点金额',
+    subsidy_user int not null comment '总返水人数',
+    subsidy_amount double not null comment '总返水金额',
+    profit_amount double not null comment '总损益金额',
+    index(major_id,minor_id,agent_id,weekly),
+    primary key(weekly,major_id,minor_id,agent_id)
+) comment '体系周报';;
+
+drop table if exists weekly_staff_lottery;;
+create table weekly_staff_lottery(
+    weekly int unsigned not null comment '周 php:intval(date(oW))',
+    major_id int unsigned not null comment '大股东id',
+    major_name varchar(20) not null comment '大股东姓名',
+    minor_id int unsigned not null comment '股东id',
+    minor_name varchar(20) not null comment '股东姓名',
+    agent_id int unsigned not null comment '总代理id',
+    agent_name varchar(20) not null comment '总代理姓名',
+    model_key varchar(10) not null comment '彩票类型key',
+    model_name varchar(20) not null comment '彩票类型名字',
+    game_key varchar(20) not null comment '彩种key',
+    game_name varchar(20) not null comment '彩种名字',
+    bet_count int not null comment '注单数量',
+    bet_user int not null comment '投注人数',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_user int not null comment '有效投注人数',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_user int not null comment '派奖人数',
+    bonus_amount double not null comment '派奖金额',
+    rebate_count int not null comment '返点单数',
+    rebate_user int not null comment '返点人数',
+    rebate_amount double not null comment '返点金额',
+    subsidy_user int not null comment '返水人数',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id,weekly,game_key),
+    primary key(weekly,major_id,minor_id,agent_id,game_key)
+) comment '体系分彩种周报';;
+
+drop table if exists weekly_staff_external;;
+create table weekly_staff_external(
+    weekly int unsigned not null comment '周 php:intval(date(oW))',
+    major_id int unsigned not null comment '大股东id',
+    major_name varchar(20) not null comment '大股东姓名',
+    minor_id int unsigned not null comment '股东id',
+    minor_name varchar(20) not null comment '股东姓名',
+    agent_id int unsigned not null comment '总代理id',
+    agent_name varchar(20) not null comment '总代理姓名',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    interface_key varchar(10) not null comment '外接口： fg-FunGaming，ky-开元棋牌，lb-Lebo体育，ag-AsiaGaming',
+    game_key varchar(20) not null comment '外接口key',
+    game_name varchar(20) not null comment '外接口名字',
+    bet_count int not null comment '注单数量',
+    bet_user int not null comment '投注人数',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_user int not null comment '有效投注人数',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_user int not null comment '派奖人数',
+    bonus_amount double not null comment '派奖金额',
+    subsidy_user int not null comment '返水人数',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id,weekly,game_key),
+    primary key(weekly,major_id,minor_id,agent_id,game_key)
+) comment '体系外接口周报';;
+
+drop table if exists daily_status;;
+create table daily_status(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+	frozen tinyint not null default 0 comment '0-日数据未完成结算，1-数据已冻结',
+	primary key(daily)
+) comment '日数据状态';;
+
+drop table if exists daily_user;;
+create table daily_user(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    is_today_register tinyint not null comment '是当天注册用户',
+    is_active tinyint not null comment '是活跃用户',
+    is_first_deposit tinyint not null comment '是首充用户',
+    deposit_count int not null comment '成功入款次数',
+    deposit_amount double not null comment '成功入款金额',
+    deposit_max double not null comment '最大入款金额',
+    deposit_bank_count int not null comment '网银成功入款次数',
+    deposit_bank_amount double not null comment '网银成功入款金额',
+    deposit_weixin_count int not null comment '微信成功入款次数',
+    deposit_weixin_amount double not null comment '微信成功入款金额',
+    deposit_alipay_count int not null comment '支付宝成功入款次数',
+    deposit_alipay_amount double not null comment '支付宝成功入款金额',
+    bank_deposit_count int not null comment '银行卡入款次数',
+    bank_deposit_amount double not null comment '银行卡入款金额',
+    bank_deposit_coupon double not null comment '银行卡入款优惠金额',
+    simple_deposit_count int not null comment '快捷入款次数',
+    simple_deposit_amount double not null comment '快捷入款金额',
+    staff_deposit_count int not null comment '人工入款次数',
+    staff_deposit_amount double not null comment '人工入款金额',
+    withdraw_count int not null comment '成功出款次数',
+    withdraw_amount double not null comment '成功出款金额',
+    withdraw_max double not null comment '最大出款金额',
+    staff_withdraw_count int not null comment '人工出款次数',
+    staff_withdraw_amount double not null comment '人工出款金额',
+    coupon_amount double not null comment '活动礼金总额',
+    bet_count int not null comment '注单数量',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_amount double not null comment '派奖金额',
+    rebate_count int not null comment '返点单数',
+    rebate_amount double not null comment '返点金额',
+    subsidy_amount double not null comment '返水金额',
+    brokerage_amount double not null comment '返佣总额',
+    profit_amount double not null comment '损益金额',
+    index(major_id,minor_id,agent_id,daily),
+    index(user_id,daily),
+    primary key(daily,user_id)
+) comment '用户日报';;
+
+drop table if exists daily_user_deal;;
+create table daily_user_deal(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    deal_type varchar(50) not null comment '交易类型-关联表名称',
+    deal_count int not null comment '交易单数',
+    vary_money double not null comment '账户余额变动',
+    vary_deposit_audit double not null comment '入款稽核变动',
+    vary_coupon_audit double not null comment '活动稽核变动',
+    primary key(daily,user_id,deal_type)
+) comment '用户交易日报';;
+
+drop table if exists daily_user_lottery;;
+create table daily_user_lottery(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    model_key varchar(10) not null comment '彩票类型key',
+    model_name varchar(20) not null comment '彩票类型名字',
+    game_key varchar(20) not null comment '彩种key',
+    game_name varchar(20) not null comment '彩种名字',
+    bet_count int not null comment '注单数量',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_amount double not null comment '派奖金额',
+    rebate_count int not null comment '返点单数',
+    rebate_amount double not null comment '返点金额',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    primary key(daily,user_id,game_key)
+) comment '用户彩票日报';;
+
+drop table if exists daily_user_external;;
+create table daily_user_external(
+    daily int unsigned not null comment '天 php:intval(date(Ymd))',
+    user_id int unsigned not null comment '用户id',
+    user_key varchar(20) not null comment '用户登陆名',
+    user_name varchar(20) not null comment '用户真实姓名',
+    layer_id int unsigned not null comment '代理/会员层级id',
+    layer_name varchar(20) not null comment '代理/会员层级名称',
+    major_id int unsigned not null comment '所属大股东id',
+    major_name varchar(20) not null comment '所属大股东姓名',
+    minor_id int unsigned not null comment '所属股东id',
+    minor_name varchar(20) not null comment '所属股东姓名',
+    agent_id int unsigned not null comment '所属总代理id',
+    agent_name varchar(20) not null comment '所属总代理姓名',
+    broker_1_id int unsigned not null comment '一级上线用户id',
+    broker_1_key varchar(20) not null comment '一级上线登录名',
+    broker_1_name varchar(20) not null comment '一级上线真实姓名',
+    broker_2_id int unsigned not null comment '二级上线用户id',
+    broker_2_key varchar(20) not null comment '二级上线登录名',
+    broker_2_name varchar(20) not null comment '二级上线真实姓名',
+    broker_3_id int unsigned not null comment '三级上线用户id',
+    broker_3_key varchar(20) not null comment '三级上线登录名',
+    broker_3_name varchar(20) not null comment '三级上线真实姓名',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    interface_key varchar(10) not null comment '外接口： fg-FunGaming，ky-开元棋牌，lb-Lebo体育，ag-AsiaGaming',
+    game_key varchar(20) not null comment '外接口key',
+    game_name varchar(20) not null comment '外接口名字',
+    bet_count int not null comment '注单数量',
+    bet_amount double not null comment '投注金额',
+    wager_count int not null comment '有效注单数量',
+    wager_amount double not null comment '有效投注金额',
+    bonus_count int not null comment '派奖单数',
+    bonus_amount double not null comment '派奖金额',
+    subsidy_amount double not null comment '返水金额',
+    profit_amount double not null comment '损益金额',
+    primary key(daily,user_id,game_key)
+) comment '用户外接口日报';;
+
+drop trigger if exists monthly_staff_insert;;
+create trigger monthly_staff_insert before insert on monthly_staff for each row
+begin
+end;;
+
+drop trigger if exists monthly_staff_update;;
+create trigger monthly_staff_update before update on monthly_staff for each row
+begin
+end;;
+
+drop trigger if exists monthly_staff_delete;;
+create trigger monthly_staff_delete before delete on monthly_staff for each row
+begin
+end;;
+
+drop trigger if exists monthly_staff_lottery_insert;;
+create trigger monthly_staff_lottery_insert before insert on monthly_staff_lottery for each row
+begin
+end;;
+
+drop trigger if exists monthly_staff_lottery_update;;
+create trigger monthly_staff_lottery_update before update on monthly_staff_lottery for each row
+begin
+end;;
+
+drop trigger if exists monthly_staff_lottery_delete;;
+create trigger monthly_staff_lottery_delete before delete on monthly_staff_lottery for each row
+begin
+end;;
+
+drop trigger if exists monthly_staff_external_insert;;
+create trigger monthly_staff_external_insert before insert on monthly_staff_external for each row
+begin
+end;;
+
+drop trigger if exists monthly_staff_external_update;;
+create trigger monthly_staff_external_update before update on monthly_staff_external for each row
+begin
+end;;
+
+drop trigger if exists monthly_staff_external_delete;;
+create trigger monthly_staff_external_delete before delete on monthly_staff_external for each row
+begin
+end;;
+
+drop trigger if exists lottery_period_insert;;
+create trigger lottery_period_insert before insert on lottery_period for each row
+begin
+end;;
+
+drop trigger if exists lottery_period_update;;
+create trigger lottery_period_update before update on lottery_period for each row
+begin
+end;;
+
+drop trigger if exists lottery_period_delete;;
+create trigger lottery_period_delete before delete on lottery_period for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_insert;;
+create trigger daily_staff_insert before insert on daily_staff for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_update;;
+create trigger daily_staff_update before update on daily_staff for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_delete;;
+create trigger daily_staff_delete before delete on daily_staff for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_lottery_insert;;
+create trigger daily_staff_lottery_insert before insert on daily_staff_lottery for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_lottery_update;;
+create trigger daily_staff_lottery_update before update on daily_staff_lottery for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_lottery_delete;;
+create trigger daily_staff_lottery_delete before delete on daily_staff_lottery for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_external_insert;;
+create trigger daily_staff_external_insert before insert on daily_staff_external for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_external_update;;
+create trigger daily_staff_external_update before update on daily_staff_external for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_external_delete;;
+create trigger daily_staff_external_delete before delete on daily_staff_external for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_insert;;
+create trigger monthly_user_insert before insert on monthly_user for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_update;;
+create trigger monthly_user_update before update on monthly_user for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_delete;;
+create trigger monthly_user_delete before delete on monthly_user for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_lottery_insert;;
+create trigger monthly_user_lottery_insert before insert on monthly_user_lottery for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_lottery_update;;
+create trigger monthly_user_lottery_update before update on monthly_user_lottery for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_lottery_delete;;
+create trigger monthly_user_lottery_delete before delete on monthly_user_lottery for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_external_insert;;
+create trigger monthly_user_external_insert before insert on monthly_user_external for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_external_update;;
+create trigger monthly_user_external_update before update on monthly_user_external for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_external_delete;;
+create trigger monthly_user_external_delete before delete on monthly_user_external for each row
+begin
+end;;
+
+drop trigger if exists daily_user_brokerage_insert;;
+create trigger daily_user_brokerage_insert before insert on daily_user_brokerage for each row
+begin
+end;;
+
+drop trigger if exists daily_user_brokerage_update;;
+create trigger daily_user_brokerage_update before update on daily_user_brokerage for each row
+begin
+end;;
+
+drop trigger if exists daily_user_brokerage_delete;;
+create trigger daily_user_brokerage_delete before delete on daily_user_brokerage for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_brokerage_insert;;
+create trigger weekly_user_brokerage_insert before insert on weekly_user_brokerage for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_brokerage_update;;
+create trigger weekly_user_brokerage_update before update on weekly_user_brokerage for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_brokerage_delete;;
+create trigger weekly_user_brokerage_delete before delete on weekly_user_brokerage for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_brokerage_insert;;
+create trigger monthly_user_brokerage_insert before insert on monthly_user_brokerage for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_brokerage_update;;
+create trigger monthly_user_brokerage_update before update on monthly_user_brokerage for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_brokerage_delete;;
+create trigger monthly_user_brokerage_delete before delete on monthly_user_brokerage for each row
+begin
+end;;
+
+drop trigger if exists user_cumulate_insert;;
+create trigger user_cumulate_insert before insert on user_cumulate for each row
+begin
+end;;
+
+drop trigger if exists user_cumulate_update;;
+create trigger user_cumulate_update before insert on user_cumulate for each row
+begin
+end;;
+
+drop trigger if exists user_cumulate_delete;;
+create trigger user_cumulate_delete before insert on user_cumulate for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_insert;;
+create trigger weekly_user_insert before insert on weekly_user for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_update;;
+create trigger weekly_user_update before update on weekly_user for each row
+begin
+    if old.weekly != new.weekly then
+        signal sqlstate 'WUU01' set message_text='weekly_user_update: 禁止修改 weekly';
+    end if;
+    if old.user_id != new.user_id then
+        signal sqlstate 'WUU02' set message_text='weekly_user_update: 禁止修改 user_id';
+    end if;
+end;;
+
+drop trigger if exists weekly_user_delete;;
+create trigger weekly_user_delete before delete on weekly_user for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_lottery_insert;;
+create trigger weekly_user_lottery_insert before insert on weekly_user_lottery for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_lottery_update;;
+create trigger weekly_user_lottery_update before update on weekly_user_lottery for each row
+begin
+    if old.weekly != new.weekly then
+        signal sqlstate 'WULU1' set message_text='weekly_user_lottery_update: 禁止修改 weekly';
+    end if;
+    if old.user_id != new.user_id then
+        signal sqlstate 'WULU2' set message_text='weekly_user_lottery_update: 禁止修改 user_id';
+    end if;
+    if old.game_key != new.game_key then
+        signal sqlstate 'WULU3' set message_text='weekly_user_lottery_update: 禁止修改 game_key';
+    end if;
+end;;
+
+drop trigger if exists weekly_user_lottery_delete;;
+create trigger weekly_user_lottery_delete before delete on weekly_user_lottery for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_external_insert;;
+create trigger weekly_user_external_insert before insert on weekly_user_external for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_external_update;;
+create trigger weekly_user_external_update before update on weekly_user_external for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_external_delete;;
+create trigger weekly_user_external_delete before delete on weekly_user_external for each row
+begin
+end;;
+
+drop trigger if exists monthly_tax_insert;;
+create trigger monthly_tax_insert before insert on monthly_tax for each row
+begin
+end;;
+
+drop trigger if exists monthly_tax_delete;;
+create trigger monthly_tax_delete before insert on monthly_tax for each row
+begin
+end;;
+
+drop trigger if exists user_event_insert;;
+create trigger user_event_insert before insert on user_event for each row
+begin
+end;;
+
+drop trigger if exists user_event_update;;
+create trigger user_event_update before update on user_event for each row
+begin
+    if new.last_deposit_time != old.last_deposit_time then
+        if old.first_deposit_time=0 then
+            set new.first_deposit_time=new.last_deposit_time;
+        elseif old.second_deposit_time=0 then
+            set new.second_deposit_time=new.last_deposit_time;
+        elseif old.third_deposit_time=0 then
+            set new.third_deposit_time=new.last_deposit_time;
+        end if;
+    end if;
+end;;
+
+drop trigger if exists user_event_delete;;
+create trigger user_event_delete before delete on user_event for each row
+begin
+end;;
+
+drop trigger if exists daily_layer_brokerage_insert;;
+create trigger daily_layer_brokerage_insert before insert on daily_layer_brokerage for each row
+begin
+end;;
+
+drop trigger if exists daily_layer_brokerage_update;;
+create trigger daily_layer_brokerage_update before update on daily_layer_brokerage for each row
+begin
+end;;
+
+drop trigger if exists daily_layer_brokerage_delete;;
+create trigger daily_layer_brokerage_delete before delete on daily_layer_brokerage for each row
+begin
+end;;
+
+drop trigger if exists daily_user_coupon_insert;;
+create trigger daily_user_coupon_insert before insert on daily_user_coupon for each row
+begin
+end;;
+
+drop trigger if exists daily_user_coupon_update;;
+create trigger daily_user_coupon_update before update on daily_user_coupon for each row
+begin
+end;;
+
+drop trigger if exists daily_user_coupon_delete;;
+create trigger daily_user_coupon_delete before delete on daily_user_coupon for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_coupon_insert;;
+create trigger daily_staff_coupon_insert before insert on daily_staff_coupon for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_coupon_update;;
+create trigger daily_staff_coupon_update before update on daily_staff_coupon for each row
+begin
+end;;
+
+drop trigger if exists daily_staff_coupon_delete;;
+create trigger daily_staff_coupon_delete before delete on daily_staff_coupon for each row
+begin
+end;;
+
+drop trigger if exists daily_layer_subsidy_insert;;
+create trigger daily_layer_subsidy_insert before insert on daily_layer_subsidy for each row
+begin
+end;;
+
+drop trigger if exists daily_layer_subsidy_update;;
+create trigger daily_layer_subsidy_update before update on daily_layer_subsidy for each row
+begin
+end;;
+
+drop trigger if exists daily_layer_subsidy_delete;;
+create trigger daily_layer_subsidy_delete before delete on daily_layer_subsidy for each row
+begin
+end;;
+
+drop trigger if exists daily_user_subsidy_insert;;
+create trigger daily_user_subsidy_insert before insert on daily_user_subsidy for each row
+begin
+end;;
+
+drop trigger if exists daily_user_subsidy_update;;
+create trigger daily_user_subsidy_update before update on daily_user_subsidy for each row
+begin
+end;;
+
+drop trigger if exists daily_user_subsidy_delete;;
+create trigger daily_user_subsidy_delete before delete on daily_user_subsidy for each row
+begin
+end;;
+
+drop trigger if exists daily_user_game_subsidy_insert;;
+create trigger daily_user_game_subsidy_insert before insert on daily_user_game_subsidy for each row
+begin
+end;;
+
+drop trigger if exists daily_user_game_subsidy_update;;
+create trigger daily_user_game_subsidy_update before update on daily_user_game_subsidy for each row
+begin
+end;;
+
+drop trigger if exists daily_user_game_subsidy_delete;;
+create trigger daily_user_game_subsidy_delete before delete on daily_user_game_subsidy for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_subsidy_insert;;
+create trigger weekly_user_subsidy_insert before insert on weekly_user_subsidy for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_subsidy_update;;
+create trigger weekly_user_subsidy_update before update on weekly_user_subsidy for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_subsidy_delete;;
+create trigger weekly_user_subsidy_delete before delete on weekly_user_subsidy for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_game_subsidy_insert;;
+create trigger weekly_user_game_subsidy_insert before insert on weekly_user_game_subsidy for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_game_subsidy_update;;
+create trigger weekly_user_game_subsidy_update before update on weekly_user_game_subsidy for each row
+begin
+end;;
+
+drop trigger if exists weekly_user_game_subsidy_delete;;
+create trigger weekly_user_game_subsidy_delete before delete on weekly_user_game_subsidy for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_subsidy_insert;;
+create trigger monthly_user_subsidy_insert before insert on monthly_user_subsidy for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_subsidy_update;;
+create trigger monthly_user_subsidy_update before update on monthly_user_subsidy for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_subsidy_delete;;
+create trigger monthly_user_subsidy_delete before delete on monthly_user_subsidy for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_game_subsidy_insert;;
+create trigger monthly_user_game_subsidy_insert before insert on monthly_user_game_subsidy for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_game_subsidy_update;;
+create trigger monthly_user_game_subsidy_update before update on monthly_user_game_subsidy for each row
+begin
+end;;
+
+drop trigger if exists monthly_user_game_subsidy_delete;;
+create trigger monthly_user_game_subsidy_delete before delete on monthly_user_game_subsidy for each row
+begin
+end;;
+
+drop trigger if exists weekly_staff_insert;;
+create trigger weekly_staff_insert before insert on weekly_staff for each row
+begin
+end;;
+
+drop trigger if exists weekly_staff_update;;
+create trigger weekly_staff_update before update on weekly_staff for each row
+begin
+end;;
+
+drop trigger if exists weekly_staff_delete;;
+create trigger weekly_staff_delete before delete on weekly_staff for each row
+begin
+end;;
+
+drop trigger if exists weekly_staff_lottery_insert;;
+create trigger weekly_staff_lottery_insert before insert on weekly_staff_lottery for each row
+begin
+end;;
+
+drop trigger if exists weekly_staff_lottery_update;;
+create trigger weekly_staff_lottery_update before update on weekly_staff_lottery for each row
+begin
+end;;
+
+drop trigger if exists weekly_staff_lottery_delete;;
+create trigger weekly_staff_lottery_delete before delete on weekly_staff_lottery for each row
+begin
+end;;
+
+drop trigger if exists weekly_staff_external_insert;;
+create trigger weekly_staff_external_insert before insert on weekly_staff_external for each row
+begin
+end;;
+
+drop trigger if exists weekly_staff_external_update;;
+create trigger weekly_staff_external_update before update on weekly_staff_external for each row
+begin
+end;;
+
+drop trigger if exists weekly_staff_external_delete;;
+create trigger weekly_staff_external_delete before delete on weekly_staff_external for each row
+begin
+end;;
+
+drop trigger if exists daily_status_insert;;
+create trigger daily_status_insert before insert on daily_status for each row
+begin
+end;;
+
+drop trigger if exists daily_status_update;;
+create trigger daily_status_update before update on daily_status for each row
+begin
+end;;
+
+drop trigger if exists daily_status_delete;;
+create trigger daily_status_delete before delete on daily_status for each row
+begin
+end;;
+
+drop trigger if exists daily_user_insert;;
+create trigger daily_user_insert before insert on daily_user for each row
+begin
+end;;
+
+drop trigger if exists daily_user_update;;
+create trigger daily_user_update before update on daily_user for each row
+begin
+end;;
+
+drop trigger if exists daily_user_delete;;
+create trigger daily_user_delete before delete on daily_user for each row
+begin
+end;;
+
+drop trigger if exists daily_user_deal_insert;;
+create trigger daily_user_deal_insert before insert on daily_user_deal for each row
+begin
+end;;
+
+drop trigger if exists daily_user_deal_update;;
+create trigger daily_user_deal_update before update on daily_user_deal for each row
+begin
+end;;
+
+drop trigger if exists daily_user_deal_delete;;
+create trigger daily_user_deal_delete before delete on daily_user_deal for each row
+begin
+end;;
+
+drop trigger if exists daily_user_lottery_insert;;
+create trigger daily_user_lottery_insert before insert on daily_user_lottery for each row
+begin
+end;;
+
+drop trigger if exists daily_user_lottery_update;;
+create trigger daily_user_lottery_update before update on daily_user_lottery for each row
+begin
+end;;
+
+drop trigger if exists daily_user_lottery_delete;;
+create trigger daily_user_lottery_delete before delete on daily_user_lottery for each row
+begin
+end;;
+
+drop trigger if exists daily_user_external_insert;;
+create trigger daily_user_external_insert before insert on daily_user_external for each row
+begin
+end;;
+
+drop trigger if exists daily_user_external_update;;
+create trigger daily_user_external_update before update on daily_user_external for each row
+begin
+end;;
+
+drop trigger if exists daily_user_external_delete;;
+create trigger daily_user_external_delete before delete on daily_user_external for each row
+begin
+end;;
+
+drop view if exists daily_user_subsidy_intact;;
+create view daily_user_subsidy_intact as
+    select s.daily,s.user_id,s.user_key,s.user_name,s.layer_id,s.layer_name,
+        s.subsidy,s.cumulate_subsidy,s.deliver_time,(
+            select json_objectagg(game_key,subsidy)
+            from daily_user_game_subsidy g
+            where (g.daily,g.user_id)=(s.daily,s.user_id)
+        ) game_subsidy_map
+    from daily_user_subsidy s;;
+
+drop view if exists weekly_user_subsidy_intact;;
+create view weekly_user_subsidy_intact as
+    select s.weekly,s.user_id,s.user_key,s.user_name,s.layer_id,s.layer_name,
+        s.subsidy,s.cumulate_subsidy,(
+            select json_objectagg(game_key,subsidy)
+            from weekly_user_game_subsidy g
+            where (g.weekly,g.user_id)=(s.weekly,s.user_id)
+        ) game_subsidy_map
+    from weekly_user_subsidy s;;
+
+drop view if exists monthly_user_subsidy_intact;;
+create view monthly_user_subsidy_intact as
+    select s.monthly,s.user_id,s.user_key,s.user_name,s.layer_id,s.layer_name,
+        s.subsidy,s.cumulate_subsidy,(
+            select json_objectagg(game_key,subsidy)
+            from monthly_user_game_subsidy g
+            where (g.monthly,g.user_id)=(s.monthly,s.user_id)
+        ) game_subsidy_map
+    from monthly_user_subsidy s;;
+

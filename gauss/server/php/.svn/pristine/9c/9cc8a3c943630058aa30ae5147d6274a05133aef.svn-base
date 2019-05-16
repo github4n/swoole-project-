@@ -1,0 +1,140 @@
+<?php
+namespace Plat\Websocket\Report;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 站点彩票报表
+ * 参数：site_key:站点key值,date:(1:今日,2:昨日,3:本周,4:上周,5:本月,6:上月)
+ *
+ *
+ * */
+
+class SiteReport extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("report_site",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        if(empty($data)){
+            $context->reply(["status"=>202,"msg"=>"你没有提交任何数据"]);
+            return;
+        }
+        $site_key = $data["site_key"] ?:"site1";
+        $date = $data["date"] ?: "today";
+        //获取站点信息
+        $sitelist = json_decode($context->getInfo("SiteList"));
+        if(empty($sitelist)){
+            $sitelist = $this->getallsite($context,$config);
+        }
+        $mysqls = $config->data_analysis;
+        $mysql = $config->data_public;
+
+        if($date=="today"){
+            //今天
+            $day = date('Ymd',time());
+            $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,sum(profit_amount) as profit_amount  FROM daily_site_lottery WHERE site_key=:site_key AND daily=:daily";
+            //彩票列表
+            $sqls = "SELECT bet_count,bet_amount,bonus_amount,profit_amount FROM daily_site_lottery WHERE site_key=:site_key AND daily=:daily";
+            $param = [":site_key"=>$site_key,":daily"=>$day];
+        } else if($date=="yesterday"){
+            //昨天
+            $yesterday = mktime(0, 0, 0, date('m'), date('d')-1, date('Y'));
+            $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,sum(profit_amount) as profit_amount  FROM daily_site_lottery WHERE site_key=:site_key AND daily=:daily";
+            $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,profit_amount FROM daily_site_lottery WHERE site_key=:site_key AND daily=:daily";
+            $param = [":site_key"=>$site_key,":daily"=>$yesterday];
+        }else if($date=="thisweek"){
+            //本周
+            $thisweek = date('oW',time());
+            $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,sum(profit_amount) as profit_amount  FROM weekly_site_game WHERE site_key=:site_key AND weekly=:weekly";
+            $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,profit_amount FROM weekly_site_game WHERE site_key=:site_key AND weekly=:weekly";
+            $param = [":site_key"=>$site_key,":weekly"=>$thisweek];
+            $context->reply($thisweek);
+        }else if($date == "lastweek"){
+            //上周
+            $lastweek = date('oW',time()-60*60*24*7);
+            $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,sum(profit_amount) as profit_amount  FROM weekly_site_game WHERE site_key=:site_key AND weekly=:weekly";
+            $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,profit_amount FROM weekly_site_game WHERE site_key=:site_key AND weekly=:weekly";
+            $param = [":site_key"=>$site_key,":weekly"=>$lastweek];
+            $context->reply($lastweek);
+        }else if($date == "thismonth"){
+            //本月
+            $thismonth = date("Y-m", time());
+            $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,sum(profit_amount) as profit_amount  FROM monthly_site_game WHERE site_key=:site_key AND monthly=:monthly";
+            $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,profit_amount FROM monthly_site_game WHERE site_key=:site_key AND monthly=:monthly";
+            $param = [":site_key"=>$site_key,":monthly"=>$thismonth];
+        }else if($date == "lastmonth"){
+            //上月
+            $lastmonth = date("Y-m", strtotime("-1 month"));
+            $sql = "SELECT sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,sum(profit_amount) as profit_amount  FROM monthly_site_game WHERE site_key=:site_key AND monthly=:monthly";
+            $sqls = "SELECT game_key,bet_count,bet_amount,bonus_amount,profit_amount FROM monthly_site_game WHERE site_key=:site_key AND monthly=:monthly";
+            $param = [":site_key"=>$site_key,":monthly"=>$lastmonth];
+        }else{
+            $context->reply(["status"=>204,"msg"=>"报表时间不合法"]);
+            return;
+        }
+        $list = array();
+        $info = array();
+        $lists = array();
+        $listss = array();
+        foreach ($mysqls->query($sql,$param) as $row){
+            $list = $row;
+        }
+        foreach ($mysqls->query($sqls,$param) as $rows){
+            $lists[] = $rows;
+        }
+        if(!empty($lists)){
+            foreach ($lists as $key=>$val){
+                $sqls = "SELECT model_name,model_key,game_name,subsidy_rate FROM lottery_game_intact WHERE game_key=:game_key";
+                $params = [":game_key"=>$val['game_key']];
+                foreach ($mysql->query($sqls,$params) as $row){
+                    $listss = $row;
+                }
+                $lists[$key]['model_name'] = $listss["model_name"] ;
+                $lists[$key]['model_key'] = $listss["model_key"] ;
+                $lists[$key]['game_name'] = $listss["game_name"] ;
+                $lists[$key]['subsidy_rate'] = $listss["subsidy_rate"] ;
+            }
+        }
+        if(!empty($lists)){
+           foreach ($lists as $k=>$v){
+               //快三
+               if($v['model_key'] == "dice" ){
+                   $bet_total = 0;
+                   $betcount = 0;
+                   $bonus_amount = 0;
+                   $profit_amount = 0;;
+                   $bet_total += $v['bet_amount'];//投注额
+                   $betcount +=  $v['bet_count'];//注单量
+                   $bonus_amount +=  $v['bonus_amount'];//派彩额
+                   $profit_amount +=  $v['profit_amount'];//损益
+                   $info[$k]['list']['game_name'] = $v['game_name'];  //彩票名称
+                   $info[$k]['list']['bet_amount'] = $v['bet_amount'];  // 投注总额
+                   $info[$k]['list']['bet_percent'] = sprintf("%.2f",substr(sprintf("%.3f", ($v['bet_amount']/$bet_total*100)), 0, -4))."%";    // 投注额所占比例
+                   $info[$k]['list']['bet_count'] = $v['bet_count'];    // 注单量
+                   $info[$k]['list']['betcountpercent'] = sprintf("%.2f",substr(sprintf("%.3f", ($v['bet_count']/$betcount*100)), 0, -4))."%";;    // 注单量所占比例
+                   $info[$k]['list']['bonus_amount'] = $v['bonus_amount'];    // 派彩额
+                   $info[$k]['list']['bet_count'] = $v['bet_count'];    // 反水额
+                   $info[$k]['list']['profit_amount'] = $v['profit_amount'];    // 损益
+               }
+               $info[$k]['info']['bet_total'] = $bet_total;
+               $info[$k]['info']['betcount'] = $betcount;
+               $info[$k]['info']['bonus_amount'] = $bonus_amount;
+               $info[$k]['info']['profit_amount'] = $profit_amount;
+           }
+        }
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "today"=>$list,
+            "sitelist"=> $sitelist,
+            "list"=>$info,
+        ]);
+    }
+}

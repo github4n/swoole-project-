@@ -1,0 +1,32 @@
+<?php
+namespace Site\Task\User;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class UserCumulate implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        //更新用户的累计数据
+//        $adapter = $context->getAdapter();
+        $mysql = $config->data_report;
+        $sql = "select user_id,sum(bet_amount) as bet_lottery,sum(bonus_amount) as bonus_lottery,sum(subsidy_amount) as subsidy,".
+            "sum(profit_amount) as profit_lottery from daily_user group by user_id";
+        $list = iterator_to_array($mysql->query($sql));
+        if(!empty($list)){
+            foreach ($list as $key=>$val){
+                $sql = "update user_cumulate set bet_all=:bet_all,bet_lottery=:bet_lottery,bonus_all=:bonus_all,bonus_lottery=:bonus_lottery,profit_all= :profit_all,profit_lottery=:profit_lottery,subsidy=:subsidy where user_id=:user_id";
+                $params = [
+                    ":bet_all"=>$val["bet_lottery"],":bet_lottery"=>$val["bet_lottery"],
+                    ":bonus_all"=>$val["bonus_lottery"],":bonus_lottery"=>$val["bonus_lottery"],
+                    ":profit_all"=>$val["profit_lottery"],":profit_lottery"=>$val["profit_lottery"],
+                    ":subsidy"=>$val["subsidy"],":user_id"=>$val["user_id"]
+                    ];
+                $mysql->execute($sql,$params);
+            }
+        }
+
+    }
+}

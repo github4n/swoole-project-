@@ -1,0 +1,104 @@
+<?php
+namespace Site\Websocket\Cash\DepositRecord;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-入款记录-快捷支付入款记录
+ * 参数：Cash/DepositRecord/DepositSimpleExport
+ * status 1等待入款 2入款成功 3入款失败 
+ * */
+
+class DepositSimpleExport extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("money_deposit_deal",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $user_key = $data["user_key"];
+        $deal_serial = $data["deal_serial"];
+        $passage_name = $data["passage_id"];
+        $layer_id = $data["layer_id"];
+        $min_money = $data["min_money"];
+        $max_money = $data["max_money"];
+        $start_finish_time = $data["start_finish_time"];
+        $end_finish_time = $data["end_finish_time"];
+        $finish_time = '';
+        $launch_money = '';
+        if(!empty($user_key)){
+            $user_key = " AND user_key = '".$user_key."'";
+        }
+        if(!empty($deal_serial)){
+            $deal_serial = " AND deposit_serial = '".$deal_serial."'";
+        }
+        if(!empty($layer_id)){
+            $layer_id = " AND layer_id =".$layer_id;
+        }
+        if(!empty($passage_name)){
+            $passage_name = " AND passage_id = '".$passage_name."'";
+        }
+        if(!empty($start_finish_time) && !empty($end_finish_time)){
+            $finish_time = " AND finish_time BETWEEN ".$start_finish_time." AND ".$end_finish_time;
+        }
+        if(!empty($min_money)){
+            if(!is_numeric($min_money)){
+                $context->reply(["status"=>204,"msg"=>"到账金额参数错误"]);
+                return;
+            }
+            $launch_money = " AND launch_money >=".$min_money;
+        }
+        if(!empty($max_money)){
+            if(!is_numeric($max_money)){
+                $context->reply(["status"=>204,"msg"=>"到账金额参数错误"]);
+                return;
+            }
+            $launch_money = " AND launch_money <=".$max_money;
+        }
+        if(!empty($min_money) && !empty($max_money)){
+            $launch_money = " AND launch_money BETWEEN ".$min_money." AND ".$max_money;
+        }
+        
+        $order = " ORDER BY deposit_serial DESC";
+        $limit = " LIMIT 100";
+        $sql = "SELECT user_id,deposit_serial,user_key,layer_id,finish_money,passage_name,finish_staff_name,finish_time FROM deposit_simple_intact WHERE 1=1".$user_key.$deal_serial.$layer_id.$passage_name.$finish_time.$launch_money.$order.$limit;
+        $total_sql = "SELECT deposit_serial FROM deposit_simple_intact WHERE 1=1".$user_key.$deal_serial.$layer_id.$passage_name.$finish_time.$launch_money.$limit;
+        $total = 0;
+        $deposit_list = [];
+        foreach ($config->deal_list as $deal) {
+            $mysql = $config->__get("data_".$deal);
+            $total += $mysql->execute($total_sql);
+
+            $list = iterator_to_array($mysql->query($sql));
+            if(!empty($list)){
+                foreach ($list as $key=>$val){
+                    $sqls = "SELECT * FROM deposit_launch WHERE user_id=:user_id";
+                    $param = [":user_id"=>$val["user_id"]];
+                    $result = $mysql->execute($sqls,$param);
+                    $deposit["user_id"] = $val["user_id"];
+                    $deposit["deposit_serial"] = $val["deposit_serial"];
+                    $deposit["user_key"] = $val["user_key"];
+                    $deposit["layer_id"] = $val["layer_id"];
+                    $deposit["layer_name"] = $context->getInfo($val["layer_id"]);
+                    $deposit["passage_name"] = $val["passage_name"];
+                    $deposit["finish_money"] = $val["finish_money"];
+                    $deposit["finish_time"] = !empty($val["finish_time"]) ? date("Y-m-d H:i:s",$val["finish_time"]) : '';
+                    $deposit["is_first"] = $result==1?"是":"否";
+                    $deposit["deal_key"] = $deal;
+                    $deposit_list[] =  $deposit;
+                }
+            }  
+        }
+        
+        $context->reply(["status"=>200,"msg"=>"获取成功","list"=>$deposit_list]);
+    }
+}

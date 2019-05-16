@@ -1,0 +1,46 @@
+<?php
+namespace Site\Websocket\Cash\WithdrawSetting;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-出款管理-出款审核设置
+ * 参数：Cash/WithdrawSetting/ReviewSetting {}
+ *
+ * */
+
+class ReviewSetting extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限"]);
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("money_setting",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $mysql = $config->data_user;
+        $sql = "SELECT * FROM layer_info";
+        $list = iterator_to_array($mysql->query($sql));
+        if(!empty($list)){
+            foreach ($list as $key=>$val){
+                $withdraw_list[$key]["layer_id"] = $val["layer_id"];
+                $withdraw_list[$key]["layer_name"] = $val["layer_name"];
+                $withdraw_list[$key]["withdraw_audit_amount"] = $val["withdraw_audit_amount"]; //出款上限
+                $withdraw_list[$key]["withdraw_audit_first"] = $val["withdraw_audit_first"];  //首次出款是否需要审核
+            }
+        }
+        $context->reply(["status"=>200,"msg"=>"获取成功","list"=>$withdraw_list]);
+        //记录日志
+        $sql = "INSERT INTO operate_log SET staff_id=:staff_id,operate_key=:operate_key,detail=:detail,client_ip=:client_ip";
+        $param = [':staff_id'=>$staffId,":operate_key"=>"money_setting",':client_ip' => ip2long($context->getClientAddr()),":detail"=>"查看出款管理出款审核设置信息"];
+        $staff_mysql = $config->data_staff;
+        $staff_mysql->execute($sql,$param);
+    }
+}

@@ -1,0 +1,146 @@
+<?php
+namespace Site\Websocket\System\SystemReport;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 体系分红报表-大股东
+ * 参数：staff_name:用户名,start_time:开始时间,end_time:结束时间,distribute:派发(1为已派发，2为待派发),page:当前显示的页数,num:每页显示的数量,gonum:跳转的页数
+ * System/SystemReport/MajorShareholder {"user_name":"name","start_time":"2018-10-24","end_time":"2018-10-29","distribute":1,"page":1,"num":10,"gonum":0}
+ * */
+
+class MajorShareholder extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $staffId = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade >0){
+            $context->reply(["status"=>208,"msg"=>"当前登录账号没有访问的权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $page = $data["page"] ?: 1;
+        $num = $data["num"] ?: 10;
+        $go_num = $data["go_num"];
+        $staff_name = isset($data["staff_name"]) ? $data["staff_name"] : '';
+        $start_time = isset($data["start_time"]) ? $data["start_time"] : '';
+        $end_time = isset($data["end_time"]) ? $data["end_time"] : '';
+
+        $isSettle = isset($data["is_settle"]) ? $data["is_settle"] : '';
+        $time = "";
+        $where = "";
+        $and = "";
+        $dis = '';
+        if(!is_numeric($page) && $page <= 0){
+            $context->reply(["status"=>202,"msg"=>"当前页数不正确"]);
+            return;
+        }
+        if(!is_numeric($num)){
+            $context->reply(["status"=>203,"msg"=>"每页显示的数量不正确"]);
+            return;
+        }
+        $limit = " LIMIT ".($page-1)*$num.",".$num;
+        if(!empty($go_num) && !is_numeric($go_num)){
+            if($go_num <= 0){
+                $context->reply(["status"=>204,"msg"=>"跳转的页数不正确"]);
+                return;
+            }
+            $limit = " LIMIT ".($go_num-1)*$num.",".$num;
+        }
+
+        if(empty($isSettle)){
+            $isSettle = 0 ; //未结算
+        } else{
+            if(!is_numeric($isSettle)){
+                $context->reply(["status"=>300,"msg"=>"请选择结算状态"]);
+                return;
+            }else{
+                $isSettle = 1;
+            }
+        }
+        $major_list = [];
+        if($isSettle == 0){ //未结算
+            $sql = "select major_id as staff_id,major_name from staff_struct_major";
+            $majorList = iterator_to_array($mysql->query($sql));
+            foreach ($majorList as $key=>$val){
+                $sql = "select grade1_bet_rate,grade1_profit_rate,grade1_fee_rate,grade1_tax_rate from dividend_setting where scope_staff_id=:major_id";
+                $rate = [];
+                foreach ($mysql->query($sql,[":major_id"=>$val["staff_id"]]) as $rates){
+                    $rate = $rates;
+                }
+                if(empty($rate)){
+                    $sql = "select grade1_bet_rate,grade1_profit_rate,grade1_fee_rate,grade1_tax_rate from dividend_setting where scope_staff_id=1";
+                    foreach ($mysql->query($sql,[":major_id"=>$val["staff_id"]]) as $site_rate){
+                        $rate = $site_rate;
+                    }
+                }
+                $major = [
+                    "staff_name"=>$val["major_name"],
+                    "staff_id"=>$val["staff_id"],
+                    "major_grade"=>"大股东",
+                    "bet_amount"=>"",
+                    "bet_rate"=>$rate["grade1_bet_rate"],
+                    "profit_amount"=>"",
+                    "profit_rate"=>$rate["grade1_profit_rate"],
+                    "fee_rate"=>$rate["grade1_fee_rate"],
+                    "tax_rate"=>$rate["grade1_tax_rate"],
+                    "deliver_time"=>"",
+                    "settle_time"=>"",
+                ];
+                $major_list[] =  $major;
+            }
+
+        }
+        if($isSettle == 1){//已结算
+            if(!empty($staff_name)){
+                $staff_name = " AND staff_key = '".$staff_name."'";
+            }
+            if(!empty($start_time) && !empty($end_time)){
+                $start_time = strtotime($start_time." 00:00:00");
+                $end_time = strtotime($end_time." 23:59:59");
+                $time = " AND settle_time > ".$start_time." AND	settle_time < ".$end_time;
+            }
+            $sql = "SELECT * FROM dividend_settle_major WHERE 1=1".$where.$staff_name.$and.$dis.$and.$time.$limit;
+            $total = "SELECT staff_key FROM dividend_settle_major WHERE 1=1".$where.$staff_name.$and.$dis.$and.$time;
+            $lists = array();
+            try{
+                foreach ($mysql->query($sql) as $rows){
+                    $lists[] = $rows;
+                }
+                $total = $mysql->execute($total);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"获取失败"]);
+                throw new \PDOException($e);
+            }
+            if(!empty($lists)){
+                foreach ($lists as $key=>$val){
+                    $major_list[$key]["staff_name"] = $val['major_name'];
+                    $major_list[$key]["staff_id"] = $val['staff_id'];
+                    $major_list[$key]["major_grade"] = "大股东";
+                    $major_list[$key]["bet_amount"] = $val["bet_amount"];
+                    $major_list[$key]["bet_rate"] = $val["bet_rate"];
+                    $major_list[$key]["profit_amount"] = $val["profit_amount"];
+                    $major_list[$key]["profit_rate"] = $val["profit_rate"];
+                    $major_list[$key]["fee_rate"] = $val["fee_rate"];
+                    $major_list[$key]["tax_rate"] = $val["tax_rate"];
+                    $major_list[$key]["deliver_time"] = empty($val["deliver_time "]) ? 0 : 1;
+                    $major_list[$key]["settle_time"] = date("Y-m-d H:i:s",$val["settle_time "]);
+                }
+            }
+        }
+
+
+
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "total"=>$total,
+            "total_page"=>ceil($total/$num),
+            "list"=>$major_list
+        ]);
+
+    }
+}

@@ -1,0 +1,53 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: lucy
+ * Date: 19-3-29
+ * Time: 上午8:18
+ */
+namespace App\Websocket\BetRecord;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+// BetRecord/QuotaExchange
+class QuotaExchange extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        // TODO: Implement onReceiveLogined() method.
+
+        $user_id=$context->getInfo('UserId');
+        $user_key=$context->getInfo('UserKey');
+        $deal_key=$context->getInfo('DealKey');
+        $mysql=$config->__get("data_" . $deal_key);
+
+        $sql='select a.external_type,a.launch_money,a.success_time,a.failure_time
+              from (select external_type,launch_money,launch_time,success_time,failure_time from external_import_fungaming_intact where user_id=:user_id and user_key=:user_key
+                    union all
+                    select external_type,-launch_money,launch_time,success_time,failure_time from external_export_fungaming_intact where user_id=:user_id and user_key=:user_key
+              ) as a order by launch_time desc';
+
+        $param=[
+            ':user_id'=>$user_id,
+            ':user_key'=>$user_key,
+        ];
+        $result=[];
+        $type=['ky'=>'开元棋牌','ag'=>'AG视讯'];
+        try{
+            foreach ($mysql->query($sql,$param) as $row){
+                $external_type=$row['external_type'];
+                if(isset($type[$external_type])){
+                    $row['external_type_str']=$type[$external_type];
+                }else{
+                    $row['external_type_str']='';
+                }
+
+                $result[]=$row;
+            }
+        }catch (\PDOException $e){
+            throw new \PDOException($e);
+        }
+
+        $context->reply(['status' => 200, 'msg' => '', 'data' => $result]);
+    }
+}

@@ -1,0 +1,239 @@
+<?php
+
+namespace Site\Websocket\Rebate\RebateSetting;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 保存返水比例
+ * is_automatic 是否自动发放  1 or 0
+ * issue_time   
+ * Rebate/RebateSetting/RebateSave {"layer_id":1,"is_automatic":"0","issue_time":"17:18","game_list":[{"game_key":"dice_ah","category_key":"lottery","bet":"0.5","subsidy_rate":"0.3","max_subsidy":"0.1"},{"game_key":"dice_fast","category_key":"lottery","bet":"0.2","subsidy_rate":"0.3","max_subsidy":"0.1"},{"game_key":"dice_js","category_key":"lottery","bet":"0.2","subsidy_rate":"0.3","max_subsidy":"0.1"},{"game_key":"dice_three","category_key":"lottery","bet":"0.2","subsidy_rate":"0.3","max_subsidy":"0.1"},{"game_key":"eleven_fast","category_key":"lottery","bet":"0.2","subsidy_rate":"0.3","max_subsidy":"0.1"}]}
+ * */
+
+class RebateSave extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("subsidy_setting", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if ($StaffGrade != 0) {
+            $context->reply(["status" => 203, "当前账号没有操作权限权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $public_mysql = $config->data_public;
+        $layer_id = $data["layer_id"];
+        if (!is_numeric($layer_id)) {
+            $context->reply(["status" => 204, "msg" => "会员层级参数类型错误"]);
+            return;
+        }
+
+        if (!is_numeric($data["is_automatic"])) {
+            $context->reply(["status" => 204, "msg" => "自动派发参数错误"]);
+            return;
+        }
+        if ($data["is_automatic"] == 0) {//自动派发为0
+            if (empty($data["issue_time"]) || date('H:i', strtotime($data["issue_time"])) != $data["issue_time"]) {
+                $context->reply(["status" => 211, "msg" => "自动发放时间错误"]);
+                return;
+            }
+        }
+
+        $game_list = $data["game_list"];
+        if (!is_array($game_list)) {
+            $context->reply(["status" => 205, "msg" => "彩票参数类型错误"]);
+            return;
+        }
+        $game_lists = [];
+        $game_translation = [];
+        $category_list = [];
+        foreach ($game_list as $item) {
+            $game_key = $item["game_key"];
+            $category_key = $item["category_key"];
+            $min_bet = $item["bet"];
+            $subsidy_rate = $item["subsidy_rate"];
+            $max_subsidy = $item["max_subsidy"];
+            if (!is_numeric($min_bet)) {
+                $context->reply(["status" => 206, "msg" => "投注额参数错误"]);
+                return;
+            }
+            if (!is_numeric($subsidy_rate)) {
+                $context->reply(["status" => 207, "msg" => "返水比例参数错误"]);
+                return;
+            }
+            if (!is_numeric($max_subsidy)) {
+                $context->reply(["status" => 208, "msg" => "返水上限参数错误"]);
+                return;
+            }
+            if (empty($game_key)) {
+                $context->reply(["status" => 209, "msg" => "彩票名称不能为空"]);
+                return;
+            }
+            if (empty($category_key)) {
+                $context->reply(["status" => 210, "msg" => "类型不能为空"]);
+                return;
+            }
+            $get_category_key = $item["category_key"];
+            if ($category_key != 'lottery') {
+                $get_interface_key = $item["game_key"];
+                $external_game_sql = "select game_key from external_game where category_key='$get_category_key' and interface_key='$get_interface_key'";
+                $external_game_list = iterator_to_array($public_mysql->query($external_game_sql));
+                if (!empty($external_game_list)) {
+                    foreach ($external_game_list as $game) {
+                        $game_lists[] = $game["game_key"];
+                        $game_translation[$category_key][$get_interface_key][] = ['game_key' => $game["game_key"], 'category_key' => $category_key];
+                    }
+                }
+            } else {
+                $game_lists[] = $item["game_key"];
+                $category_list[] = $get_category_key;
+            }
+        }
+        $sql = "SELECT * FROM subsidy_game_setting WHERE layer_id=:layer_id AND category_key in :category_key AND game_key in :game_list";
+        $params = [":layer_id" => $layer_id, ":category_key" => $category_list, ":game_list" => $game_lists];
+        $lists = iterator_to_array($mysql->query($sql, $params));
+        if (empty($lists)) {
+            foreach ($game_list as $item) {
+                if ($item["category_key"] != 'lottery') {
+                    foreach ($game_translation[$item["category_key"]][$item['game_key']] as $game) {
+                        $game_key = $game['game_key'];
+                        $category_key = $game["category_key"];
+                        $min_bet = $item["bet"];
+                        $subsidy_rate = $item["subsidy_rate"];
+                        $max_subsidy = $item["max_subsidy"];
+                        $values .= "('" . $layer_id . "','" . $category_key . "','" . $game_key . "','" . $min_bet . "','" . $subsidy_rate . "','" . $max_subsidy . "'),";
+                    }
+                } else {
+                    $game_key = $item["game_key"];
+                    $category_key = $item["category_key"];
+                    $min_bet = $item["bet"];
+                    $subsidy_rate = $item["subsidy_rate"];
+                    $max_subsidy = $item["max_subsidy"];
+                    $values .= "('" . $layer_id . "','" . $category_key . "','" . $game_key . "','" . $min_bet . "','" . $subsidy_rate . "','" . $max_subsidy . "'),";
+                }
+            }
+
+            $values = rtrim($values, ','); //去除字符串最后的','
+            $sql = "INSERT INTO subsidy_game_setting(layer_id,category_key,game_key,min_bet,subsidy_rate,max_subsidy) values $values"; //定义执行语句               
+
+            try {
+                if ($data["is_automatic"] == 0) {
+                    $issue_time = str_replace(':', '', $data["issue_time"]);
+
+                    $layer_sql = "select * from subsidy_setting where layer_id =$layer_id ";
+                    if ($mysql->execute($layer_sql)) {
+                        $automatic_sql = "update subsidy_setting set  auto_deliver=0, deliver_time='$issue_time' where layer_id=$layer_id";
+                    } else {
+
+                        $automatic_sql = "insert into subsidy_setting (layer_id,auto_deliver,deliver_time) values ($layer_id,0,$issue_time)";
+                    }
+                    $mysql->execute($automatic_sql);
+                }
+
+                if ($data["is_automatic"] == 1) {
+                    $layer_sql = "select * from subsidy_setting where layer_id =$layer_id ";
+                    if ($mysql->query($layer_sql)) {
+                        $automatic_sql = "delete from  subsidy_setting  where layer_id=$layer_id";
+                        $mysql->execute($automatic_sql);
+                    }
+                }
+                $mysql->execute($sql);
+            } catch (\PDOException $e) {
+                $context->reply(["status" => 400, "msg" => "修改失败"]);
+                throw new \PDOException($e);
+            }
+            $context->reply(["status" => 200, "msg" => "修改成功"]);
+        } else {
+            foreach ($game_list as $item) {
+                if ($item["category_key"] != 'lottery') {
+                    foreach ($game_translation[$item["category_key"]][$item['game_key']] as $game) {
+                        $game_key = $game['game_key'];
+                        $category_key = $game["category_key"];
+                        $min_bet = $item["bet"];
+                        $subsidy_rate = $item["subsidy_rate"];
+                        $max_subsidy = $item["max_subsidy"];
+                        $sql = "UPDATE subsidy_game_setting SET min_bet=:min_bet,subsidy_rate=:subsidy_rate,max_subsidy=:max_subsidy WHERE layer_id=:layer_id AND category_key=:category_key AND game_key=:game_key";
+                        $param = [
+                            ":min_bet" => $min_bet,
+                            ":subsidy_rate" => $subsidy_rate,
+                            ":max_subsidy" => $max_subsidy,
+                            ":layer_id" => $layer_id,
+                            ":category_key" => $category_key,
+                            ":game_key" => $game_key,
+                        ];
+                        try {
+                            $mysql->execute($sql, $param);
+                        } catch (\PDOException $e) {
+                            $context->reply(["status" => 400, "msg" => "修改失败"]);
+                            throw new \PDOException($e);
+                        }
+                    }
+                } else {
+
+                    $game_key = $item["game_key"];
+                    $category_key = $item["category_key"];
+                    $min_bet = $item["bet"];
+                    $subsidy_rate = $item["subsidy_rate"];
+                    $max_subsidy = $item["max_subsidy"];
+                    $sql = "UPDATE subsidy_game_setting SET min_bet=:min_bet,subsidy_rate=:subsidy_rate,max_subsidy=:max_subsidy WHERE layer_id=:layer_id AND category_key=:category_key AND game_key=:game_key";
+                    $param = [
+                        ":min_bet" => $min_bet,
+                        ":subsidy_rate" => $subsidy_rate,
+                        ":max_subsidy" => $max_subsidy,
+                        ":layer_id" => $layer_id,
+                        ":category_key" => $category_key,
+                        ":game_key" => $game_key,
+                    ];
+                    try {
+                        $mysql->execute($sql, $param);
+                    } catch (\PDOException $e) {
+                        $context->reply(["status" => 400, "msg" => "修改失败"]);
+                        throw new \PDOException($e);
+                    }
+                }
+            }
+
+            if ($data["is_automatic"] == 0) {
+                $issue_time = str_replace(':', '', $data["issue_time"]);
+                $layer_sql = "select * from subsidy_setting where layer_id =$layer_id ";
+                if ($mysql->execute($layer_sql)) {
+                    $automatic_sql = "update subsidy_setting set  auto_deliver=0, deliver_time='$issue_time' where layer_id=$layer_id";
+                } else {
+
+                    $automatic_sql = "insert into subsidy_setting (layer_id,auto_deliver,deliver_time) values ($layer_id,0,$issue_time)";
+                }
+                $mysql->execute($automatic_sql);
+            }
+            if ($data["is_automatic"] == 1) {
+                $layer_sql = "select * from subsidy_setting where layer_id =$layer_id ";
+                if ($mysql->query($layer_sql)) {
+                    $automatic_sql = "delete from  subsidy_setting  where layer_id=$layer_id";
+                    $mysql->execute($automatic_sql);
+                }
+            }
+
+            $context->reply(["status" => 200, "msg" => "修改成功"]);
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'subsidy_setting',
+            ':detail' => '修改会员返水的比例',
+        ];
+        $staff_mysql = $config->data_staff;
+        $staff_mysql->execute($sql, $params);
+    }
+
+}

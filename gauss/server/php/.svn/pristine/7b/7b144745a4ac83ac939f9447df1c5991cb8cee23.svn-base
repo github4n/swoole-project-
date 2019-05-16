@@ -1,0 +1,156 @@
+<?php
+
+namespace Site\Websocket\System\Logs;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 日志列表
+ * System/Logs/LogsList
+ * 参数：staff_name:员工名,staff_level:用户等级 start_time:开始时间,end_time:结束时间 page:当前页数,num:每页显示的数量,go_num:跳转的页数
+ * {"staff_name":"name","start_time":"2018-10-25","end_time":"2018-10-26","page":1,"num":20,"gonum":3}
+ * */
+
+class LogsList extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        $staffId = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        $data = $context->getData();
+        $page = isset($data["page"]) ? $data["page"] : 1;
+        $num = isset($data["num"]) ? $data["num"] : 10;
+        $go_num = isset($data["go_num"]) ? $data["go_num"] : '';
+        $staff_name = isset($data["staff_name"]) ? $data["staff_name"] : '';
+        $staff_level = isset($data["staff_level"]) ? $data["staff_level"] : '';
+        $start_time = isset($data["start_time"]) ? $data["start_time"] : '';
+        $end_time = isset($data["end_time"]) ? $data["end_time"] : '';
+        $time = '';
+        if (!is_numeric($page) || $page <= 0) {
+            $context->reply(["status" => 202, "msg" => "当前显示页数不正确"]);
+            return;
+        }
+        if (!is_numeric($num)) {
+            $context->reply(["status" => 203, "msg" => "每页显示条数不正确"]);
+            return;
+        }
+        if (!empty($go_num) && !is_numeric($go_num)) {
+            if ($go_num <= 0) {
+                $context->reply(["status" => 204, "msg" => "跳转页数不正确"]);
+                return;
+            }
+        }
+        $limit = ' LIMIT ' . ($page - 1) * $num . ',' . $num;
+        //跳转的页数
+        if (!empty($go_num) && is_numeric($go_num)) {
+            $limit = ' LIMIT ' . ($go_num - 1) * $num . ',' . $num;
+        }
+         $staff_names=" AND 1 = 1 ";
+        if ($staff_name) {
+            $staff_name = " AND staff_name = '" . $staff_name . "' ";
+        }
+        //用户等级
+        $staff_levels=" AND 1 = 1 ";
+        if (!empty($staff_level)) {
+            $staff_levels .= " AND staff_grade = " . $staff_level;
+        }
+        //只有开始时间的话那就查询那目前时间的数据，如果只有结束时间的话就只查询在从这个时间之前的数据，两个参数都有的话就查询之间的数据
+        if (!empty($start_time)) {
+            $start = $start_time . " 00:00:00";
+            if (!empty($end_time)) {
+                $end = $end_time . "23:59:59";
+                $time = " AND log_time BETWEEN " . strtotime($start) . "  AND " . strtotime($end);
+            } else {
+                $time = " AND log_time BETWEEN " . strtotime($start) . "  AND " . time();
+            }
+        }
+        if (!empty($end_time) && empty($start_time)) {
+            $end = $end_time . "23:59:59";
+            $time = " AND log_time <= " . strtotime($end);
+        }
+        $order = " ORDER BY log_id DESC";
+        $mysql = $config->data_staff;
+        if ($StaffGrade == 0) {
+            $sql = "SELECT staff_id,client_ip,log_id,staff_name,staff_grade,operate_key,leader_name,detail,log_time FROM operate_log_intact WHERE master_id=0 " . $staff_names . $staff_levels . $time . $order . $limit; 
+            $total_sql = "select log_id from operate_log_intact WHERE master_id=0  " . $staff_names . $staff_levels . $time;  
+            try {
+                $list = array();
+
+                foreach ($mysql->query($sql) as $row) {
+                    $list[] = $row;
+                }
+                $total = $mysql->execute($total_sql);
+            } catch (\PDOException $e) {
+                $context->reply(['status' => 400, 'msg' => '获取失败']);
+                throw new \PDOException("sql run error" . $e);
+            }
+        } elseif ($StaffGrade == 1) {
+            $sql = "SELECT staff_id,client_ip,log_id,staff_name,staff_grade,operate_key,leader_name,detail,log_time FROM operate_log_intact WHERE leader_id = :leader_id OR staff_grade=3 AND master_id=0 " . $staff_names . $staff_levels . $time . $order . $limit;
+            $total_sql = "select log_id from operate_log_intact WHERE leader_id = :leader_id AND master_id=0 " . $staff_names . $staff_levels . $time;
+            $param = [":leader_id" => $staffId];
+            try {
+                $list = array();
+
+                foreach ($mysql->query($sql, $param) as $row) {
+                    $list[] = $row;
+                }
+                $total = $mysql->execute($total_sql, $param);
+            } catch (\PDOException $e) {
+                $context->reply(['status' => 400, 'msg' => '获取失败']);
+                throw new \PDOException("sql run error" . $e);
+            }
+        } elseif ($StaffGrade == 2) {
+            $sql = "SELECT staff_id,client_ip,log_id,staff_name,staff_grade,operate_key,leader_name,detail,log_time FROM operate_log_intact WHERE leader_id = :leader_id OR staff_grade=3 AND master_id=0 " . $staff_names . $staff_levels . $time . $order . $limit;
+            $total_sql = "select log_id from operate_log_intact WHERE leader_id = :leader_id AND master_id=0 " . $staff_names . $staff_levels . $time;
+            $param = [":leader_id" => $staffId];
+            try {
+                $list = array();
+                foreach ($mysql->query($sql, $param) as $row) {
+                    $list[] = $row;
+                }
+                $total = $mysql->execute($total_sql, $param);
+            } catch (\PDOException $e) {
+                $context->reply(['status' => 400, 'msg' => '获取失败']);
+                throw new \PDOException("sql run error" . $e);
+            }
+        } else {
+            $context->reply(["status" => 220, "msg" => "当前登录是总代理还没有查看权限"]);
+            return;
+        }
+        if (!empty($list)) {
+            $sql = "select operate_key,operate_name from operate ";
+            $operateList = [];
+            foreach ($mysql->query($sql) as $value) {
+                $operateList += [$value['operate_key'] => $value['operate_name']];
+            }
+            foreach ($list as $key => $val) {
+                $list[$key]['log_time'] = date("Y-m-d H:i:s", $val['log_time']);
+                if ($val["staff_grade"] == 0) {
+                    $list[$key]['staff_grade'] = "站长";
+                } elseif ($val["staff_grade"] == 1) {
+                    $list[$key]['staff_grade'] = "大股东";
+                } elseif ($val["staff_grade"] == 2) {
+                    $list[$key]['staff_grade'] = "股东";
+                } elseif ($val["staff_grade"] == 3) {
+                    $list[$key]['staff_grade'] = "总代理";
+                }
+                $staff_id = $val['staff_id'];
+                $staff_info_sql = "select * from staff_info_intact where staff_id='$staff_id' ";
+                $staff_info = iterator_to_array($mysql->query($staff_info_sql));
+                $list[$key]['staff_key'] = $staff_info[0]['staff_key'];
+                $operateKey = $val['operate_key'];
+                $list[$key]['features'] = $operateList[$operateKey];
+                $list[$key]['ip'] = $val['client_ip'] ? long2ip($val['client_ip']) : 0;
+            }
+        }
+        $context->reply([
+            'status' => 200,
+            'msg' => '获取成功',
+            'total' => $total,
+            'totalpage' => ceil($total / $num),
+            'loglist' => $list
+        ]);
+    }
+
+}

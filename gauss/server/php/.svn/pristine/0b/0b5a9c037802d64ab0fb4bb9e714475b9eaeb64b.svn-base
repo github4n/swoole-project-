@@ -1,0 +1,117 @@
+<?php
+
+namespace Site\Websocket\Account\Staff;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 员工列表
+ * Account/Staff/StaffList {"staff_name":"name","staff_ip":"110","page":1,"num":10,"gonum":2}
+ * 参数：staff_name:员工名,page:当前访问页num:每页显示的数量go_num:跳转的页数
+ * {"staff_name":"name","staff_ip":"110","page":1,"num":10,"gonum":2}
+ * */
+
+class StaffList extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("slave_list_select", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $page = $data["page"];
+        $num = $data["num"];
+        $go_num = $data["go_num"];
+        $staff_name = $data["staff_name"] ? $data["staff_name"] : '';
+        $staff_ip = $data["staff_ip"] ? $data["staff_ip"] : '';
+        $staffId = $context->getInfo('StaffId');
+        $LeaderId = $context->getInfo("LeaderId");
+        $masterId = $context->getInfo('MasterId');
+        $MasterId = $masterId == 0 ? $staffId : $masterId;
+        $total = 0;
+        $list = array();
+        if (!is_numeric($page) && $page < 0) {
+            $context->reply(["status" => 202, "msg" => "当前页数类型不正确"]);
+            return;
+        }
+        if (!is_numeric($num)) {
+            $context->reply(["status" => 204, "msg" => "每页显示的数量不正确"]);
+            return;
+        }
+        $limit = ' LIMIT ' . ($page - 1) * $num . ',' . $num;
+        //跳转的页数
+        if (!empty($go_num) && is_numeric($go_num)) {
+            $limit = ' LIMIT ' . ($go_num - 1) * $num . ',' . $num;
+        }
+
+        if ($StaffGrade == 0) {
+            $sql = "select * from staff_info_intact where 1=1 ";
+        } else {
+            $sql = "select * from staff_info_intact where master_id='$staffId' ";
+        }
+        if ($staff_name != '') {
+            $sql .= " and staff_key ='$staff_name' ";
+        }
+        if ($staff_ip != '') {
+            $staff_ip = ip2long($staff_ip);
+            $sql .= " and  login_ip ='$staff_ip' ";
+        }
+
+        $order = " ORDER BY staff_id DESC";
+        $sql = $sql . $order . $limit;
+        $params = [":master_id" => $MasterId];
+        $mysql = $config->data_staff;
+        $log_list = iterator_to_array($mysql->query($sql, $params));
+        if (!empty($log_list)) {
+            foreach ($log_list as $key => $val) {
+                $info = [];
+                $sql = "select staff_grade,add_time,add_ip,login_time,login_ip from staff_info where staff_id=:staff_id";
+                foreach ($mysql->query($sql, [":staff_id" => $val["staff_id"]]) as $row) {
+                    $info = $row;
+                }
+                $list[$key]['staff_id'] = $val["staff_id"];
+                $list[$key]['add_time'] = !empty($info["add_time"]) ? date("Y-m-m H:i:s", $info["add_time"]) : '';
+                $list[$key]['login_time'] = !empty($info["login_time"]) ? date("Y-m-m H:i:s", $info["login_time"]) : '';
+                $list[$key]['login_ip'] = !empty($info["login_ip"]) ? long2ip($info["login_ip"]) : '';
+                $list[$key]['staff_name'] = $val['staff_name'];
+                $list[$key]['staff_key'] = $val['staff_key'];
+                $list[$key]['deposit_limit'] = $val['deposit_limit'];
+                $list[$key]['withdraw_limit'] = $val['withdraw_limit'];
+            }
+        }
+        if ($StaffGrade == 0) {
+            $total_sql = "select count(staff_id) as total_id  from staff_info_intact where 1=1 ";
+        } else {
+            $total_sql = "select  count(staff_id) as total_id   from staff_info_intact where master_id='$staffId' ";
+        }
+        if ($staff_name != '') {
+            $total_sql .= "and  staff_key ='$staff_name' ";
+        }
+        if ($staff_ip != '') {
+            $staff_ip = ip2long($staff_ip);
+            $total_sql .= "and  login_ip ='$staff_ip' ";
+        }
+           
+        try {
+            foreach ($mysql->query($total_sql, $params) as $row) {
+                $total = $row['total_id'];
+            }
+        } catch (\PDOException $e) {
+            $context->reply(["status" => 400, "msg" => "获取失败"]);
+            throw new \PDOException($e);
+        }
+
+        $context->reply([
+            'status' => 200,
+            "msg" => "获取成功",
+            "total" => $total, //总的记录条数
+            "total_page" => ceil($total / $num), //总页数
+            "list" => $list
+        ]);
+    }
+
+}

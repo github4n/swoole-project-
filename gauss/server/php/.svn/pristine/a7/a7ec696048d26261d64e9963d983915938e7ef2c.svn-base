@@ -1,0 +1,143 @@
+<?php
+namespace Site\Websocket\Account\Staff;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/** 
+* @description: 子账号管理 - 获取员工添加列表页接口
+* @author： leo
+* @date：   2019-04-08   
+* @link：   Account/Staff/StaffAdd
+* @modifyAuthor: 交接负责人：暂无
+* @modifyTime:  交接时间：暂无
+* @returnData: json;
+*/
+
+class StaffAdd extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("slave_list_insert",$auth)) {
+            $context->reply(["status" => 202,"msg" => "你还没有操作权限"]);
+            return;
+        }
+        $mysql = $config->data_staff;
+        $user_mysql = $config->data_user;
+        $cache = $config->cache_site;
+        $operate_list = array();
+        $staffId = $context->getInfo('StaffId');
+        $MasterId = $context->getInfo("MasterId");
+        $StaffGrade = $context->getInfo('StaffGrade');
+        if (!empty($MasterId)) {
+            //当前账号管理会员的信息
+            $sql = "SELECT layer_id FROM staff_layer WHERE staff_id=:staff_id";
+            $param = [":staff_id" => $staffId];
+            foreach ($mysql->query($sql, $param) as $rows) {
+                $layer_list[] = $rows;
+            }
+            $user_layer = array();
+            $agent_layer = array();
+            if (!empty($layer_list)) {
+                foreach ($layer_list as $key => $val) {
+                    $sql = "SELECT layer_id,layer_name,layer_type FROM layer_info WHERE layer_id=:layer_id";
+                    $param = [":layer_id" => $val["layer_id"]];
+                    $user = [];
+                    foreach ($user_mysql->query($sql, $param) as $row) {
+                        $user = $row;
+                    }
+                    if (!empty($user)) {
+                        if ($user["layer_type"] < 3) {
+                            $user_layer[$key]["layer_name"] = $user["layer_name"];
+                            $user_layer[$key]["layer_id"] = $user["layer_id"];
+                        }
+                        if ($user["layer_type"] > 100) {
+                            $agent_layer[$key]["layer_name"] = $user["layer_name"];
+                            $agent_layer[$key]["layer_id"] = $user["layer_id"];
+                        }
+                    }
+                }
+            }
+            sort($agent_layer,1);
+            sort($user_layer,1);
+        } else{
+            //会员层级
+            $user_layer = json_decode($cache->hget("LayerList","userLayer"));
+            //代理层级
+            $agent_layer = json_decode($cache->hget("LayerList","agentLayer"));
+        }
+        $params = [];
+        $where = '';
+        //如果不是站长登录，则不传体系管理体系人员列表的修改删除key和会员列表的修改key
+        $del_key = [
+            'staff_list_major_update', 
+            'staff_list_major_delete', 
+            'staff_list_minor_update', 
+            'staff_list_minor_delete', 
+            'staff_list_agent_update', 
+            'staff_list_agent_delete', 
+            'user_list_update'
+        ];
+        switch ($StaffGrade) {
+            //站长权限
+            case 0:
+                $params[':owner_permit'] = 1;
+                $where = " AND operate_key IN (SELECT operate_key FROM operate WHERE owner_permit = :owner_permit)";
+                break;
+            //大股东权限
+            case 1:
+                $params[':major_permit'] = 1;
+                //大股东不能添加总代理
+                $del_key[] = 'staff_list_agent_insert';
+                $params[':del_key'] = $del_key;
+                $where = " AND operate_key IN (SELECT operate_key FROM operate WHERE major_permit = :major_permit AND operate_key NOT IN :del_key)";
+                break;
+            //股东权限
+            case 2:
+                $params[':minor_permit'] = 1;
+                $params[':del_key'] = $del_key;
+                $where = " AND operate_key IN (SELECT operate_key FROM operate WHERE minor_permit = :minor_permit AND operate_key NOT IN :del_key)";
+                break;
+            //总代理权限
+            case 3:
+                $params[':agent_permit'] = 1;
+                //总代理不能查看经营报表
+                $del_key[] = 'report_money';
+                $params[':del_key'] = $del_key;
+                $where = " AND operate_key IN (SELECT operate_key FROM operate WHERE agent_permit = :agent_permit AND operate_key NOT IN :del_key)";
+                break;
+        }
+        
+        //权限分配
+        $sql = "SELECT * FROM staff_permit WHERE staff_id = :staff_id" . $where;
+        $params[":staff_id"] = $staffId;
+        $operate = iterator_to_array($mysql->query($sql, $params));
+        if (!empty($operate)) {
+            foreach ($operate as $k => $v) {
+                $sql = "SELECT operate_name,operate_key FROM operate WHERE operate_key=:operate_key";
+                $param = [":operate_key" => $v["operate_key"]];
+                $operates =[];
+                foreach ($mysql->query($sql, $param) as $rows) {
+                    $operates = $rows;
+                }
+                if(!empty($operates)){
+                    $operate_list[$k]["operate_key"] = $operates["operate_key"];
+                    $operate_list[$k]["operate_name"] = $operates["operate_name"];
+                }
+            }
+        }
+
+        $context->reply($operate_list);return;
+        sort($operate_list,1);
+        $context->reply([
+            "status" => 200,
+            "level" => "获取成功",
+            "user_layer"  =>  $user_layer,
+            "agent_layer"  =>  $agent_layer,
+            "operate_list"  =>  $operate_list
+        ]);
+    }
+}

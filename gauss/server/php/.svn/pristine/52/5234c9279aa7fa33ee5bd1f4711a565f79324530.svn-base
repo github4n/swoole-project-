@@ -1,0 +1,144 @@
+<?php
+
+namespace Site\Websocket\Cash\WithdrawRecord;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ *
+ * @description 现金系统-审核出款-出款失败
+ * @Author  Rose
+ * @date  2019-05-07
+ * @links  Cash/WithdrawRecord/WithdrawCancel {"user_key":"deal3","withdraw_serial":"181219105912000003","cancel_reason":"审核不通过"}
+ * @param status 1等待入款 2入款成功 3入款失败
+ * @modifyAuthor   Rose
+ * @modifyTime  2019-05-08
+ * */
+
+class WithdrawCancel extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo('StaffGrade');
+        if ($StaffGrade != 0) {
+            $context->reply(['status' => 203, 'msg' => '当前账号没有操作权限']);
+
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array('money_withdraw_deal', $auth)) {
+            $context->reply(['status' => 202, 'msg' => '你还没有操作权限']);
+
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $staffKey = $context->getInfo('StaffKey');
+        $data = $context->getData();
+        $mysqlUser = $config->data_user;
+        $withdraw_serial = $data['withdraw_serial'];
+        $user_key = $data['user_key'];
+        $cancel_reason = $data['cancel_reason'];
+        if (empty($cancel_reason)) {
+            $context->reply(['status' => 204, 'msg' => '拒绝理由为空']);
+
+            return;
+        }
+        if (empty($user_key)) {
+            $context->reply(['status' => 206, 'msg' => '用户参数错误']);
+
+            return;
+        }
+        if (empty($withdraw_serial)) {
+            $context->reply(['status' => 205, 'msg' => '出款单号不能为空']);
+
+            return;
+        }
+        $user_sql = 'select deal_key,layer_id,user_id from user_info_intact where user_key=:user_key';
+        $user_info = [];
+        foreach ($mysqlUser->query($user_sql, [':user_key' => $user_key]) as $row) {
+            $user_info = $row;
+        }
+        if (empty($user_info)) {
+            $context->reply(['status' => 300, 'msg' => '会员参数错误']);
+
+            return;
+        }
+        $user_id = $user_info['user_id'];
+        $deal_key = $user_info['deal_key'];
+        $mysql = $config->__get('data_'.$deal_key);
+        //判断该出款的记录没有锁定就不能操作
+        $info = [];
+        $sql = 'select withdraw_serial,lock_staff_id from withdraw_lock where withdraw_serial=:withdraw_serial and lock_type=0';
+        foreach ($mysql->query($sql, [':withdraw_serial' => $withdraw_serial]) as $row) {
+            $info = $row;
+        }
+        if (empty($info)) {
+            $context->reply(['status' => 401, 'msg' => '还未锁定该订单']);
+
+            return;
+        } else {
+            if ($info['lock_staff_id'] != $staffId) {
+                $context->reply(['status' => 402, 'msg' => '该订单已被其他员工锁定']);
+
+                return;
+            }
+        }
+        $sql = 'select user_id from withdraw_intact where withdraw_serial=:withdraw_serial';
+        foreach ($mysql->query($sql, [':withdraw_serial' => $withdraw_serial]) as $row) {
+            $user_id = $row['user_id'];
+        }
+        //判断该订单是否已经操作
+        $sql = 'select withdraw_serial from withdraw_intact where withdraw_serial=:withdraw_serial and (finish_time is not null or cancel_time is not null)';
+        $infos = [];
+        foreach ($mysql->query($sql, [':withdraw_serial' => $withdraw_serial]) as $rows) {
+            $infos = $rows;
+        }
+        if (!empty($infos)) {
+            $context->reply(['status' => 210, 'msg' => '该订单已操作']);
+
+            return;
+        }
+
+        $sql = 'INSERT INTO withdraw_cancel SET withdraw_serial=:withdraw_serial, cancel_staff_id=:cancel_staff_id, cancel_staff_name=:cancel_staff_name,cancel_reason=:cancel_reason';
+        $param = [
+            ':withdraw_serial' => $withdraw_serial,
+            ':cancel_staff_id' => $staffId,
+            ':cancel_staff_name' => $staffKey,
+            ':cancel_reason' => $cancel_reason,
+        ];
+
+        try {
+            $mysql->execute($sql, $param);
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 400, 'msg' => '操作失败']);
+            throw new \PDOException($e);
+        }
+        $sql = 'DELETE FROM withdraw_lock WHERE withdraw_serial=:withdraw_serial';
+        $param = [
+            ':withdraw_serial' => $withdraw_serial,
+        ];
+        $mysql->execute($sql, $param);
+        $context->reply(['status' => 200, 'msg' => '操作成功']);
+        //记录操作日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'money_withdraw_deal',
+            ':detail' => '拒绝单号为'.$withdraw_serial.'的出款',
+        ];
+        $staff_mysql = $config->data_staff;
+        $staff_mysql->execute($sql, $params);
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $user_mysql = $config->data_user;
+        $sql = 'SELECT client_id FROM user_session WHERE user_id=:user_id';
+        $param = ['user_id' => $user_id];
+        foreach ($user_mysql->query($sql, $param) as $row) {
+            $id = $row['client_id'];
+            $taskAdapter->plan('NotifyApp', ['path' => 'User/Balance', 'data' => ['user_id' => $user_id, 'id' => $id, 'deal_key' => $deal_key]]);
+        }
+    }
+}

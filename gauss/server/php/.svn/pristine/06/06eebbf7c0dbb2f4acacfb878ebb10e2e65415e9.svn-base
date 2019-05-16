@@ -1,0 +1,97 @@
+<?php
+namespace Site\Websocket\Lottery\LotteryList;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 保存彩票
+ * Lottery/LotteryList/LotterySave {"model_key":"","game_list":[{"game_key":"","switch":""},{"game_key":"","switch":""}],"play_list":[{"game_key":"","play_key":"","switch":""}]}
+ * */
+class LotterySave extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $game_list = $data["game_list"];
+        $play_list = $data["play_list"];
+        if(empty($game_list) && empty($play_list)){
+            $context->reply(["status"=>206,"msg"=>"提交的数据不能为空"]);
+            return;
+        }
+        if(!empty($game_list)){
+            if(!is_array($game_list)){
+                $context->reply(["status"=>207,"msg"=>"参数类型错误"]);
+                return;
+            }
+            foreach ($game_list as $item) {
+                $game_key = $item["game_key"];
+                $switch = $item["switch"];
+                if ($switch === "on") {
+                    $acceptable = 1;
+                } elseif ($switch === "off") {
+                    $acceptable = 0;
+                } else {
+                    $context->reply(["status" => 205, "msg" => "开关参数错误"]);
+                    return;
+                }
+                $sql = "UPDATE lottery_game SET site_acceptable=:site_acceptable WHERE game_key=:game_key AND plat_acceptable=1";
+                $param = [
+                    ":game_key"=>$game_key,
+                    ":site_acceptable"=>$acceptable
+                ];
+                try{
+                    $mysql->execute($sql,$param);
+                }catch (\PDOException $e){
+                    $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                    throw new \PDOException($e);
+                }
+                $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+                $taskAdapter->plan("Lottery/GamePlay",["game_key"=>$game_key],time());
+                $taskAdapter->plan("Lottery/GameWin",["game_key"=>$game_key],time());
+            }
+        }
+        if(!empty($play_list)){
+            if(!is_array($play_list)){
+                $context->reply(["status"=>208,"msg"=>"参数类型错误"]);
+                return;
+            }
+            foreach ($play_list as $item){
+                $play_key = $item["play_key"];
+                $game_key = $item["game_key"];
+                $switch = $item["switch"];
+                if($switch === "on"){
+                    $acceptable = 1;
+                }elseif ($switch ==="off"){
+                    $acceptable = 0;
+                }else{
+                    $context->reply(["status"=>205,"msg"=>"开关参数错误"]);
+                    return;
+                }
+                $sql = "UPDATE lottery_game_play SET site_acceptable=:acceptable WHERE game_key=:game_key AND play_key=:play_key AND plat_acceptable=1";
+                $param = [
+                    ":acceptable"=>$acceptable,
+                    ":game_key"=>$game_key,
+                    ":play_key"=>$play_key
+                ];
+                try{
+                    $mysql->execute($sql,$param);
+                } catch (\PDOException $e){
+                    $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                    throw new \PDOException($e);
+                }
+                $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+                $taskAdapter->plan("Lottery/GamePlay",["game_key"=>$game_key],time());
+                $taskAdapter->plan("Lottery/GameWin",["game_key"=>$game_key],time());
+            }
+        }
+        $context->reply(["status"=>200,"msg"=>"修改成功"]);
+
+    }
+}

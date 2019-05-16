@@ -1,0 +1,107 @@
+<?php
+namespace Site\Websocket\Member\Level;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员层级设置-编辑自动层级修改的信息
+ * Member/Level/LevelUpdate {"level_id":20,"level_name":"超级会员2","deposit":400,"bet":200,"auth":["insert_into","update_up","deletes"]}
+ *
+ */
+
+class LevelUpdate extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_user;
+        $mysql_staff = $config->data_staff;
+        $layer_id = $data["level_id"];
+        $level_name = $data["level_name"];
+        $auth = $data["auth"];
+        $deposit = $data["deposit"];
+        $bet = $data["bet"];
+        if(empty($layer_id)){
+            $context->reply(["status"=>204,"msg"=>"编辑的会员等级值不正确"]);
+            return;
+        }
+        if(empty($level_name)){
+            $context->reply(["status"=>205,"msg"=>"等级名称不能为空"]);
+            return;
+        }
+
+        if(!is_numeric($layer_id)){
+            $context->reply(["status"=>207,"msg"=>"提交的会员编号类型错误"]);
+            return;
+        }
+        if(!is_numeric($deposit)){
+            $context->reply(["status"=>208,"msg"=>"充值金额类型不饿正确"]);
+            return;
+        }
+        if(!is_numeric($bet)){
+            $context->reply(["status"=>209,"msg"=>"投注金额类型不正确"]);
+            return;
+        }
+        if(!empty($auth)) {
+            if (!is_array($auth)) {
+                $context->reply(["status" => 208, "msg" => "权限参数类型错误"]);
+                return;
+            }
+        }
+
+        $sql = "UPDATE layer_info SET layer_name=:layer_name, min_deposit_amount=:min_deposit_amount, min_bet_amount=:min_bet_amount WHERE layer_id=:layer_id";
+        $param = [
+            ":layer_name"=>$level_name,
+            ":min_deposit_amount"=>$deposit,
+            ":min_bet_amount"=>$bet,
+            ":layer_id"=>$layer_id,
+        ];
+        try{
+            $mysql->execute($sql,$param);
+        } catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"修改失败"]);
+            throw new \PDOException($e);
+        }
+        if(!empty($auth)){
+            //修改层级的权限信息（删除之前的）
+            $sql = "DELETE FROM layer_permit WHERE layer_id=:layer_id";
+            $param = [":layer_id"=>$layer_id];
+            try{
+                $mysql->execute($sql,$param);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"修改失败"]);
+            }
+            foreach ($auth as $item){
+                $sql = "INSERT INTO layer_permit SET layer_id=:layer_id,operate_key=:operate_key";
+                $param = [":layer_id"=>$layer_id,":operate_key"=>$item];
+                try{
+                    $mysql->execute($sql,$param);
+                }catch(\PDOException $e){
+                    $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                    return;
+                }
+            }
+        }
+
+        //记录日志信息
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip=:client_ip';
+        $params = [
+            ':staff_id' => $context->getInfo('StaffId'),
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'user_layer_update',
+            ':detail' =>'修改会员层级'.$layer_id,
+        ];
+        $mysql_staff->execute($sql, $params);
+        $context->reply([
+            "status"=>200,
+            "msg"=>"修改成功",
+        ]);
+    }
+}

@@ -1,0 +1,36 @@
+<?php
+
+namespace Site\Task\Lottery;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+/*
+ *@nathan rose
+ *@2019/4/18
+ *期号推送
+ */
+class Period implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['game_key' => $game_key] = $context->getData();
+
+        $adapter = $context->getAdapter();
+        $mysql = $config->data_public;
+
+        $sql = 'select game_key,game_name,period,start_time,stop_time,plan_time from lottery_period_current where game_key=:game_key order by start_time';
+        $params = ['game_key' => $game_key];
+        $pushData = [];
+        $now = time();
+        foreach ($mysql->query($sql, $params) as $row) {
+            $pushData[] = $row;
+            $refreshTime = $row['plan_time'] - 50;
+            if ($refreshTime > $now) {
+                $adapter->plan('Lottery/Period', ['game_key' => $game_key, 'period' => $row['period']], $refreshTime);
+            }
+        }
+        $adapter->plan('NotifyApp', ['path' => 'Lottery/Period', 'data' => ['game_key' => $game_key, 'pushData' => $pushData]]);
+    }
+}

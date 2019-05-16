@@ -1,0 +1,98 @@
+<?php
+
+namespace Plat\Websocket\LotteryTicket\LotteryRebateSetting;
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ *LotteryTicket/LotteryRebateSetting/LotteryRebateList {"site_name":"测试站点A","status":1}
+ * */
+class LotteryRebateList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("lottery_rebate_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+
+        //接收数据
+        $data = $context->getData();
+        $site_name = empty($data['site_name'])?null:$data['site_name'];
+        $status = empty($data['status'])?null:$data['status'];
+
+        $admin_mysql = $config->data_admin;
+        $site_key_search = null;
+        if (!empty($site_name))
+        {
+
+            if (is_numeric($status) && $status!=null)
+            {
+                $exists_sql = 'SELECT site_key FROM site WHERE site_name=:site_name AND status=:status';
+                $exists_params = [':site_name' => $site_name,':status' => $status-1];
+                foreach ($admin_mysql->query($exists_sql,$exists_params) as $row)
+                {
+                    $status_site = $row['site_key'];
+                }
+                if (empty($status_site))
+                {
+                    $context->reply(['status' => 202,'msg' => '不存在此站点']);
+                    return;
+                }else
+                {
+                    $site_key_search = ' AND site_key ='."'$status_site'".' ';
+                }
+            }else
+            {
+                $site_key_search = ' AND site_name='."'$site_name'".' ';
+            }
+        }else
+        {
+            if (is_numeric($status) && $status!=null)
+            {
+                $exists_sql = 'SELECT site_key FROM site WHERE  status=:status';
+                $exists_params = [':status' => $status-1];
+                foreach ($admin_mysql->query($exists_sql,$exists_params) as $row)
+                {
+                    $status_site[] = $row['site_key'];
+                }
+                if (empty($status_site))
+                {
+                    $context->reply(['status' => 203,'msg' => '不存在此站点']);
+                    return;
+                }else
+                {
+                    $site_key_search = ' AND site_key IN (';
+                   foreach ($status_site as $item)
+                   {
+                       $site_key_search .= "'$item'".',';
+                   }
+                    $site_key_search = rtrim($site_key_search,',').')';
+                }
+            }
+        }
+
+        $analysis_mysql = $config->data_analysis;
+        $sql = 'SELECT site_key,site_name,bet_all,bonus_all,(bonus_all-bet_all) as profit,rebate FROM monthly_site WHERE 1'.$site_key_search;
+        $items = iterator_to_array($analysis_mysql->query($sql));
+        $list = [];
+        foreach ($items as $k => $v)
+        {
+            $list[$k]['site_key'] = $v['site_key'];
+            $list[$k]['site_name'] = $v['site_name'];
+            $list[$k]['bet_all'] = $v['bet_all'];
+            $list[$k]['bonus_all'] = $v['bonus_all'];
+            $list[$k]['profit'] = $v['profit'];
+            $list[$k]['rebate'] = $v['rebate'];
+        }
+
+        $context->reply([
+            'status' => 200,
+            'msg' => '获取成功',
+            'list' => $list
+        ]);
+    }
+}

@@ -1,0 +1,26 @@
+<?php
+namespace Site\Websocket\Cash\Publics;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-所有银行信息
+ * 参数：Cash/Publics/AllBank
+ * status 1等待入款 2入款成功 3入款失败
+ * */
+
+class AllBank extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限"]);
+            return;
+        }
+        $bank = [ "中国银行","农业银行","建设银行","光大银行","兴业银行","中信银行","招商银行","民生银行","交通银行","广东发展银行","华夏银行","工商银行","平安银行","邮政储蓄银行","浦发银行",
+            
+        ];
+        $context->reply(["status"=>200,"msg"=>"获取成功","bank_list"=>$bank]);
+    }
+}

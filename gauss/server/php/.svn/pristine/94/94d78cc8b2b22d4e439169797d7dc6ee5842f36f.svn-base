@@ -1,0 +1,114 @@
+<?php
+namespace Plat\Websocket\Website\SiteLottery;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 网站管理-站点彩票设置-彩票开关保存
+ * Website/SiteLottery/SiteLotterySave {"site_key":"site1","model_key":"
+ladder","game_list":"","play_list":[{"game_key":"ladder_fast","play_key":"ladder_from","switch":"off"}]}
+ * 参数：site_key:站点,game_switch:玩法开关数组,game_key:玩法名称,switch:开关
+ * Website/SiteLottery/SiteLotterySave {"site_key":"site2","model_key":"
+ladder","game_list":[{"game_key":"ladder_five","switch":"off"},{"game_key":"ladder_three","switch":"off"}],"play_list":""}
+ * */
+
+class SiteLotterySave extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("website_lottery_update",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_admin;
+        $site_key = $data["site_key"];
+        $game_list = $data["game_list"];
+        $play_list = $data["play_list"];
+        if(empty($game_list) && empty($play_list)){
+            $context->reply(["status"=>209,"msg"=>"提交的数据不能为空"]);
+            return;
+        }
+        if(!empty($game_list)){
+            if(!is_array($game_list)){
+                $context->reply(["status"=>204,"msg"=>"参数类型错误"]);
+                return;
+            }
+            $game_key_list = array();
+            foreach ($game_list as $item){
+                $game_key = $item["game_key"];
+                $switch = $item["switch"];
+                if($switch === "on"){
+                    $acceptable = 1;
+                }elseif ($switch ==="off"){
+                    $acceptable = 0;
+                }else{
+                    $context->reply(["status"=>205,"msg"=>"开关参数错误"]);
+                    return;
+                }
+                $sql = "UPDATE site_game SET acceptable=:acceptable WHERE game_key=:game_key AND site_key=:site_key";
+                $param = [":acceptable"=>$acceptable,":game_key"=>$game_key,":site_key"=>$site_key];
+
+                $game_key_list[] .= $game_key;
+                try{
+                    $mysql->execute($sql,$param);
+                } catch (\PDOException $e){
+                    $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                    throw new \PDOException($e);
+                }
+            }
+            //记录日志
+            $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+            $param = [
+                ':admin_id' => $context->getInfo('adminId'),
+                ':operate_key' => "ticket_play_update",
+                ':detail' => "编号为修改了彩种".json_encode($game_key_list)."的开关"
+            ];
+            $mysql->execute($sql,$param);
+        }
+        if(!empty($play_list)){
+            if(!is_array($play_list)){
+                $context->reply(["status"=>206,"msg"=>"彩票玩法参数错误"]);
+                return;
+            }
+            $play_key_list = array();
+            foreach ($play_list as $item){
+                $play_key = $item["play_key"];
+                $game_key = $item["game_key"];
+                $switch = $item["switch"];
+                if($switch === "on"){
+                    $acceptable = 1;
+                }elseif ($switch ==="off"){
+                    $acceptable = 0;
+                }else{
+                    $context->reply(["status"=>205,"msg"=>"开关参数错误"]);
+                    return;
+                }
+                $sql = "UPDATE site_play SET acceptable=:acceptable WHERE game_key=:game_key AND play_key=:play_key AND site_key=:site_key";
+                $param = [":acceptable"=>$acceptable,":game_key"=>$game_key,":play_key"=>$play_key,":site_key"=>$site_key];
+                $play_key_list["play_key"] .= $play_key;
+                $play_key_list["game_key"] .= $game_key;
+                try{
+                    $mysql->execute($sql,$param);
+                }catch (\PDOException $e){
+                    $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                    throw new \PDOException($e);
+                }
+            }
+            //记录日志
+            $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+            $param = [
+                ':admin_id' => $context->getInfo('adminId'),
+                ':operate_key' => "website_lottery_update",
+                ':detail' => "编号为修改了玩法".json_encode($play_key_list)."的开关"
+            ];
+            $mysql->execute($sql,$param);
+        }
+        $context->reply(["status"=>200,"msg"=>"修改成功"]);
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $taskAdapter->plan('Lottery/SiteLottery', []);
+    }
+}

@@ -1,0 +1,305 @@
+<?php
+
+namespace Site\Websocket\ReportQuery;
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 报表查询-彩票报表
+ * ReportQuery/LotteryReportNew {"date":"yesterday"}
+ * 参数:"date":today今日(NULL)，昨日yesterday，本周thisWeek，上周lastWeek，本月thisMonth，上月lastMonth,"start_time":"2018-12-10","end_time":"2018-12-15"
+ * */
+class LotteryReportNew extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $data = $context->getData();
+        $staffId = $context->getInfo('StaffId');
+        $staffGrade = $context->getInfo('StaffGrade');
+        $MasterId = $context->getInfo("MasterId");
+        $mysql = $config->data_report;
+        $mysqlStaff = $config->data_staff;
+        $cache = $config->cache_site;
+        if ($MasterId != 0) {
+            $staffId =$MasterId;
+        }
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("report_lottery",$auth)) {
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $date = isset($data['date']) ? $data['date'] : '';
+        $start_time = empty($data['start_time'])?"":date('Ymd',strtotime($data['start_time']));
+        $end_time = empty($data['end_time'])?"":date('Ymd',strtotime($data['end_time']));
+        if (empty($date) && (empty($start_time) && empty($end_time)))
+        {
+            $date = 'today';
+        }
+        if(!empty($start_time) && !empty($end_time)){
+            $date = 'others';
+        }
+        $allList = [];
+        switch ($staffGrade)
+        {
+            case 0:
+                $agent_sql = "select group_concat(staff_id) as agent_list from staff_info_intact where staff_grade =3";
+                foreach ($mysqlStaff->query($agent_sql) as $row){
+                    $agent_list = $row["agent_list"];
+                }
+                break;
+            case 1:
+                $agent_sql = "select group_concat(staff_id) as agent_list from staff_info_intact where master_id=:master_id and staff_grade =3";
+                foreach ($mysqlStaff->query($agent_sql,[":master_id"=>$staffId]) as $row){
+                    $agent_list = $row["agent_list"];
+                }
+                break;
+            case 2:
+                $agent_sql = "select group_concat(staff_id) as agent_list from staff_info_intact where master_id=:master_id and staff_grade =3";
+                foreach ($mysqlStaff->query($agent_sql,[":master_id"=>$staffId]) as $row){
+                    $agent_list = $row["agent_list"];
+                }
+                break;
+            case 3:
+                $agent_list = "$staffId";
+                break;
+        }
+        if(!isset($agent_list) || empty($agent_list)){
+            $agent_list = 0 ;
+        }
+        $game_sql = "select model_key,game_key from lottery_game";
+        $allGame = iterator_to_array($mysqlStaff->query($game_sql));
+        foreach ($allGame as $key=>$val){
+            $allList[$val["model_key"]]["bet_amount"] = isset($allList[$val["model_key"]]["bet_amount"]) ? $allList[$val["model_key"]]["bet_amount"] : 0;
+            $allList[$val["model_key"]]["bet_count"] = isset($allList[$val["model_key"]]["bet_count"]) ? $allList[$val["model_key"]]["bet_count"] : 0;
+            $allList[$val["model_key"]]["bonus_amount"] = isset($allList[$val["model_key"]]["bonus_amount"]) ? $allList[$val["model_key"]]["bonus_amount"] : 0;
+            $allList[$val["model_key"]]["profit_amount"] = isset($allList[$val["model_key"]]["profit_amount"]) ? $allList[$val["model_key"]]["profit_amount"] : 0;
+            $allList[$val["model_key"]]["bet_rate"] = isset($allList[$val["model_key"]]["bet_rate"]) ? $allList[$val["model_key"]]["bet_rate"] : 0;
+            $allList[$val["model_key"]]["bet_count_rate"] = isset($allList[$val["model_key"]]["bet_count_rate"]) ? $allList[$val["model_key"]]["bet_count_rate"] : 0;
+            switch ($date){
+                case "yesterday":
+                    $time = intval(date("Ymd",strtotime("yesterday")));
+                    $sql = "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount ".
+                        "from daily_staff_lottery where agent_id in ($agent_list) and daily= $time";
+                    foreach ($mysql->query($sql) as $row){
+                        $totalData = $row;
+                    }
+
+                    $sql =  "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount,sum(subsidy_amount) as subsidy_amount,".
+                        "game_key,model_key ".
+                        "from daily_staff_lottery where agent_id in ($agent_list) and daily= $time and game_key='" . $val['game_key'] . "' group by game_key,model_key";
+                    $gameData = [];
+                    foreach ($mysql->query($sql) as $rows){
+                        $gameData = $rows;
+                    }
+
+                    break;
+                case "thisWeek":
+                    $time = intval(date("oW",strtotime("today")));
+                    $sql = "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount ".
+                        "from weekly_staff_lottery where agent_id in ($agent_list) and weekly= $time";
+                    foreach ($mysql->query($sql) as $row){
+                        $totalData = $row;
+                    }
+
+                    $sql =  "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount,sum(subsidy_amount) as subsidy_amount,".
+                        "game_key,model_key ".
+                        "from weekly_staff_lottery where agent_id in ($agent_list) and weekly= $time and game_key='" . $val["game_key"] . "' group by game_key,model_key";
+                    $gameData = [];
+                    foreach ($mysql->query($sql) as $rows){
+                        $gameData = $rows;
+                    }
+                    break;
+                case "lastWeek":
+                    $time = intval(date("oW",strtotime("-1 week")));
+                    $sql = "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount ".
+                        "from weekly_staff_lottery where agent_id in ($agent_list) and weekly= $time";
+                    foreach ($mysql->query($sql,[":daily"=>$time]) as $row){
+                        $totalData = $row;
+                    }
+
+                    $sql =  "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount,sum(subsidy_amount) as subsidy_amount,".
+                        "game_key,model_key ".
+                        "from weekly_staff_lottery where agent_id in ($agent_list) and weekly= $time and game_key='" . $val["game_key"] . "' group by game_key,model_key";
+                    $gameData = [];
+                    foreach ($mysql->query($sql) as $rows){
+                        $gameData = $rows;
+                    }
+                    break;
+                case "thisMonth":
+                    $time = intval(date("Ym",strtotime("today")));
+                    $sql = "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount ".
+                        "from monthly_staff_lottery where agent_id in ($agent_list) and monthly= $time";
+                    foreach ($mysql->query($sql,[":daily"=>$time]) as $row){
+                        $totalData = $row;
+                    }
+
+                    $sql =  "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount,sum(subsidy_amount) as subsidy_amount,".
+                        "game_key,model_key ".
+                        "from monthly_staff_lottery where agent_id in ($agent_list) and monthly= $time and game_key='" . $val['game_key'] . "' group by game_key,model_key";
+                    $gameData = [];
+                    foreach ($mysql->query($sql) as $rows){
+                        $gameData = $rows;
+                    }
+                    break;
+                case "lastMonth":
+                    $time = intval(date("Ym",strtotime("-1 month")));
+                    $sql = "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount ".
+                        "from monthly_staff_lottery where agent_id in ($agent_list) and monthly= $time";
+                    foreach ($mysql->query($sql) as $row){
+                        $totalData = $row;
+                    }
+                    $sql =  "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount,sum(subsidy_amount) as subsidy_amount,".
+                        "game_key,model_key ".
+                        "from monthly_staff_lottery where agent_id in ($agent_list) and monthly= $time and game_key='" . $val['game_key'] . "' group by game_key,model_key";
+                    $gameData = [];
+                    foreach ($mysql->query($sql) as $rows){
+                        $gameData = $rows;
+                    }
+                    break;
+                case "others":
+//                $time = intval(date("Ymd",strtotime("yesterday")));
+                    $sql = "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount ".
+                        "from daily_staff_lottery where agent_id in ($agent_list) and daily between $start_time and $end_time";
+                    foreach ($mysql->query($sql) as $row){
+                        $totalData = $row;
+                    }
+
+                    $sql =  "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount,sum(subsidy_amount) as subsidy_amount,".
+                        "game_key,model_key ".
+                        "from daily_staff_lottery where agent_id in (:agent_list) and daily between $start_time and $end_time and game_key=:game_key group by game_key,model_key";
+                    $gameData = [];
+                    foreach ($mysql->query($sql,[":agent_list"=>$agent_list,":game_key"=>$val["game_key"]]) as $rows){
+                        $gameData = $rows;
+                    }
+                    break;
+                default:
+                    $time = intval(date("Ymd",strtotime("today")));
+                    $sql = "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount ".
+                        "from daily_staff_lottery where agent_id in ($agent_list) and daily= $time";
+                    foreach ($mysql->query($sql,[":daily"=>$time]) as $row){
+                        $totalData = $row;
+                    }
+
+                    $sql =  "select sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(bonus_amount) as bonus_amount,".
+                        "sum(subsidy_amount) as subsidy_amount,-(sum(profit_amount)) as profit_amount,sum(subsidy_amount) as subsidy_amount,".
+                        "game_key,model_key ".
+                        "from daily_staff_lottery where agent_id in ($agent_list) and daily= $time and game_key='" . $val["game_key"] . "' group by game_key,model_key";
+                    $gameData = [];
+                    foreach ($mysql->query($sql) as $rows){
+                        $gameData = $rows;
+                    }
+                    break;
+            }
+            if (!empty($gameData)){
+                $gameList["game_key"] = $val["game_key"];
+                $gameList["bet_amount"] = $gameData["bet_amount"];
+                $gameList["bet_count"] = $gameData["bet_count"];
+                $gameList["bonus_amount"] = $gameData["bonus_amount"];
+                $gameList["profit_amount"] = $gameData["profit_amount"];
+                $gameList["subsidy_amount"] = $gameData["subsidy_amount"];
+                $gameList["bet_rate"] = $gameData["bet_amount"]/ $totalData["bet_amount"];
+                $gameList["bet_count_rate"] = $gameData["bet_count"]/ $totalData["bet_count"];
+                if($val["model_key"] == "dice"){
+                    $allList[$val["model_key"]]["bet_amount"] += $gameData['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $gameData['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $gameData['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $gameData['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$totalData["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$totalData["bet_count"];
+                }
+                if($val["model_key"] == "eleven"){
+                    $allList[$val["model_key"]]["bet_amount"] += $gameData['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $gameData['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $gameData['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $gameData['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$totalData["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$totalData["bet_count"];
+                }
+                if($val["model_key"] == "ladder"){
+                    $allList[$val["model_key"]]["bet_amount"] += $gameData['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $gameData['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $gameData['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $gameData['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$totalData["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$totalData["bet_count"];
+                }
+                if($val["model_key"] == "lucky"){
+                    $allList[$val["model_key"]]["bet_amount"] += $gameData['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $gameData['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $gameData['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $gameData['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$totalData["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$totalData["bet_count"];
+                }
+                if($val["model_key"] == "racer"){
+                    $allList[$val["model_key"]]["bet_amount"] += $gameData['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $gameData['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $gameData['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $gameData['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$totalData["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$totalData["bet_count"];
+                }
+                if($val["model_key"] == "six"){
+                    $allList[$val["model_key"]]["bet_amount"] += empty($gameData['bet_amount']) ? 0 : $gameData['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += empty($gameData['bet_count']) ? 0 : $gameData['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += empty($gameData['bonus_amount']) ? 0 : $gameData['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += empty($gameData['profit_amount']) ? 0 : $gameData['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$totalData["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$totalData["bet_count"];
+                }
+                if($val["model_key"] == "tiktok"){
+                    $allList[$val["model_key"]]["bet_amount"] += $gameData['bet_amount'];
+                    $allList[$val["model_key"]]["bet_count"] += $gameData['bet_count'];
+                    $allList[$val["model_key"]]["bonus_amount"] += $gameData['bonus_amount'];
+                    $allList[$val["model_key"]]["profit_amount"] += $gameData['profit_amount'];
+                    $allList[$val["model_key"]]["bet_rate"] = $allList[$val["model_key"]]["bet_amount"]/$totalData["bet_amount"];
+                    $allList[$val["model_key"]]["bet_count_rate"] = $allList[$val["model_key"]]["bet_count"]/$totalData["bet_count"];
+
+                }
+            }else{
+                $gameList["game_key"] = $val["game_key"];
+                $gameList["bet_amount"] = 0;
+                $gameList["bet_count"] = 0;
+                $gameList["bonus_amount"] = 0;
+                $gameList["subsidy_amount"] = 0;
+                $gameList["profit_amount"] = 0;
+                $gameList["bet_rate"] = 0;
+                $gameList["bet_count_rate"] = 0;
+            }
+            $allList[$val["model_key"]]["model_key"] = $val["model_key"];
+            $allList[$val["model_key"]]["bet_amount"] = empty($allList[$val["model_key"]]["bet_amount"]) ? 0 : $allList[$val["model_key"]]["bet_amount"] ;
+            $allList[$val["model_key"]]["bet_count"] = empty($allList[$val["model_key"]]["bet_count"]) ? 0 : $allList[$val["model_key"]]["bet_count"] ;
+            $allList[$val["model_key"]]["bonus_amount"] = empty($allList[$val["model_key"]]["bonus_amount"]) ? 0 : $allList[$val["model_key"]]["bonus_amount"] ;
+            $allList[$val["model_key"]]["profit_amount"] = empty($allList[$val["model_key"]]["profit_amount"]) ? 0 : $allList[$val["model_key"]]["profit_amount"] ;
+            $allList[$val["model_key"]]["bet_rate"] = empty($allList[$val["model_key"]]["bet_rate"]) ? 0 : $allList[$val["model_key"]]["bet_rate"] ;
+            $allList[$val["model_key"]]["bet_count_rate"] = empty($allList[$val["model_key"]]["bet_count_rate"]) ? 0 : $allList[$val["model_key"]]["bet_count_rate"] ;
+            $allList[$val["model_key"]]["list"][] = $gameList;
+        }
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取数据成功",
+            "data"=>[
+                "bet_amount"=> empty($totalData["bet_amount"]) ? 0 : $totalData["bet_amount"],
+                "bet_count"=> empty($totalData["bet_count"]) ? 0 : $totalData["bet_count"],
+                "bonus_amount"=> empty($totalData["bonus_amount"]) ? 0 : $totalData["bonus_amount"],
+                "profit_amount"=> empty($totalData["profit_amount"]) ? 0 : $totalData["profit_amount"],
+                "subsidy_amount"=> empty($totalData["subsidy_amount"]) ? 0 : $totalData["subsidy_amount"] ,
+                "list"=>$allList,
+            ]
+        ]);
+    }
+}

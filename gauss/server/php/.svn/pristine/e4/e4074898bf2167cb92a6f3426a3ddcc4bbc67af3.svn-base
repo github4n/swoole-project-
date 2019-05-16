@@ -1,0 +1,118 @@
+<?php
+namespace Plat\Task;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class InitializeSite implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['site_key' => $site_key] = $context->getData();
+
+        $mysqlPublic = $config->data_public;
+        $sql = 'select model_key,game_key,acceptable,rebate_max from lottery_game';
+        $adminSiteGames = $gameAcceptables = $gameModels = $gameRebate = [];
+        foreach ($mysqlPublic->query($sql) as $row) {
+            $adminSiteGames[] = [
+                'model_key' => $row['model_key'],
+                'game_key' => $row['game_key'],
+            ];
+            $gameAcceptables[$row['game_key']] = $row['acceptable'];
+            $gameModels[$row['game_key']] = $row['model_key'];
+            $gameRebate[$row['game_key']] = $row['rebate_max'];
+        }
+        $sql = 'select game_key,play_key,acceptable,bet_min,bet_max from lottery_game_play';
+        $adminSitePlays = $playAcceptables = $playBetMin = $playBetMax = [];
+        foreach ($mysqlPublic->query($sql) as $row) {
+            $adminSitePlays[] = [
+                'model_key' => $gameModels[$row['game_key']],
+                'game_key' => $row['game_key'],
+                'play_key' => $row['play_key'],
+            ];
+            $playAcceptables[$row['play_key']] = $row['acceptable'];
+            $playBetMin[$row['play_key']] =  $row['bet_min'];
+            $playBetMax[$row['play_key']] =  $row['bet_max'];
+        }
+
+        $sql = "select category_key,game_key,acceptable from external_game";
+        $adminExternalGame = $externalGameAcceptable = [];
+        foreach ($mysqlPublic->query($sql) as $row){
+            $adminExternalGame[] = [
+                'category_key' => $row['category_key'],
+                'game_key' => $row['game_key'],
+            ];
+            $externalGameAcceptable[$row['play_key']] = $row['acceptable'];
+        }
+
+        $mysqlAdmin = $config->data_admin;
+        $mysqlAdmin->site_rent_config->load([
+            'site_key' => $site_key, 'month_rent' => 100000,
+        ], [], 'ignore');
+        foreach (['lottery', 'video', 'game', 'sports', 'cards'] as $category) {
+            $mysqlAdmin->site_tax_config->load([
+                ['range_max' => 1000000, 'tax_rate' => 10],
+                ['range_max' => 2000000, 'tax_rate' => 9],
+                ['range_max' => 5000000, 'tax_rate' => 8],
+                ['range_max' => 10000000, 'tax_rate' => 7.5],
+                ['range_max' => 20000000, 'tax_rate' => 7],
+                ['range_max' => 50000000, 'tax_rate' => 6.5],
+                ['range_max' => 100000000, 'tax_rate' => 6],
+            ], [
+                'site_key' => $site_key, 'category' => $category,
+            ], 'ignore');
+        }
+        $mysqlAdmin->site_game->load($adminSiteGames, [
+            'site_key' => $site_key, 'acceptable' => 1,
+        ], 'ignore');
+        $mysqlAdmin->site_play->load($adminSitePlays, [
+            'site_key' => $site_key, 'acceptable' => 1,
+        ], 'ignore');
+        $mysqlAdmin->site_external_game->load($adminExternalGame, [
+            'site_key' => $site_key, 'acceptable' => 1,
+        ], 'ignore');
+        $mysqlStaff = $config->__get('data_' . $site_key . '_staff');
+
+        $sql = 'select game_key,acceptable from site_game where site_key=:site_key';
+        $params = ['site_key' => $site_key];
+        $siteGames = [];
+        foreach ($mysqlAdmin->query($sql, $params) as $row) {
+            $siteGames[] = [
+                'model_key' => $gameModels[$row['game_key']],
+                'game_key' => $row['game_key'],
+                'acceptable' => $row['acceptable'],
+                'rebate_max' => $gameRebate[$row['game_key']],
+            ];
+        }
+        $mysqlStaff->lottery_game->load($siteGames, [], 'ignore');
+
+        $sql = 'select game_key,play_key,acceptable from site_play where site_key=:site_key';
+        $sitePlays = [];
+        foreach ($mysqlAdmin->query($sql, $params) as $row) {
+            $sitePlays[] = [
+                'game_key' => $row['game_key'],
+                'play_key' => $row['play_key'],
+                'bet_min' => $playBetMin[$row['play_key']],
+                'bet_max' => $playBetMax[$row['play_key']],
+                'acceptable' => $row['acceptable'],
+            ];
+        }
+        $mysqlStaff->lottery_game_play->load($sitePlays, [], 'ignore');
+
+        $sql = 'select game_key,play_key,win_key,suggest_bonus_rate,bonus_rate from lottery_game_win_intact order by display_order';
+        $generator = $mysqlPublic->query($sql);
+        $mysqlStaff->lottery_game_win->import($generator, [], 'ignore');
+
+        $sql = "select category_key,game_key,acceptable from site_external_game where site_key=:site_key";
+        $adminExternalGame = [];
+        foreach ($mysqlAdmin->query($sql,$params) as $row){
+            $adminExternalGame[] = [
+               "category_key"=>$row["category_key"],
+               "game_key"=>$row["game_key"],
+               "acceptable"=>$row["acceptable"],
+            ];
+        }
+        $mysqlStaff->external_game->load($adminExternalGame, [], 'ignore');
+    }
+}

@@ -1,0 +1,45 @@
+<?php
+
+namespace App\Websocket\BetRecord;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+// BetRecord/GetBetRate  {"play_name":"冠亚和两面"}  获取玩法对应赔率
+
+class GetBetRate extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        $data = $context->getData();
+        $cache = $config->cache_app;
+
+        $play_name = !empty($data["play_name"]) ? $data["play_name"] : '';
+        if (empty($play_name)) {
+            $context->reply(['status' => 202, 'msg' => '请传入对应彩种名']);
+            return;
+        }
+        
+        $public_mysql = $config->data_public;
+        $game_key_sql = "select game_key,play_key from lottery_game_play_intact where play_name='$play_name'  LIMIT 1";
+        $game_key_data = iterator_to_array($public_mysql->query($game_key_sql));
+        if (empty($game_key_data)) {
+            $context->reply(['status' => 203, 'msg' => '未找到对应彩种']);
+            return;
+        }
+        $game_list = json_decode($cache->hget("GameWin", $game_key_data[0]['game_key']));
+        if (empty($game_list)) {
+            $context->reply(['status' => 203, 'msg' => '赔率异常']);
+            return;
+        }
+        $rateData = [];
+        foreach ($game_list as $game) {
+            if ($game->play_key == $game_key_data[0]['play_key']) {
+                $rateData[] = $game;
+            }
+        }
+
+        $context->reply(['status' => 200, 'msg' => $rateData]);
+        return;
+    }
+
+}

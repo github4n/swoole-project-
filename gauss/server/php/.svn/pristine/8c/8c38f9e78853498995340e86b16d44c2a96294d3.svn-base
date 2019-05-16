@@ -1,0 +1,42 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\Setting;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Plat\Websocket\CheckLogin;
+
+/*
+ * 投注额设置列表
+ * 参数：game_key:彩种
+ * LotteryTicket/Setting/BetSetting {"game_key":"racer_fast"}
+ * */
+class BetSetting extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("ticket_setting_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $gamelist = json_decode($context->getInfo("GameList"));
+        if(empty($gamelist))  {
+            $gamelist = $this->getAllGame($context,$config);
+        }
+        $data = $context->getData();
+        $game_key = $data['game_key']?:"dice_ah";
+        $mysql = $config->data_public;
+        //获取相对应的返点列表信息
+        $sql = "SELECT play_name,play_key,bet_min,bet_max as rebate FROM lottery_game_play_intact WHERE game_key=:game_key";
+        $param=[":game_key"=>$game_key];
+        foreach ($mysql->query($sql,$param) as $rows) {
+            $list[]=$rows;
+        }
+        $context->reply([
+            "status"=>200,
+            "msg"=>"获取成功",
+            "game_list"=>$gamelist,
+            "list"=>$list,
+        ]);
+    }
+}

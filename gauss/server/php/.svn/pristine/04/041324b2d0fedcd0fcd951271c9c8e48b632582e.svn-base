@@ -1,0 +1,48 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-2-28
+ * Time: 下午3:51
+ */
+
+namespace Site\Websocket\Member\Analyze;
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+
+/*
+ * 会员登录记录列表
+ * Member/Analyze/LoginHistoryList  {"user_id":1}
+ */
+class LoginHistoryList extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //检查权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array("user_analysis", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $param = $context->getData();
+        $user_id = isset($param['user_id']) ? $param['user_id'] : '';
+        if (!$user_id) {
+            $context->reply(["status" => 204, "msg" => "用户信息不能为空"]);
+            return;
+        }
+        $mysqlUser = $config->data_user;
+        $sql = "select client_ip,country,region,city,login_time from user_ip_history where user_id = '$user_id' order by login_time desc";
+        $data = [];
+        try{
+            foreach ($mysqlUser->query($sql) as $value) {
+                $data[] = $value;
+            }
+            $context->reply(['status' => 200,'msg' => '成功','data' => $data]);
+        } catch (\PDOException $e){
+            $context->reply(["status" => 400,"msg" => "获取列表失败"]);
+            throw new \PDOException($e);
+        }
+
+    }
+}

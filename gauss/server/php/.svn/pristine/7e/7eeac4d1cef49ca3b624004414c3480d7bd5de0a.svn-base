@@ -1,0 +1,36 @@
+<?php
+namespace App\Task\Message;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class LayerMessage implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['layer_id' => $layer_id,'id'=>$id] = $context->getData();
+        $mysql = $config->data_user;
+        $sql = "SELECT * FROM layer_message WHERE layer_id=:layer_id  AND stop_time>:stop_time AND start_time<=:start_time AND publish=1";
+        $param = [":layer_id"=>$layer_id,":stop_time"=>time(),":start_time"=>time()];
+        $list = iterator_to_array($mysql->query($sql,$param));
+        $sql = "SELECT * FROM layer_message WHERE layer_id=0  AND stop_time>:stop_time AND start_time<=:start_time AND publish=1";
+        $param = [":stop_time"=>time(),":start_time"=>time()];
+        foreach ($mysql->query($sql,$param) as $rows){
+            $list[] = $rows;
+        }
+        $lists = [];
+        if(!empty($list)){
+            foreach ($list as $key=>$val){
+                $lists[$key]["layer_message_id"] = $val["layer_message_id"];
+                $lists[$key]["title"] = $val["title"];
+                $lists[$key]["start_time"] = date("Y-m-d",$val["start_time"]);
+                $lists[$key]["stop_time"] = date("Y-m-d",$val["stop_time"]);
+                $lists[$key]["content"] = $val["content"];
+                $lists[$key]["cover"] = $val["cover"];
+            }
+            $websocketAdapter = new \Lib\Websocket\Adapter($config->cache_app);
+            $websocketAdapter->send($id,'Message/LayerMessage', $lists);
+        }
+    }
+}

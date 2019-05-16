@@ -1,0 +1,81 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: lucy
+ * Date: 19-3-22
+ * Time: 上午10:03
+ */
+namespace App\Websocket\BetRecord;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+class BetExternalGame extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //interface_key：选择游戏的类型
+        //status:  0-全部 1-赢 2-输 3-和
+
+        $data = $context->getData();
+        $interface_key = $data['interface_key'] ?? '';
+        $status = $data['status'] ?? 0;
+
+        if (empty($interface_key)) {
+            $context->reply(['status' => 201, 'msg' => '三方平台Key不能为空']);
+            return;
+        }
+        $user_id = $context->getInfo('UserId');
+        $deal_key = $context->getInfo('DealKey');
+        $mysql = $config->__get("data_" . $deal_key);
+        switch ($interface_key) {
+            case 'fg':
+                if($status <= 0){
+                    $where='';
+                    $param = [':user_id'=>$user_id];
+                }else{
+                    $where='AND winloss=:winloss';
+                    $param = [':winloss' => $status,':user_id'=>$user_id];
+                }
+                //查询订单
+//                $sql = 'SELECT a.user_id, a.audit_deal_serial,a.audit_amount,FROM_UNIXTIME(a.audit_time,"%Y-%m-%d %H:%i:%s") as audit_time,b.fg_game_id,b.fg_gt ,b.fg_id FROM external_audit a JOIN external_audit_fungaming b ON b.audit_serial=a.audit_serial WHERE a.user_id=:user_id '.$where.'ORDER BY a.audit_time DESC';
+//
+//                $result = $mysql->query($sql, $param);
+
+
+                $file_data = json_decode(file_get_contents($interface_key .'_game_bet.json',__FILE__));
+                $result=[];
+                if($status != 0){
+                    foreach ($file_data->data as $key=>$val) {
+                        if ($val->winloss == $status) {
+                            $result[] = $val;
+                        }
+                    }
+                }else{
+                    $result=$file_data->data;
+                }
+
+                //返回数据
+                $context->reply(['status' => 200, 'msg' => '获取成功', 'data' => $result]);
+                break;
+            case 'ag':
+
+
+                break;
+            case 'ky':
+
+
+                break;
+            case 'lb':
+
+
+                break;
+            default:
+                $context->reply(['status'=>404,'msg'=>'非法参数']);
+                return;
+                break;
+        }
+    }
+
+}

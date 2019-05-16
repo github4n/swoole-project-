@@ -1,0 +1,107 @@
+<?php
+namespace Site\Websocket\Website\Index;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 网站管理--保存彩票推荐的接口
+ * Website/Index/LotterySave {"list":[{"game_key":"dice_ah","display_order":2,"category_key":"lottery","is_popular":1,"to_home":0},{"game_key":"dice_js","display_order":1,"category_key":"lottery","is_popular":1,"to_home":0}]}
+ * */
+
+class LotterySave extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if(!in_array("web_homepage",$auth)){
+            $context->reply(["status"=>202,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $list = $data["list"];
+        if(!is_array($list)){
+            $context->reply(["status"=>204,"msg"=>"参数类型错误"]);
+            return;
+        }
+        foreach ($list as $item){
+            $game_list[] =  $item["game_key"];
+            $category_list[] =  $item["category_key"];
+        }
+        $sql = "SELECT * FROM suggest WHERE game_key in :game_list AND category_key in :category_key";
+        $param = [":game_list"=>$game_list,":category_key"=>$category_list];
+        $lists = iterator_to_array($mysql->query($sql,$param));
+        if(empty($lists)){
+            $values ='';
+            foreach ($list as $item) {
+                $game_key = $item["game_key"];
+                $display_order = intval($item["display_order"]);
+                $category_key = $item["category_key"];
+                $is_popular = intval($item["is_popular"]);
+                $to_home = intval($item["to_home"]);
+                $values .= "('".$category_key."','".$game_key."','".$display_order."','".$is_popular."','".$to_home."'),";
+            }
+            $values = rtrim($values,',');//去除字符串最后的','
+            $sql = "INSERT INTO suggest(category_key,game_key,display_order,is_popular,to_home) values $values";//定义执行语句
+            try{
+                $mysql->execute($sql);
+            }catch (\PDOException $e){
+                $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                throw new \PDOException($e);
+            }
+            $context->reply(["status"=>200,"msg"=>"修改成功"]);
+            //记录日志
+            $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+            $params = [
+                ':staff_id' => $staffId,
+                ':client_ip' => ip2long($context->getClientAddr()),
+                ':operate_key' => 'web_homepage',
+                ':detail' =>'修改首页彩种推荐',
+            ];
+            $mysql->execute($sql, $params);
+        }else{
+            foreach ($list as $item){
+                $game_key = $item["game_key"];
+                $display_order = intval($item["display_order"]);
+                $category_key = $item["category_key"];
+                $is_popular = intval($item["is_popular"]);
+                $to_home = intval($item["to_home"]);
+                $sql = "UPDATE suggest SET  display_order=:display_order,is_popular=:is_popular,to_home=:to_home WHERE category_key=:category_key AND game_key=:game_key";
+                $params = [
+                    ":display_order"=>$display_order,
+                    ":is_popular"=>$is_popular,
+                    ":to_home"=>$to_home,
+                    ":category_key"=>$category_key,
+                    ":game_key"=>$game_key
+                ];
+                try{
+                    $mysql->execute($sql,$params);
+                }catch (\PDOException $e){
+                    $context->reply(["status"=>400,"msg"=>"修改失败"]);
+                    throw new \PDOException($e);
+                }
+            }
+            $context->reply(["status"=>200,"msg"=>"修改成功"]);
+            //记录日志
+            $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+            $params = [
+                ':staff_id' => $staffId,
+                ':client_ip' => ip2long($context->getClientAddr()),
+                ':operate_key' => 'web_homepage',
+                ':detail' =>'修改首页彩种推荐',
+            ];
+            $mysql->execute($sql, $params);
+        }
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $taskAdapter->plan('Index/AppPopular', [],time());
+
+    }
+}

@@ -1,0 +1,29 @@
+<?php
+namespace Site\Task\Cash;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+/*
+ * //检测入款通道的金额是否达到风控金额  达到风控金额将其关闭
+ *
+ * */
+
+class Passage implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        $mysql = $config->data_staff;
+        $sql = "select group_concat(passage_id) as passage_list"." from deposit_passage where cumulate >= risk_control";
+        $passage_list = iterator_to_array($mysql->query($sql));
+        if(empty($passage_list)){
+            return;
+        }else{
+            $sql = "update deposit_passage "."set acceptable=0 where passage_id in (:passage_list)";
+            $passage = isset($passage_list[0]['passage_list']) ? $passage_list[0]['passage_list'] : '';
+            $mysql->execute($sql,[':passage_list'=>$passage]);
+            $sql = "update deposit_route "."set acceptable=0 where passage_id in (:passage_list)";
+            $mysql->execute($sql,[':passage_list'=>$passage]);
+        }
+    }
+}

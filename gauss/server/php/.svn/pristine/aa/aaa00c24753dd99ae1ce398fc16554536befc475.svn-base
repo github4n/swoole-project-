@@ -1,0 +1,62 @@
+<?php
+namespace Plat\Websocket\LotteryTicket\lotteryRebateSetting;
+
+use mysql_xdevapi\Exception;
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 返点设置列表
+ *  LotteryTicket/lotteryRebateSetting/LotteryRebateSettingSave {"list":[{"site_key":"site1","game_key":"dice_fast","rebate_max":"5"},{"site_key":"site1","game_key":"tiktok_fast","rebate_max":"9"}]}
+ * */
+class LotteryRebateSettingSave extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("lottery_rebate_update",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $admin_mysql = $config->data_admin;
+        $data = $context->getData();
+        $list = $data["list"];
+
+        if (empty($list) || !is_array($list))
+        {
+            $context->reply(['status' => 202,'msg' => '参数类型错误']);
+            return;
+        }
+
+        foreach ($list as $k => $v)
+        {
+            $update_sql = 'UPDATE site_game SET rebate_max=:rebate_max WHERE site_key=:site_key AND game_key=:game_key';
+            $update_params = [
+                ':rebate_max' => $v['rebate_max'],
+                ':site_key' => $v['site_key'],
+                ':game_key' => $v['game_key']
+            ];
+           try
+           {
+               $admin_mysql->execute($update_sql,$update_params);
+           }catch (\PDOException $e)
+           {
+               $context->reply(['status' => 203,'msg'=> '更新失败']);
+               throw new Exception($e);
+           }
+        }
+
+        //记录修改日志
+        $mysqls = $config->data_admin;
+        $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+        $params = [
+            ':admin_id' => $context->getInfo('adminId'),
+            ':operate_key' => "lottery_rebate_update",
+            ':detail' => "修改了返点设置信息"
+        ];
+        $mysqls->execute($sql,$params);
+        $context->reply(['status' => 200, 'msg' => '设置成功']);
+
+    }
+}

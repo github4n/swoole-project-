@@ -1,0 +1,26 @@
+<?php
+namespace Site\Websocket\Cash\DepositAccount;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 现金系统-三方入款平台信息
+ * 参数： 支付平台列表 Cash/DepositAccount/DepositGateWay
+ *
+ * */
+
+class DepositGateWay extends CheckLogin{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限"]);
+            return;
+        }
+
+        $cache = $config->cache_site;
+        $gate_list = json_decode($cache->hget("PayWayList","payGateList"));
+        $context->reply(["status"=>200,"msg"=>"获取成功","list"=>$gate_list]);
+    }
+}

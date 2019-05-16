@@ -1,0 +1,187 @@
+<?php
+namespace Site\Task;
+
+use Lib\Calender;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Initialize implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        $today = strtotime('today');
+        $adapter = $context->getAdapter();
+        $mysqlPublic = $config->data_public;
+        $mysqlStaff = $config->data_staff;
+        $mysqlUser = $config->data_user;
+        $cache = $config->cache_site;
+        $adapter->plan('Report/UserDeal', ['time' => $today - 3 * 86400], time(), 9);
+        $adapter->plan('Report/User', ['time' => $today - 3 * 86400], time(), 9);
+        $adapter->plan('Report/Staff', ['time' => $today - 3 * 86400], time(), 9);
+        $adapter->plan('Report/UserLottery', ['time' => $today - 3 * 86400], time(), 9);
+        $adapter->plan('Report/Layer_subsidy', ['time' => $today - 3 * 86400], time(), 9);
+        $adapter->plan('Report/Layer_brokerage', ['time' => $today - 3 * 86400], time(), 9);
+        $adapter->plan('Report/UserGameSubsidy', ['time' => $today - 3 * 86400], time(), 9);
+        $adapter->plan('Report/UserSubsidy', ['time' => $today - 3 * 86400], time(), 9);
+        $adapter->plan('Report/StaffLottery', ['time' => $today - 3 * 86400], time(), 9);
+        $adapter->plan('Report/UserBrokerage', ['time' => $today - 3 * 86400], time(), 9);
+        $adapter->plan('Report/LotteryPeriod', ['time' => $today - 3 * 86400], time(), 9);
+
+        foreach ($config->app_list as $app) {
+            $adapter->plan('ListenApp', ['app' => $app], time() + 60, 7);
+        }
+
+        //三方的支付方式
+        $sql = "select way_key,way_name from deposit_way order by display_order desc";
+        $payWayList = iterator_to_array($mysqlPublic->query($sql));
+        $cache->hset("PayWayList", "payWayList", json_encode($payWayList));
+
+        //三方入款接口
+        $sql = "select gate_key,gate_name from deposit_gate";
+        $payGateList = iterator_to_array($mysqlPublic->query($sql));
+        $cache->hset("PayWayList", "payGateList", json_encode($payGateList));
+
+        //层级
+        $sql = "select layer_name,layer_id from layer_info where layer_type<100";
+        $userLayer = iterator_to_array($mysqlUser->query($sql));
+        $cache->hset("LayerList", "userLayer", json_encode($userLayer));
+
+        $sql = "select layer_name,layer_id from layer_info where layer_type>100";
+        $agentLayer = iterator_to_array($mysqlUser->query($sql));
+        $cache->hset("LayerList", "agentLayer", json_encode($agentLayer));
+
+        $sql = "select layer_id,layer_name from layer_info";
+        $allLayer = iterator_to_array($mysqlUser->query($sql));
+        $cache->hset("LayerList", "allLayer", json_encode($allLayer));
+
+        $adapter->plan('Report/Status', ['time' => $today], $today + 3600 * 11 + 900, 9);
+        $increment = count($config->deal_list);
+        $offset = 0;
+        foreach ($config->deal_list as $deal) {
+            $offset++;
+            $mysqlDeal = $config->__get('data_' . $deal);
+            $mysqlDeal->serial_setting->load([
+                ['serial_key' => 'deal', 'digit' => 7],
+                ['serial_key' => 'deposit', 'digit' => 6],
+                ['serial_key' => 'withdraw', 'digit' => 6],
+                ['serial_key' => 'bet', 'digit' => 6],
+                ['serial_key' => 'transfer', 'digit' => 6],
+                ['serial_key' => 'external_import', 'digit' => 6],
+                ['serial_key' => 'external_export', 'digit' => 6],
+                ['serial_key' => 'external_audit', 'digit' => 6],
+            ], [
+                'increment' => $increment,
+                'offset' => $offset,
+            ], 'update increment=values(increment),offset=values(offset),digit=values(digit)');
+        }
+        $sql = "SELECT play_key,win_key,win_name FROM lottery_win ";
+        $win_list = iterator_to_array($mysqlPublic->query($sql));
+        if (!empty($win_list)) {
+            foreach ($win_list as $k => $v) {
+                $cache->hset("WinList", $v["play_key"] . "-" . $v["win_key"], $v["win_name"]);
+            }
+        }
+        $sql = 'SELECT game_key FROM lottery_game where acceptable = 1';
+        foreach ($mysqlStaff->query($sql) as $item) {
+            $adapter->plan('Lottery/GameWin', ['game_key' => $item['game_key']]);
+            $adapter->plan('Lottery/GamePlay', ['game_key' => $item['game_key']]);
+
+        }
+        //存Step
+
+        $sql = "SELECT play_key" .
+            " FROM lottery_game_play WHERE	acceptable=1";
+        foreach ($mysqlStaff->query($sql) as $row) {
+            $sql1 = 'SELECT win_rate,decimal_place,win_key FROM lottery_win WHERE play_key=:play_key';
+            $param1 = [':play_key' => $row['play_key']];
+            foreach ($mysqlPublic->query($sql1, $param1) as $item) {
+                //,
+                $pushData['step'] = substr(sprintf("%." . intval($item['decimal_place'] + 1) . "f", $item['win_rate'] / 1000), 0, -1);
+                $cache->hset("Step", $row['play_key'] . '-' . $item['win_key'], $pushData['step']);
+            }
+        }
+        //查询最新的一条开奖号码存redis
+        $sql = "select game_key from lottery_game ";
+        foreach ($mysqlPublic->query($sql) as $rows) {
+            ["game_key" => $game_key] = $rows;
+            $sql = 'select * from lottery_number where game_key = :game_key order by period desc limit 1';
+            $params = [':game_key' => $game_key];
+            $pushData = [];
+            foreach ($mysqlPublic->query($sql, $params) as $rowss) {
+                $pushData = [
+                    'game_key' => $game_key,
+                    'period' => $rowss['period'],
+                    'open_time' => $rowss['open_time'],
+                ];
+                //获取生肖对应数字放入六合彩
+                $zodiacList = Calender::getZodiacList($rowss['open_time']);
+                if (in_array('six', explode('_', $game_key))) {
+                    $pushData['sx'] = $zodiacList;
+                }
+                for ($i = 1; $i <= 20; $i++) {
+                    $key = 'normal' . $i;
+                    if (-1 != $rowss[$key]) {
+                        $pushData[$key] = $rowss[$key];
+                    }
+                }
+                for ($i = 1; $i <= 2; $i++) {
+                    $key = 'special' . $i;
+                    if (-1 != $rowss[$key]) {
+                        $pushData[$key] = $rowss[$key];
+                    }
+                }
+            }
+            foreach ($config->app_list as $app) {
+                $cacheKey = 'cache_' . $app;
+                $cache = $config->$cacheKey;
+                $json = json_encode($pushData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $cache->hset('Number', $game_key, $json);
+            }
+        }
+        //反水派发
+        $mysqlUser = $config->data_user;
+        $subsidy_sql = 'select layer_id,deliver_time from subsidy_setting where auto_deliver = 0';
+        $start_time = date('Hi', time());
+        foreach ($mysqlUser->query($subsidy_sql) as $v) {
+            $deliver_time = $v['deliver_time'];
+            if ($deliver_time == $start_time) {
+                $layer_id = $v['layer_id'];
+                $staff_id = 0;
+                $staff_name = '';
+                $daily = date('Ymd', strtotime('-1 day'));
+                $adapter->plan('Cash/Subsidy', ['layer_id' => $layer_id, 'staff_id' => $staff_id, 'staff_name' => $staff_name, 'daily' => $daily, 'start_time' => time(), 'auto_deliver' => 0], time(), 9);
+            }
+
+        }
+        //佣金派发
+        $broker_sql = 'select layer_id,deliver_time from brokerage_setting where auto_deliver =0';
+        foreach ($mysqlUser->query($broker_sql) as $val) {
+            $deliver_time = $val['deliver_time'];
+            if ($deliver_time == $start_time) {
+                $layer_id = $val['layer_id'];
+                $staff_id = 0;
+                $staff_name = '';
+                $daily = date('Ymd', strtotime('-1 day'));
+                $adapter->plan('Cash/Brokerage', ['layer_id' => $layer_id, 'staff_id' => $staff_id, 'staff_name' => $staff_name, 'daily' => $daily, 'start_time' => time(), 'auto_deliver' => 0], time(), 9);
+            }
+        }
+        //层级自动升级
+        if (time() < strtotime('today') + 3600) {
+            $adapter->plan('Layer/LayerUserAuto', ['time' => time()], strtotime('today') + 7200, 9);
+            $adapter->plan('Layer/LayerMemberAuto', ['time' => time()], strtotime('today') + 7200, 9);
+        }
+        $adapter->plan('Lottery/Lottery', [], time(), 7);
+        //站点首页
+        $adapter->plan('Index/AppBanner', [], time(), 8);
+        $adapter->plan('Index/AppAnnouncement', [], time(), 8);
+        $adapter->plan('Index/AppPopular', [], time(), 8);
+        $adapter->plan('User/UserCumulate', [], time(), 8);
+        //游客试玩金额
+        $adapter->plan('Guest/Money', ['money' => 2000], strtotime("today") + 86400, 9);
+        //分红统计
+        $daily = date("Ym", strtotime("today"));
+        $time = strtotime($daily . "01") - 86400;
+        $adapter->plan('System/Dividend', ['time' => $time], strtotime("today") + 2 * 3600, 9);
+    }
+}

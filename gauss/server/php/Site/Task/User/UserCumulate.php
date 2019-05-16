@@ -1,0 +1,100 @@
+<?php
+
+namespace Site\Task\User;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+/**
+ * @description   用户累计数据更新
+ * @Author  Rose
+ * @date  2019-05-08
+ * @links  User/UserCumulate
+ * @modifyAuthor   Rose
+ * @modifyTime  2019-05-08
+ */
+class UserCumulate implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        //更新用户的累计数据
+        $adapter = $context->getAdapter();
+        $mysql = $config->data_report;
+        $deal_list = $config->deal_list;
+        $user_money_list = [];
+        foreach ($deal_list as $deal) {
+            $mysqlDeal = $config->__get('data_'.$deal);
+            $sql = 'select money,user_id from account';
+            $user_money_list += iterator_to_array($mysqlDeal->query($sql));
+        }
+        if (!empty($user_money_list)) {
+            foreach ($user_money_list as $key => $val) {
+                $sql = 'update user_cumulate set money=:money where user_id=:user_id';
+                $mysql->execute($sql, [':money' => $val['money'], ':user_id' => $val['user_id']]);
+            }
+        }
+        $sql = 'select user_id,sum(wager_amount) as bet_amount,sum(bonus_amount) as bonus_amount,sum(subsidy_amount) as subsidy,'.
+            'sum(profit_amount) as profit_amount,sum(deposit_count) as deposit_count,sum(deposit_amount) as deposit_amount,sum(withdraw_count) as withdraw_count,sum(withdraw_amount) as withdraw_amount from daily_user group by user_id';
+        $list = iterator_to_array($mysql->query($sql));
+        if (!empty($list)) {
+            foreach ($list as $key => $val) {
+                $sql = 'update user_cumulate set bet_all=:bet_all,bonus_all=:bonus_all,profit_all= :profit_all,subsidy=:subsidy,deposit_count=:deposit_count,deposit_amount=:deposit_amount,withdraw_count=:withdraw_count,withdraw_amount=:withdraw_amount where user_id=:user_id';
+                $params = [
+                    ':bet_all' => $val['bet_amount'],
+                    ':bonus_all' => $val['bonus_amount'],
+                    ':profit_all' => $val['profit_amount'],
+                    ':subsidy' => $val['subsidy'], ':user_id' => $val['user_id'],
+                    ':deposit_count' => $val['deposit_count'],
+                    ':deposit_amount' => $val['deposit_amount'],
+                    ':withdraw_count' => $val['withdraw_count'],
+                    ':withdraw_amount' => $val['withdraw_amount'],
+                    ];
+                $mysql->execute($sql, $params);
+            }
+        }
+        //佣金更新
+        $sql = 'select user_id,sum(brokerage) as brokerage from daily_user_brokerage where  deliver_time>0  group by user_id ';
+        $brokrage = iterator_to_array($mysql->query($sql));
+        if (!empty($brokrage)) {
+            foreach ($brokrage as $key => $val) {
+                $sql = 'update user_cumulate set brokerage=:brokerage where user_id=:user_id';
+                $param = [
+                    ':brokerage' => $val['brokerage'],
+                    ':user_id' => $val['user_id'],
+                ];
+                $mysql->execute($sql, $param);
+            }
+        }
+        //返水更新
+        $sql = 'select user_id,sum(subsidy) as subsidy from daily_user_subsidy where deliver_time>0  group by user_id  ';
+        $subsidy = iterator_to_array($mysql->query($sql));
+        if (!empty($subsidy)) {
+            foreach ($subsidy as $key => $val) {
+                $sql = 'update user_cumulate set subsidy=:subsidy where user_id=:user_id';
+                $param = [
+                    ':subsidy' => $val['subsidy'],
+                    ':user_id' => $val['user_id'],
+                ];
+                $mysql->execute($sql, $param);
+            }
+        }
+        //彩票数据更新
+        $sql = 'select user_id,sum(wager_amount) as wager_amount,sum(bonus_amount) as bonus_amount,sum(profit_amount) as profit_amount from daily_user_lottery group by user_id';
+        $lottery = iterator_to_array($mysql->query($sql));
+        if (!empty($lottery)) {
+            foreach ($lottery as $key => $val) {
+                $sql = 'update user_cumulate set bonus_lottery=:bonus_lottery,bet_lottery=:bet_lottery,profit_lottery=:profit_lottery where user_id=:user_id';
+                $param = [
+                    ':bonus_lottery' => $val['bonus_amount'],
+                    ':bet_lottery' => $val['wager_amount'],
+                    ':profit_lottery' => $val['profit_amount'],
+                    ':user_id' => $val['user_id'],
+                ];
+                $mysql->execute($sql, $param);
+            }
+        }
+
+        $adapter->plan('User/UserCumulate', [], time() + 600, 1);
+    }
+}

@@ -1,0 +1,132 @@
+<?php
+
+namespace Site\Websocket\Cash\ManualDeposit;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/**
+ * @description   现金系统-手工存提款-手工存入
+ * @Author  Rose
+ * @date  2019-05-08
+ * @links  Cash/ManualDeposit/ManualDeposit {"user_id":1,"type":0,"money":100,"memo":"测试数据","deposit":1,"coupon":2}
+ * @modifyAuthor   Rose
+ * @modifyTime  2019-05-08
+ */
+class ManualDeposit extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo('StaffGrade');
+        if ($StaffGrade != 0) {
+            $context->reply(['status' => 203, 'msg' => '当前账号没有操作权限']);
+
+            return;
+        }
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('StaffAuth'));
+        if (!in_array('money_manual', $auth)) {
+            $context->reply(['status' => 202, 'msg' => '你还没有操作权限']);
+
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $masterId = $context->getInfo('MasterId');
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $user_id = $data['user_id'];
+        $deposit_type = $data['type'];
+        $finish_money = $data['money'];
+        $memo = $data['memo'];
+        $deposit = $data['deposit'];
+        $coupon = $data['coupon'];
+        if (!is_numeric($user_id)) {
+            $context->reply(['status' => 204, 'msg' => '请输入会员账号']);
+
+            return;
+        }
+        if (!is_numeric($finish_money)) {
+            $context->reply(['status' => 205, 'msg' => '请输入金额']);
+
+            return;
+        }
+        if ($finish_money > 9999999.99) {
+            $context->reply(['status' => 205, 'msg' => '请输入金额']);
+
+            return;
+        }
+        if (!is_numeric($deposit_type)) {
+            $context->reply(['status' => 206, 'msg' => '请选择存入项目']);
+
+            return;
+        }
+        if ($deposit_type < 0 || $deposit_type >= 3) {
+            $context->reply(['status' => 206, 'msg' => '请选择正确的存入项目']);
+
+            return;
+        }
+        if (empty($deposit) && empty($coupon)) {
+            $context->reply(['status' => 207, 'msg' => '请选择稽核类型']);
+
+            return;
+        }
+        if ($coupon > 999 && $coupon < 1) {
+            $context->reply(['status' => 207, 'msg' => '请输入稽核倍数']);
+
+            return;
+        }
+        if (mb_strlen($memo) > 30) {
+            $context->reply(['status' => 208, 'msg' => '请不要输入超过30个字']);
+
+            return;
+        }
+        if ($deposit == 1) {
+            $deposit = 0;
+        } elseif ($deposit == 2) {
+            $deposit = 1;
+        } else {
+            $deposit = 0;
+        }
+        if ($masterId != 0) {
+            $sql = 'select deposit_limit from staff_credit where staff_id=:staff_id';
+            $deposit_limit = 0;
+            foreach ($mysql->query($sql, [':staff_id' => $staffId]) as $rows) {
+                $deposit_limit = $rows['deposit_limit'];
+            }
+            if ($finish_money > $deposit_limit) {
+                $context->reply(['status' => 300, 'msg' => '超出账号限额']);
+
+                return;
+            }
+        }
+        $money_map = [$user_id => ['money' => $finish_money, 'deposit_audit' => $deposit == 1 ? $finish_money : 0, 'coupon_audit' => $coupon * $finish_money]];
+        $sql = 'INSERT INTO staff_deposit SET staff_id=:staff_id, deposit_type=:deposit_type,'.
+            'deposit_audit_multiple=:deposit_audit_multiple,coupon_audit_multiple=:coupon_audit_multiple,memo=:memo,'.
+            'user_money_map=:user_money_map,finish_count=:finish_count,finish_money=:finish_money,finish_time=:finish_time';
+        $param = [
+            ':staff_id' => $staffId,
+            ':deposit_type' => $deposit_type,
+            ':deposit_audit_multiple' => $deposit,
+            ':coupon_audit_multiple' => $coupon,
+            ':memo' => $memo,
+            ':user_money_map' => json_encode($money_map),
+            ':finish_count' => 0,
+            ':finish_money' => 0,
+            ':finish_time' => 0,
+        ];
+        try {
+            $mysql->execute($sql, $param);
+            $sql = 'SELECT last_insert_id() as staff_deposit_id';
+            foreach ($mysql->query($sql) as $row) {
+                $staff_deposit_id = $row['staff_deposit_id'];
+            }
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 400, 'msg' => '存入失败']);
+            throw new \PDOException($e);
+        }
+        $context->reply(['status' => 200, 'msg' => '操作成功']);
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_site);
+        $taskAdapter->plan('Cash/Deposit', ['staff_deposit_id' => $staff_deposit_id, 'staff_name' => $context->getInfo('StaffKey')]);
+    }
+}

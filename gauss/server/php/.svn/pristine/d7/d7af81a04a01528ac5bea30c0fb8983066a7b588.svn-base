@@ -1,0 +1,134 @@
+<?php
+/**
+ * ${PARAM_DOC}
+ * @return ${TYPE_HINT}
+ * ${THROWS_DOC}
+ * @date: lucy
+ * @author: 19-4-26
+ * @file: CheckBet.php
+ */
+namespace Site\Task\Fg;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class CheckBet implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        $data=$context->getData();
+        $betId=$data['betId']?? '';
+        $username=$data['username']?? '';
+        $a=json_encode($data);
+
+        if(!empty($username)){
+            $mysql = $config->data_user;
+            $sql = 'SELECT user_id FROM user_fungaming WHERE fg_member_code=:fg_member_code';
+            $param = [':fg_member_code' => $username];
+            $userId = '';
+            foreach ($mysql->query($sql, $param) as $row) {
+                $userId = $row['user_id'];
+            }
+            fwrite(STDERR, $username.date('Y-m-d H:i:s')."下注检查结束userId".$userId."\n");
+            if (!$userId) {
+                $sql = 'SELECT deal_key FROM user_info WHERE user_id=:user_id';
+                $param = [':user_id' => $userId];
+                $dealKey = '';
+                foreach ($mysql->query($sql, $param) as $row) {
+                    $dealKey = $row['deal_key'];
+                }
+                if(empty($dealKey)){
+                    fwrite(STDERR, "site/Task/Fg/CheckBet: 下注失败时手动结算失败'.date('[Y-m-d H:i:s]') 获取用户的deal_key失败\n");
+                    return;
+                }
+                $mysql = $config->__get('data_'.$dealKey);
+
+                $params = [':betId' =>$betId];
+
+                $sql = "SELECT export_serial FROM external_export_success WHERE success_data->'$.betId' = :betId";
+                $exportSerial = '';
+
+                foreach ($mysql->query($sql, $params) as $row) {
+                    $exportSerial = $row['export_serial'];
+                }
+                fwrite(STDERR, "site/Task/Fg/CheckBet: 下注失败时手动结算转出单号'.date('[Y-m-d H:i:s]') $exportSerial\n");
+                if(!empty($exportSerial)){
+                    $money=0;
+                    $sql="select launch_money,user_key,account_name ,layer_id from external_export_launch where export_serial=:export_serial and user_id=:user_id";
+                    foreach ($mysql->query($sql, [':export_serial'=>$exportSerial,':user_id'=>$userId]) as $row) {
+                        $money = $row['launch_money'];
+                        $user_key = $row['user_key'];
+                        $account_name = $row['account_name'];
+                        $layer_id = $row['layer_id'];
+                    }
+                    if($money>0){
+                        $sql = "SELECT import_serial FROM external_import_success WHERE success_data->'$.betId'=:betId";
+                        $importSerial = '';
+                        foreach ($mysql->query($sql, $params) as $row) {
+                            $importSerial = $row['import_serial'];
+                        }
+                        fwrite(STDERR, "site/Task/Fg/CheckBet: 下注失败时手动结算结算单号'.date('[Y-m-d H:i:s]') $exportSerial\n");
+                        if (empty($importSerial)) {
+                            $fgWinLossList=['betId'=>$betId,'username'=>$username,'prize'=>$money*100,'type'=>'手工结算'];
+                            $time = time();
+                            $param = array(
+                                'user_id' => $userId,
+                                'user_key' => $user_key,
+                                'account_name' => $account_name,
+                                'layer_id' => $layer_id,
+                                'external_type' => 'fg',
+                                'launch_data' => json_encode($fgWinLossList),
+                                'launch_money' => $money,
+                                'launch_time' => $time,
+                            );
+                            $str = '';
+                            $param1 = [];
+                            foreach ($param as $key => $val) {
+                                $str .= $key.'=:'.$key.',';
+                                $param1[':'.$key] = $val;
+                            }
+
+                            $str = trim($str, ',');
+                            $sql = 'INSERT INTO external_import_launch SET '.$str;
+                            $importSerial = '';
+
+                            try {
+                                $mysql->execute($sql, $param1);
+                                $sql = 'SELECT serial_last("external_import") as import_serial';
+                                foreach ($mysql->query($sql) as $row) {
+                                    $importSerial = $row['import_serial'];
+                                }
+                            } catch (\PDOException $e) {
+
+                                throw new \PDOException($e);
+                            }
+                            $sql = 'INSERT INTO external_import_success SET import_serial = :import_serial,success_time = :success_time,success_data = :fgWinLossList';
+                            $params = [
+                                ':import_serial' => $importSerial,
+                                ':success_time' => $time,
+                                ':fgWinLossList' => $fgWinLossList,
+                            ];
+                            $mysql->execute($sql, $params);
+                            $sql = 'SELECT success_deal_serial FROM external_import_success WHERE import_serial=:import_serial';
+                            $param = [':import_serial' => $importSerial];
+                            $successDealSerial = '';
+                            foreach ($mysql->query($sql, $param) as $row) {
+                                $successDealSerial = $row['success_deal_serial'];
+                            }
+                            fwrite(STDERR, "site/Task/Fg/CheckBet: 下注失败时手动结算成功'.date('[Y-m-d H:i:s]') $successDealSerial\n");
+                            if(empty($successDealSerial)){
+                                fwrite(STDERR, "site/Task/Fg/CheckBet: 下注失败时手动结算失败'.date('[Y-m-d H:i:s]')\n");
+                            }
+                        }
+                    }
+
+
+
+                }
+            }
+
+        }
+
+    }
+}

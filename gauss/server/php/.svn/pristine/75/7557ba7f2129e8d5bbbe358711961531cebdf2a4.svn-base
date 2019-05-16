@@ -1,0 +1,26 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: lucy
+ * Date: 19-04-08
+ * Time: 上午11:06
+ */
+namespace Site\Task\ExternalGame;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+class GameAmountTransfer implements IHandler
+{
+	public function onTask(Context $context, Config $config)
+	{
+		//转发app请求至站点
+		['data' => $data] = $context->getData();
+		$interface_key = $data['interface_key'];
+		$adapter = $context->getAdapter();
+		//当提现到我的钱包时
+		if ($interface_key == 'my') {
+			$interface_key = $data['withdraw_key'];
+		}
+		$adapter->plan('NotifyPlat', ['path' => 'ExternalGame/' . $interface_key,'data' =>['data'=>$data]]);
+	}
+}

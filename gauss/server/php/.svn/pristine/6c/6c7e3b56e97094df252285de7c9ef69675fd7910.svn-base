@@ -1,0 +1,101 @@
+<?php
+
+namespace Site\Websocket\Rebate\RebateSetting;
+
+use Site\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+/*
+ * 返水比例列表
+ * Rebate/RebateSetting/RebateList {"layer_id":"3"}
+ * */
+
+class RebateList extends CheckLogin {
+
+    public function onReceiveLogined(Context $context, Config $config) {
+        //会员层级列表可以直接从缓存里面取
+
+        if (empty($layer_list)) {
+            $layer_list = $this->layerList($context, $config);
+        }
+        $mysql = $config->data_user;
+        $data = $context->getData();
+        $cache = $config->cache_site;
+        $layer_list = json_decode($cache->hget("LayerList","allLayer"));
+        $layer_id = !empty($data["layer_id"] )?$data["layer_id"]: 1;
+        if (!is_numeric($layer_id)) {
+            $context->reply(["status" => 204, "msg" => "参数错误"]);
+            return;
+        }
+        //获取所有类型
+        $all_list = [];
+        $public_mysql = $config->data_public;
+        $external_sql = "SELECT category_key,game_key, game_name  FROM external_game";
+        $category_list = iterator_to_array($public_mysql->query($external_sql));
+        $categoryTranslation = ["category_key" => "lottery"];
+        array_push($category_list, $categoryTranslation);
+        $category_key = [];
+        $data_list = [];
+        $game_list = json_decode($context->getInfo("GameList"));
+
+        foreach ($game_list as $value) {
+            $game_key = $value->game_key;
+            $data_list['lottery'][$game_key] = ['game_key' => $value->game_key, 'game_name' => $value->game_name, 'layer_id' => $layer_id, 'category_key' => "lottery", 'min_bet' => 0, 'subsidy_rate' => 0, 'max_subsidy' => 0];
+        }
+
+        foreach ($category_list as $val) {
+            $val_category = $val["category_key"];
+            $game_key = $val["game_key"];
+            if ($val_category != "lottery") {
+                $data_list[$val_category][$game_key] = ['game_key' => $val["game_key"], 'game_name' => $val["game_name"], 'layer_id' => $layer_id, 'category_key' => $val_category, 'min_bet' => 0, 'subsidy_rate' => 0, 'max_subsidy' => 0];
+            }
+            if (!in_array($val_category, $category_key)) {
+                $category_key[] = $val_category;
+                $sql = "SELECT * FROM subsidy_game_setting WHERE layer_id=:layer_id AND category_key = :category_key";
+                $param = [
+                    ":layer_id" => $layer_id,
+                    ":category_key" => $val_category,
+                ];
+                $list = iterator_to_array($mysql->query($sql, $param));
+                if (!empty($list)) {
+                    foreach ($list as $value) {
+                        $val_category = $value["category_key"];
+                        $game_key = $value["game_key"];
+                        $data_list[$val_category][$game_key]['min_bet'] = $value['min_bet'];
+                        $data_list[$val_category][$game_key]['subsidy_rate'] = $value['subsidy_rate'];
+                        $data_list[$val_category][$game_key]['max_subsidy'] = $value['max_subsidy'];
+                    }
+                }
+            }
+        }
+        foreach ($data_list as $key => $value) {
+            foreach ($value as $reason) {
+                $all_list[$key][] = $reason;
+            }
+        }//降层数调返回据数据结构
+
+        $subsidy_setting = "select layer_id , deliver_time from subsidy_setting where auto_deliver=0 and deliver_time >0";
+        $subsidy_list = iterator_to_array($mysql->query($subsidy_setting));
+        $subsidys = [];
+        $subsidysTranslation = [];
+        if (!empty($subsidy_list)) {
+            foreach ($subsidy_list as $value) {
+                $layer = $value['layer_id'];
+                $subsidys[] = $layer;
+                if (strlen($value['deliver_time']) == 3) {
+                    $timeTranslation = substr_replace($value['deliver_time'], ':', 1, 0);
+                } else {
+                    $timeTranslation = substr_replace($value['deliver_time'], ':', 2, 0);
+                }
+                $subsidysTranslation[$layer] = $timeTranslation;
+            }
+        }
+        $automatic = ['is_automatic' => 1, 'deliver_time' => ''];
+        if (in_array($layer_id, $subsidys)) {
+            $automatic = ['is_automatic' => 0, 'deliver_time' => $subsidysTranslation[$layer_id]];
+        }
+        $context->reply(["status" => 200, "msg" => "获取成功", "deliver_data" => $automatic, "layer_list" => $layer_list, "list" => $all_list]);
+    }
+
+}

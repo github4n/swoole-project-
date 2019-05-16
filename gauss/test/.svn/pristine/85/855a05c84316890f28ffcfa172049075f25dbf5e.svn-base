@@ -1,0 +1,366 @@
+delimiter ;;
+
+drop table if exists admin_role;;
+create table admin_role(
+    role_id int unsigned auto_increment not null comment '角色id',
+    role_name varchar(20) not null comment '角色名称',
+    primary key(role_id)
+) comment '角色';;
+
+drop table if exists admin_permit;;
+create table admin_permit(
+    role_id int unsigned not null comment '角色id',
+    operate_key varchar(30) not null comment '操作key',
+    primary key(role_id,operate_key)
+) comment '角色的操作权限';;
+
+drop table if exists admin_appoint;;
+create table admin_appoint(
+    admin_id int unsigned not null comment '管理员id',
+    role_id int unsigned not null comment '角色id',
+    primary key(admin_id,role_id)
+) comment '管理员委派角色';;
+
+drop table if exists admin_session;;
+create table admin_session(
+    client_id varchar(32) not null comment '客户端连接id',
+    admin_id int unsigned not null comment '管理员id',
+    login_time int unsigned not null comment '登陆时间',
+    client_ip int unsigned not null comment '客户端ip',
+    user_agent varchar(40) not null comment 'sha1(user-agent)',
+    resume_key varchar(40) not null comment '恢复key',
+    lose_time int unsigned not null default 0 comment '掉线时间',
+    index(admin_id),
+    index(resume_key),
+    primary key(client_id)
+) comment '管理员登陆session';;
+
+drop table if exists site;;
+create table site(
+    site_key varchar(10) not null comment '站点key',
+    site_name varchar(20) not null comment '站点名字',
+    create_time int unsigned not null comment '开站时间',
+    status tinyint not null default 0 comment '站点状态： 0-开放，1-停止交易，2-关闭前台，3-关闭前后台',
+    primary key(site_key)
+) comment '站点';;
+
+drop table if exists site_game;;
+create table site_game(
+    site_key varchar(10) not null comment '站点key',
+    model_key varchar(10) not null comment '彩票类型key',
+    game_key varchar(20) not null comment '彩种key',
+    acceptable tinyint not null default 1 comment '开关',
+    rebate_max decimal(4,2) unsigned not null default 10 comment '最大返点比例%',
+    subsidy_rate decimal(4,2) unsigned not null default 0 comment '默认反水比例%',
+    primary key(site_key,game_key)
+) comment '站点彩种设置';;
+
+drop table if exists site_external_game;;
+create table site_external_game(
+    site_key varchar(10) not null comment '站点key',
+    category_key varchar(10) not null comment '类型：video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    interface_key varchar(10) not null comment '外接口： fg-FunGaming，ky-开元棋牌，lb-Lebo体育，ag-AsiaGaming',
+    game_key varchar(20) not null comment '外接口key',
+    acceptable tinyint not null default 1 comment '开关',
+    subsidy_rate decimal(3,1) unsigned not null default 0 comment '默认反水比例%',
+    primary key(site_key,game_key)
+) comment '外接口设置';;
+
+drop table if exists site_play;;
+create table site_play(
+    site_key varchar(10) not null comment '站点key',
+    model_key varchar(10) not null comment '彩票类型key',
+    game_key varchar(20) not null comment '彩种key',
+    play_key varchar(30) not null comment '玩法key',
+    acceptable tinyint not null default 1 comment '开关',
+    bet_min decimal(14,2) unsigned not null default 2 comment '最小投注额',
+    bet_max decimal(14,2) unsigned not null default 5000 comment '最大投注额',
+    primary key(site_key,game_key,play_key)
+) comment '站点玩法设置';;
+
+drop table if exists site_win;;
+create table site_win(
+    site_key varchar(10) not null comment '站点key',
+    model_key varchar(10) not null comment '彩票类型key',
+    game_key varchar(20) not null comment '彩种key',
+    play_key varchar(30) not null comment '玩法key',
+    win_key varchar(30) not null comment '赔率key',
+    bonus_rate decimal(12,4) unsigned not null comment '赔率',
+    primary key(site_key,game_key,win_key)
+) comment '站点赔率设置';;
+
+drop table if exists site_rent_config;;
+create table site_rent_config(
+    site_key varchar(10) not null comment '站点key',
+    month_rent decimal(14,2) unsigned not null comment '月服务费',
+    primary key(site_key)
+) comment '站点服务费设置';;
+
+drop table if exists site_tax_config;;
+create table site_tax_config(
+    site_key varchar(10) not null comment '站点key',
+    category varchar(10) not null comment '门类：lottery-彩票，video-真人视讯，game-电子游戏，sports-体育，cards-棋牌',
+    range_max decimal(14,2) unsigned not null comment '损益额度范围上限',
+    tax_rate decimal(8,4) unsigned not null comment '提成比例',
+    primary key(site_key,category,range_max)
+) comment '站点损益累进提成比例';;
+
+drop table if exists admin_info;;
+create table admin_info(
+    admin_id int unsigned auto_increment not null comment '管理员id',
+    admin_name varchar(20) not null comment '姓名',
+    add_time int unsigned not null default 0 comment '添加时间',
+    add_ip int unsigned not null default 0 comment '添加ip地址',
+    login_time int unsigned not null default 0 comment '最后登陆时间',
+    login_ip int unsigned not null default 0 comment '最后登陆ip地址',
+    primary key(admin_id)
+) comment '管理员基本信息';;
+
+drop table if exists admin_auth;;
+create table admin_auth(
+    admin_id int unsigned not null comment '管理员id',
+    admin_key varchar(20) not null comment '登录名',
+    password_salt varchar(40) not null comment '密码hash盐',
+    password_hash varchar(40) not null comment '密码的hash',
+    unique(admin_key),
+    primary key(admin_id)
+) comment '管理员安全信息';;
+
+drop table if exists operate;;
+create table operate(
+    operate_key varchar(30) not null comment '操作key',
+    operate_name varchar(20) not null comment '操作名称',
+    require_permit tinyint not null default 1 comment '0：不需要授权，1：需要有权限才可用',
+    record_log tinyint not null default 1 comment '是否需要记录日志',
+    display_order int unsigned auto_increment not null unique,
+    primary key(operate_key)
+) comment '操作';;
+
+drop table if exists operate_log;;
+create table operate_log(
+    log_id bigint unsigned auto_increment not null comment '日志id',
+    admin_id int unsigned not null comment '管理员id',
+    operate_key varchar(30) not null comment '操作key',
+    detail text not null comment '操作详情',
+    log_time int unsigned not null default 0 comment '日志记录时间',
+    index(admin_id,log_time),
+    primary key(log_id)
+) comment '操作日志';;
+
+drop procedure if exists admin_session_lose;;
+create procedure admin_session_lose(
+    _client_id varchar(32)
+)
+begin
+    update admin_session set lose_time=unix_timestamp() where client_id=_client_id;
+end;;
+
+drop procedure if exists admin_auth_verify;;
+create procedure admin_auth_verify(
+    _admin_key varchar(40),
+    _password varchar(40)
+) comment '验证管理员密码'
+begin
+    select admin_id
+        from admin_auth
+        where admin_key=_admin_key and password_hash = sha1(concat(password_salt,sha1(_password)));
+end;;
+
+drop trigger if exists admin_role_delete;;
+create trigger admin_role_delete before delete on admin_role for each row
+begin
+    delete from admin_permit where role_id=old.role_id;
+end;;
+
+drop trigger if exists admin_session_insert;;
+create trigger admin_session_insert before insert on admin_session for each row
+begin
+    set new.resume_key=sha1(random_bytes(40));
+    set new.login_time=unix_timestamp();
+end;;
+
+drop trigger if exists site_game_update;;
+create trigger site_game_update before update on site_game for each row
+begin
+    if old.site_key != new.site_key then
+        signal sqlstate 'SGU01' set message_text='site_game_update: 禁止修改 site_key';
+    end if;
+    if old.game_key != new.game_key then
+        signal sqlstate 'SGU02' set message_text='site_game_update: 禁止修改 game_key';
+    end if;
+end;;
+
+drop trigger if exists site_play_update;;
+create trigger site_play_update before update on site_play for each row
+begin
+    if old.site_key != new.site_key then
+        signal sqlstate 'SPU01' set message_text='site_play_update: 禁止修改 site_key';
+    end if;
+    if old.model_key != new.model_key then
+        signal sqlstate 'SPU02' set message_text='site_play_update: 禁止修改 model_key';
+    end if;
+    if old.game_key != new.game_key then
+        signal sqlstate 'SPU03' set message_text='site_play_update: 禁止修改 game_key';
+    end if;
+    if old.play_key != new.play_key then
+        signal sqlstate 'SPU04' set message_text='site_play_update: 禁止修改 play_key';
+    end if;
+end;;
+
+drop trigger if exists site_win_update;;
+create trigger site_win_update before update on site_win for each row
+begin
+    if old.site_key != new.site_key then
+        signal sqlstate 'SPU01' set message_text='site_win_update: 禁止修改 site_key';
+    end if;
+    if old.model_key != new.model_key then
+        signal sqlstate 'SPU02' set message_text='site_win_update: 禁止修改 model_key';
+    end if;
+    if old.game_key != new.game_key then
+        signal sqlstate 'SPU03' set message_text='site_win_update: 禁止修改 game_key';
+    end if;
+    if old.play_key != new.play_key then
+        signal sqlstate 'SPU04' set message_text='site_win_update: 禁止修改 play_key';
+    end if;
+    if old.win_key != new.win_key then
+        signal sqlstate 'SPU05' set message_text='site_win_update: 禁止修改 win_key';
+    end if;
+end;;
+
+drop trigger if exists site_rent_config_update;;
+create trigger site_rent_config_update before update on site_rent_config for each row
+begin
+    if old.site_key != new.site_key then
+        signal sqlstate 'SRCU1' set message_text='site_rent_config: 禁止修改 site_key';
+    end if;
+end;;
+
+drop trigger if exists site_tax_config_update;;
+create trigger site_tax_config_update before update on site_tax_config for each row
+begin
+    if old.site_key != new.site_key then
+        signal sqlstate 'STCU1' set message_text='site_tax_config_update: 禁止修改 site_key';
+    end if;
+    if old.category != new.category then
+        signal sqlstate 'STCU2' set message_text='site_tax_config_update: 禁止修改 category';
+    end if;
+end;;
+
+drop trigger if exists admin_info_update;;
+create trigger admin_info_update before update on admin_info for each row
+begin
+    if new.admin_id != old.admin_id then
+        signal sqlstate 'AIU01' set message_text='admin_info_update: 禁止修改 admin_id';
+    end if;
+end;;
+
+drop trigger if exists admin_auth_insert;;
+create trigger admin_auth_insert before insert on admin_auth for each row
+begin
+    set new.password_salt=sha1(random_bytes(40));
+    set new.password_hash=sha1(concat(new.password_salt,sha1(new.password_hash)));
+end;;
+
+drop trigger if exists admin_auth_update;;
+create trigger admin_auth_update before update on admin_auth for each row
+begin
+    if new.admin_id != old.admin_id then
+        signal sqlstate 'AAU01' set message_text='admin_auth_update: 禁止修改 admin_id';
+    end if;
+    if new.password_hash != old.password_hash then
+        set new.password_salt=sha1(random_bytes(40));
+        set new.password_hash=sha1(concat(new.password_salt,sha1(new.password_hash)));
+    end if;
+end;;
+
+drop trigger if exists operate_log_insert;;
+create trigger operate_log_insert before insert on operate_log for each row
+begin
+    set new.log_time=unix_timestamp();
+end;;
+
+drop view if exists admin_operate;;
+create view admin_operate as
+    select distinct a.admin_id,p.operate_key
+    from admin_appoint a inner join admin_permit p on a.role_id=p.role_id;;
+
+drop view if exists admin_role_intact;;
+create view admin_role_intact as
+    select r.role_id,r.role_name,(
+        select json_objectagg(o.operate_key,o.operate_name)
+            from admin_permit p inner join operate o on p.operate_key=o.operate_key
+            where p.role_id=r.role_id
+    ) operate_list,(
+        select count(distinct admin_id) from admin_appoint a where a.role_id=r.role_id
+    ) admin_count
+    from admin_role r;;
+
+drop view if exists admin_info_intact;;
+create view admin_info_intact as
+    select i.admin_id,i.admin_name,a.admin_key,i.add_time,i.add_ip,i.login_time,i.login_ip,
+        json_objectagg(r.role_id,r.role_name) as role_map
+    from admin_info i inner join admin_auth a on i.admin_id=a.admin_id
+        inner join admin_appoint p on i.admin_id=p.admin_id
+        inner join admin_role r on p.role_id=r.role_id
+    group by i.admin_id,i.admin_name,a.admin_key;;
+
+drop view if exists operate_log_intact;;
+create view operate_log_intact as
+    select l.log_id,l.admin_id,i.admin_name,l.operate_key,o.operate_name,l.detail,l.log_time
+    from operate_log l inner join admin_info i on l.admin_id=i.admin_id
+        inner join operate o on l.operate_key=o.operate_key;;
+
+insert into admin_role(role_id,role_name)values
+(1,'超级管理员');;
+
+insert into site(site_key,site_name,create_time)values
+('site1','测试站点A',unix_timestamp()),
+('site2','测试站点B',unix_timestamp());;
+
+insert into admin_info(admin_id,admin_name,add_time,add_ip)values
+(1,'admin01',unix_timestamp(),0);;
+
+insert into admin_auth(admin_id,admin_key,password_hash)values
+(1,'admin01','123456');;
+
+insert into operate(operate_key,operate_name,require_permit,record_log)values
+('self_login','登录',0,1),
+('self_logout','退出',0,1),
+('self_password','修改密码',0,1),
+('account_admin_select','查看员工',1,0),
+('account_admin_insert','添加员工',1,1),
+('account_admin_update','修改员工',1,1),
+('account_admin_delete','删除员工',1,1),
+('account_role_select','查看角色',1,0),
+('account_role_insert','添加角色',1,1),
+('account_role_update','修改角色',1,1),
+('account_role_delete','删除角色',1,1),
+('account_operate_select','查看日志',1,0),
+('cash_list','三方支付方式列表',1,0),
+('lottery_win_select','彩票赔率查看',1,0),
+('lottery_win_update','彩票赔率设置',1,1),
+('lottery_bet_select','彩票投注额查看',1,0),
+('lottery_bet_update','彩票投注额设置',1,1),
+('lottery_rebate_select','彩票返点查看',1,0),
+('lottery_rebate_update','彩票返点设置',1,0),
+('lottery_open','开奖结果',1,0),
+('report_site','站点彩票报表',1,0),
+('report_analysis','站点分析',1,0),
+('report_monthly','月结对账报表',1,0),
+('site_status_select','站点总开关查看',1,0),
+('site_status_update','站点总开关设置',1,1),
+('site_lottery_select','站点彩票开关查看',1,0),
+('site_lottery_update','站点彩票开关修改',1,1),
+('site_play_select','站点彩票玩法开关查看',1,0),
+('site_play_update','站点彩票玩法开关设置',1,1),
+('site_external_select','站点三方开关查看',1,0),
+('site_external_update','站点三方开关设置',1,1),
+('site_tax_select','站点提成比例查看',1,0),
+('site_tax_update','站点提成比例设置',1,1);;
+
+insert into admin_appoint(admin_id,role_id)
+    select admin_id,1 from admin_info;;
+
+insert into admin_permit(role_id,operate_key)
+    select 1,operate_key from operate where require_permit;;
+

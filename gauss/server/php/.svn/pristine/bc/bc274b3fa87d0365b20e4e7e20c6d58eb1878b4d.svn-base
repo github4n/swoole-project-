@@ -1,0 +1,60 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: ayden
+ * Date: 19-3-27
+ * Time: 下午5:14
+ */
+
+namespace App\Websocket\ExternalGame;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+
+//ExternalGame/GameBalance {"interface_key":"ky"}
+
+class GameBalance extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $param = $context->getData();
+        $interface_key = isset($param['interface_key']) ? $param['interface_key'] : '';
+        $user_id = $context->getInfo('UserId');
+        $user_key = $context->getInfo('UserKey');
+
+        $adapter = new \Lib\Task\Adapter($config->cache_daemon);
+        if($interface_key){
+            switch ($interface_key){
+                case 'my':
+                    //查询账户余额
+                    $mysql = $config->data_user;
+                    $sql = 'SELECT deal_key FROM user_info WHERE user_id=:user_id';
+                    $param = [':user_id' => $user_id];
+                    $dealKey = '';
+                    foreach ($mysql->query($sql, $param) as $row) {
+                        $dealKey = $row['deal_key'];
+                    }
+                    $client_id = $context->clientId();
+                    $adapter->plan('User/Balance',['user_id' => $user_id,'deal_key'=>$dealKey,'id'=>$client_id]);
+                    break;
+                case 'ag':
+                    break;
+                case 'lb':
+                    break;
+                case 'ky':
+                    $params = [
+                        'account' => $user_key,
+                        's' => 1,
+                        'action' => 'getScore',
+                        'method' => 'GameBalance',
+                        'user_id' => $user_id,
+                        'interface_key' => 'ky'
+                    ];
+                    $adapter->plan('NotifySite', ['path' => 'ExternalGame/ExternalGameSend', 'data' => ["data" => $params]],time(),1);
+
+                    break;
+            }
+        }
+    }
+}

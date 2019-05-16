@@ -1,0 +1,77 @@
+<?php
+namespace Site\Websocket\System\SystemSetting;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 体系分红设置-编辑大股东分红比例
+ * System/SystemSetting/DividendAgentUpdate
+ * 参数 
+ * */
+
+class DividendAgentUpdate extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有修改权限"]);
+            return;
+        }
+        $staffId = $context->getInfo('StaffId');
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $staff_id = $data["agent_id"];
+        $agent_bet = $data["agent_bet"];
+        $agent_profit = $data["agent_profit"];
+        $agent_fee = $data["agent_fee"];
+        $agent_tax = $data["agent_tax"];
+        if(!is_numeric($staff_id)){
+            $context->reply(["status"=>202,"msg"=>"新增的股东编号类型不正确"]);
+            return;
+        }
+        if(!is_numeric($agent_bet) && !is_numeric($agent_profit) && !is_numeric($agent_fee)){
+            $context->reply(["status"=>204,"msg"=>"提交的数据类型有误"]);
+            return;
+        }
+        if($agent_bet>100 || $agent_profit>100 || $agent_fee>100){
+            $context->reply(["status"=>205,"msg"=>"提交的数据过大"]);
+            return;
+        }
+        $sql = "SELECT staff_name,staff_key FROM staff_info_intact WHERE staff_id=:staff_id AND staff_grade = 3 AND master_id = 0" ;
+        $param = [":staff_id"=>$staff_id];
+        $info = array();
+        foreach ($mysql->query($sql,$param) as $row){
+            $info = $row;
+        }
+        if(empty($info)){
+            $context->reply(["status"=>204,"msg"=>"当前提交的编号不是大股东"]);
+            return;
+        }
+        $sql = "UPDATE dividend_setting SET grade3_bet_rate=:agent_bet,grade3_profit_rate=:agent_profit,grade3_fee_rate=:agent_fee ,grade3_tax_rate=:agent_tax WHERE scope_staff_id=:scope_staff_id";
+        $param = [
+            ":scope_staff_id" =>$staff_id,
+            ":agent_bet"=>$agent_bet,
+            ":agent_profit"=>$agent_profit,
+            ":agent_fee"=>$agent_fee,
+            ":agent_tax"=>$agent_tax,
+        ];
+        try{
+            $mysql->execute($sql,$param);
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"设置失败"]);
+            throw new \PDOException($e);
+        }
+        //记录日志
+        $sql = 'INSERT INTO operate_log SET staff_id=:staff_id, operate_key=:operate_key, detail=:detail,client_ip= :client_ip';
+        $params = [
+            ':staff_id' => $staffId,
+            ':client_ip' => ip2long($context->getClientAddr()),
+            ':operate_key' => 'staff_setting',
+            ':detail' =>'修改总代理编号为'.$staff_id.'的分红信息',
+        ];
+        $mysql->execute($sql, $params);
+        $context->reply(["status"=>200,"msg"=>"设置成功"]);
+    }
+}

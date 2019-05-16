@@ -1,0 +1,87 @@
+<?php
+namespace Plat\Websocket\Roles;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 参数：page:当前显示的页码数（默认1）, num:每页显示的数量（默认10）,gonum:需要跳转的页码数
+ * 状态码：
+ * 200：获取列表信息成功
+ * 201：没有操作权限
+ * 202：当前页数类型不正确
+ * 203：每页显示的数量的格式不正确
+ * 204：提交的跳转页数码异常
+ *
+ * */
+class RolesList extends CheckLogin {
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("account_role_select",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $currentPage = isset($data['page']) ? intval($data['page']): 1;
+        $showPerPage = isset($data['num']) ? intval($data['num']) : 10;
+        $goPage = isset($data['go_num']) ? intval($data['go_num']) : 0;
+
+        if(!is_numeric($currentPage)) {
+            $context->reply(['status' => 202, 'msg' => '当前页数据类型错误']);
+            return;
+        }
+        if(!is_numeric($showPerPage)) {
+            $context->reply(['status' => 204, 'msg' => '每页显示条数类型错误']);
+            return;
+        }
+        if(!empty($goPage)){
+            if(!is_numeric($goPage)) {
+                $context->reply(['status' => 205, 'msg' => '跳转页数据类型错误']);
+                return;
+            }
+        }
+        if($currentPage <= 0){
+            $context->reply(['status' => 206, 'msg' => '页数错误']);
+            return;
+        }
+        $mysql = $config->data_admin;
+        $limit = ' LIMIT '.($currentPage-1)*$showPerPage.','.$showPerPage;
+        //跳转的页数
+        if(!empty($goPage) && is_numeric($goPage)){
+            $limit =  ' LIMIT '.($goPage-1)*$showPerPage.','.$showPerPage;
+        }
+
+
+        $order = ' ORDER BY role_id DESC';
+        $sql = 'SELECT * FROM admin_role_intact '.$order.$limit;
+        $role = [];
+        $roleList = array();
+        foreach($mysql->query($sql) as $row) {
+            $role[] = $row;
+        }
+        //获取角色权限
+        if(!empty($role)){
+            foreach ($role as $key=>$val){
+                $roleList[$key]["operate"] = "";
+                $roleList[$key]["role_id"] = $val["role_id"];
+                $roleList[$key]["role_name"] = $val["role_name"];
+                $roleList[$key]["admin_num"] = $val["admin_count"];
+                foreach (json_decode($val["operate_list"]) as $item){
+                    $roleList[$key]["operate"] .= $item.",";
+                }
+
+            }
+        }
+        $totlesql="SELECT role_id FROM admin_role_intact";
+        $total = $mysql->execute($totlesql);
+        $context->reply([
+            'status'=>200,
+            'msg'=>'获取成功',
+            'totalpage' => ceil($total/$showPerPage),
+            'total'=>$total,
+            'rolelist'=>$roleList
+        ]);
+    }
+}

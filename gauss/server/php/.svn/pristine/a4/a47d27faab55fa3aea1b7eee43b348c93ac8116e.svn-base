@@ -1,0 +1,151 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-3-23
+ * Time: 下午8:03
+ */
+
+namespace Site\Task\Report;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class UserExternal implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['time' => $time] = $context->getData();
+        $daily = intval(date('Ymd', $time));
+        $start_time = strtotime($daily.' 00:00:00');
+        $end_time = strtotime($daily.' 23:59:59');
+
+        $adapter = $context->getAdapter();
+        $mysqlReport = $config->data_report;
+        //检测数据是否锁定
+        $dailyInfo = [];
+        $sql = "select daily from daily_status where daily=:daily and frozen=1";
+        foreach ($mysqlReport->query($sql,[":daily"=>$daily]) as $row){
+            $dailyInfo = $row;
+        }
+        if(!empty($dailyInfo)){
+            $adapter->plan('Report/UserExternal', ['time' => $time + 86400], time() + 600, 9);
+            return;
+        }
+
+        $data = [];
+        foreach ($config->deal_list as $deal) {
+            $mysql = $config->__get('data_' . $deal);
+            $sql = "select user_id,account_name,user_key,layer_id,fg_game_id,count(fg_id) as bet_count,sum(audit_amount) as bet_amount,fg_data from external_audit_fungaming_intact where fg_time between $start_time and $end_time group by user_id,account_name,user_key,layer_id,fg_game_id,fg_data";
+            foreach ($mysql->query($sql) as $value) {
+                $game_key = 'fg_' .$value['fg_game_id'];
+                $mysqlPublic = $config->data_public;
+                $game_info_sql = "select category_key,interface_key,game_name from external_game where game_key = '$game_key'";
+                $category_key = '';
+                $interface_key = '';
+                $game_name = '';
+                foreach ($mysqlPublic->query($game_info_sql) as $val) {
+                    $category_key = $val['category_key'];
+                    $interface_key = $val['interface_key'];
+                    $game_name = $val['game_name'];
+                }
+                $user_id = $value['user_id'];
+                $user_info_sql = "select layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,broker_1_id,broker_1_key,broker_1_name,broker_2_id,broker_2_key,broker_2_name,broker_3_id,broker_3_key,broker_3_name from user_cumulate where user_id = '$user_id'";
+                $userInfo = [];
+                foreach ($mysqlReport->query($user_info_sql) as $v) {
+                    $userInfo = $v;
+                }
+                //反水
+                $subsidy_sql = "select sum(subsidy) as subsidy from daily_user_game_subsidy where daily = '$daily' and game_key='$game_key' and user_id = '$user_id'";
+                $subsidy = 0;
+                foreach ($mysqlReport->query($subsidy_sql) as $val) {
+                    $subsidy = !empty($val['subsidy']) ? $val['subsidy'] : 0;
+                }
+                $bonus_count = 0;
+                $bonus_amount = 0;
+                $fg_data = json_decode($value['fg_data'],true);
+                if ($fg_data['result'] > 0) {
+                    $bonus_count ++;
+                    $bonus_amount = $fg_data['result'];
+                }
+                //三方损益
+                $profit_amount = $bonus_amount - $value['bet_amount'];
+                if (!empty($userInfo)) {
+                    $tag = [
+                        'daily' => $daily,
+                        'user_id' => $user_id,
+                        'user_key' => $value['user_key'],
+                        'user_name' => $value['account_name'],
+                        'layer_id' => $value['layer_id'],
+                        'layer_name' => $userInfo['layer_name'],
+                        'major_id' => $userInfo['major_id'],
+                        'major_name' => $userInfo['major_name'],
+                        'minor_id' => $userInfo['minor_id'],
+                        'minor_name' => $userInfo['minor_name'],
+                        'agent_id' => $userInfo['agent_id'],
+                        'agent_name' => $userInfo['agent_name'],
+                        'broker_1_id' => $userInfo['broker_1_id'],
+                        'broker_1_key' => $userInfo['broker_1_key'],
+                        'broker_1_name' => $userInfo['broker_1_name'],
+                        'broker_2_id' => $userInfo['broker_2_id'],
+                        'broker_2_key' => $userInfo['broker_2_key'],
+                        'broker_2_name' => $userInfo['broker_2_name'],
+                        'broker_3_id' => $userInfo['broker_3_id'],
+                        'broker_3_key' => $userInfo['broker_3_key'],
+                        'broker_3_name' => $userInfo['broker_3_name'],
+                        'category_key' => $category_key,
+                        'interface_key' => $interface_key,
+                        'game_key' => $game_key,
+                        'game_name' => $game_name,
+                        'bet_count' => $value['bet_count'],
+                        'bet_amount' => $value['bet_amount'],
+                        'wager_count' => $value['bet_count'],
+                        'wager_amount' => $value['bet_amount'],
+                        'bonus_count' => $bonus_count,
+                        'bonus_amount' => $bonus_amount,
+                        'subsidy_amount' => $subsidy,
+                        'profit_amount' => $profit_amount
+                    ];
+                    $data[] = $tag;
+                }
+
+            }
+        }
+
+        if (!empty($data)) {
+            $mysqlReport->daily_user_external->load($data, [], 'replace');
+        }
+
+        //周报
+        $weekly = intval(date("oW",$time));
+        $first_day = intval(date('Ymd', strtotime("-1 week Monday", $time)));
+        $last_day = intval(date('Ymd', strtotime("+0 week Sunday", $time)));
+        $weekly_sql = "select user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,broker_1_id,broker_1_key,broker_1_name,broker_2_id,broker_2_key,broker_2_name,broker_3_id,broker_3_key,broker_3_name,category_key,interface_key,game_key,game_name,sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(wager_count) as wager_count,sum(wager_amount) as wager_amount,sum(bonus_count) as bonus_count,sum(bonus_amount) as bonus_amount,sum(subsidy_amount) as subsidy_amount,sum(profit_amount) as profit_amount from daily_user_external where daily between '$first_day' and '$last_day' group by user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,broker_1_id,broker_1_key,broker_1_name,broker_2_id,broker_2_key,broker_2_name,broker_3_id,broker_3_key,broker_3_name,category_key,interface_key,game_key,game_name";
+        $weekData = $mysqlReport->query($weekly_sql);
+        if (!empty($weekData)) {
+            $mysqlReport->weekly_user_external->import($weekData, [
+                'weekly' => $weekly,
+            ], 'replace');
+        }
+
+        //月报
+        $monthly = intval(date("Ym",$time));
+        $first_day = date('Ym01', $time);
+        $last_day = date('Ymd', strtotime(date('Y-m-01',$time) . ' +1 month -1 day'));
+        $monthly_sql = "select user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,broker_1_id,broker_1_key,broker_1_name,broker_2_id,broker_2_key,broker_2_name,broker_3_id,broker_3_key,broker_3_name,category_key,interface_key,game_key,game_name,sum(bet_count) as bet_count,sum(bet_amount) as bet_amount,sum(wager_count) as wager_count,sum(wager_amount) as wager_amount,sum(bonus_count) as bonus_count,sum(bonus_amount) as bonus_amount,sum(subsidy_amount) as subsidy_amount,sum(profit_amount) as profit_amount from daily_user_external where daily between '$first_day' and '$last_day' group by user_id,user_key,user_name,layer_id,layer_name,major_id,major_name,minor_id,minor_name,agent_id,agent_name,broker_1_id,broker_1_key,broker_1_name,broker_2_id,broker_2_key,broker_2_name,broker_3_id,broker_3_key,broker_3_name,category_key,interface_key,game_key,game_name";
+
+        $monthData = $mysqlReport->query($monthly_sql);
+        if (!empty($monthData)) {
+            $mysqlReport->monthly_user_external->import($monthData, [
+                'monthly' => $monthly,
+            ], 'replace');
+        }
+
+        if (time() > $time + 86400) {
+            $adapter->plan('Report/UserExternal', ['time' => $time + 86400], time(), 9);
+        }
+        if (time() < $time + 86400 + 3600) {
+            $adapter->plan('Report/UserExternal', ['time' => $time], time() + 600, 9);
+        }
+    }
+}

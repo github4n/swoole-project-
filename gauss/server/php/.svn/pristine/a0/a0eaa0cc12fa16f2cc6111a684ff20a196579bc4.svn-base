@@ -1,0 +1,152 @@
+<?php
+namespace Plat\Websocket\Staff;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ 1.新增
+ *  参数：① admin_name:员工名称，②admin_key 登录名称 ③admin_password:登录密码 ④role_id:角色id
+ * Staff/StaffAddUpdate {"admin_name":"周一","admin_key":"zhouyi","admin_password":"admin123","role_id":1}
+ *  200：添加成功
+ *  201:员工名不能为空
+ *  202：登录名不能为空
+ *  203：登录名不合法，请填写长度为6-20位的数字和字母组合密码
+ *  204：登录密码不能为空
+ *  205：登录密码不合法，请填写长度为6-40位的数字和字母组合密码
+ *  206：角色id不能为空（数字类型）
+ *  207：角色id格式不正确
+ *  208：登录名称已存在请重新填写
+ *  400：添加失败
+ * */
+class StaffAddUpdate extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if(!in_array("account_admin_insert",$auth)){
+            $context->reply(["status"=>201,"msg"=>"你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+
+        $adminName = trim($data['admin_name']);
+        $adminKey = trim($data['admin_key']);
+        $adminPassword = trim($data['admin_password']);
+        $roleId = trim($data['role_id']);
+
+        // 为空判断
+        if (empty($adminName)) {
+            $context->reply(['status' => 201, 'msg' => '员工名称不能为空']);
+            return;
+        }
+        if (empty($adminKey)) {
+            $context->reply(['status' => 202, 'msg' => '登录名称不能为空']);
+            return;
+        }
+        if (empty($adminPassword)) {
+            $context->reply(['status' => 203, 'msg' => '登录密码不能为空']);
+            return;
+        }
+        if (empty($roleId)) {
+            $context->reply(['status' => 204, 'msg' => '角色id不能为空']);
+            return;
+        }
+        if (!is_numeric($roleId)) {
+            $context->reply(['status' => 206, 'msg' => '角色id格式不正确']);
+            return;
+        }
+        // 验证规则
+        $preg = '/^(?![0-9]+$)(?![a-zA-Z]+$)[0-9A-Za-z]{6,20}$/';
+        if (!preg_match($preg, $adminKey)) {
+            $context->reply(['status' => 207, 'msg' => '账号只能由数字字母组成，长度有效区间：[4-20]']);
+            return;
+        }
+        $preg = '/^(?![0-9]+$)(?![a-zA-Z]+$)[0-9A-Za-z]{6,40}$/';
+        if (!preg_match($preg, $adminPassword)) {
+            $context->reply(['status' => 208, 'msg' => '密码只能由数字字母组成，长度有效区间：[6-40]']);
+            return;
+        }
+
+        // 判断登录名是否已经存在
+        $mysql = $config->data_admin;
+        try {
+            $sql = 'SELECT admin_id FROM admin_auth WHERE admin_key = :admin_key';
+            $params[':admin_key'] = $adminKey;
+            if($mysql->execute($sql, $params)>0) {
+                $context->reply(['status' => 209, 'msg' => '登录名已存在']);
+                return;
+            }
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 400, 'msg' => '添加失败']);
+            throw new \PDOException('sql run error'.$e);
+
+        }
+
+        try {
+            // 插入info
+            $sql = 'INSERT INTO admin_info SET admin_name = :admin_name, add_time = :add_time';
+            $params = [
+                ':admin_name' => $adminName,
+                ':add_time' => time(),
+            ];
+            $mysql->execute($sql, $params);
+            // 获取admin_id
+            $sql = 'SELECT last_insert_id() as admin_id';
+            foreach ($mysql->query($sql) as $row)
+                $admin_id = $row['admin_id'];
+            $this->logRecord($context, $mysql, $admin_id, 'insertInfo', 'account_admin_insert');
+
+            // 插入auth
+            $sql = 'INSERT INTO admin_auth SET admin_id = :admin_id, admin_key = :admin_key, password_hash = :admin_password';
+            $params = [
+                ':admin_id' => $admin_id,
+                ':admin_key' => $adminKey,
+                ':admin_password' => $adminPassword
+            ];
+            $mysql->execute($sql, $params);
+            $this->logRecord($context, $mysql, $admin_id, 'insertAuth', 'account_admin_insert');
+
+            // 插入appoint
+            $sql = 'INSERT INTO admin_appoint SET admin_id = :admin_id, role_id = :role_id';
+            $params = [
+                ':admin_id' => $admin_id,
+                ':role_id' => $roleId
+            ];
+            $mysql->execute($sql, $params);
+            $this->logRecord($context, $mysql, $admin_id, 'insertAppoint', 'account_admin_insert');
+
+            $context->reply(['status' => 200, 'msg' => '添加成功']);
+        } catch (\PDOException $e) {
+            $context->reply(['status' => 404, 'msg' => '添加失败']);
+            throw new \PDOException('sql run error'.$e);
+        }
+    }
+
+    // 记录日志
+    private function logRecord($context, $mysql, $admin_id, $signal, $operateKey)
+    {
+        switch ($signal) {
+            case 'sqlError':
+                $detail = '操作失败，sql错误';
+                break;
+            case 'insertInfo':
+                $detail= "添加了编号为".$admin_id."的基本信息";
+                break;
+            case 'insertAuth':
+                $detail= "添加了编号为".$admin_id."的登录信息";
+                break;
+            case 'insertAppoint':
+                $detail= "添加了编号为".$admin_id."的角色信息";
+                break;
+        }
+        $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+        $params = [
+            ':admin_id' =>$context->getInfo('adminId'),
+            ':operate_key' => $operateKey,
+            ':detail' => $detail,
+        ];
+        $mysql->execute($sql, $params);
+    }
+}

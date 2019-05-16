@@ -1,0 +1,97 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: lucy
+ * Date: 19-3-8
+ * Time: 上午8:45
+ */
+
+namespace App\Http\Fg;
+
+use Lib\Config;
+use Lib\Http\Context;
+use Lib\Http\Handler;
+use App\Http\Fg\Common;
+
+class Balance extends Handler
+{
+    public function onRequest(Context $context, Config $config)
+    {
+        $get_data= $context->requestPost();
+        $query=[];
+        parse_str($get_data,$query);
+
+        $flg=true;
+        if(!isset($query['partnerId']) || empty($query['partnerId'])){
+           $flg=false;
+        }
+        if(!isset($query['username']) || empty($query['username'])){
+            $flg=false;
+        }
+        if(!isset($query['nonce_str']) || empty($query['nonce_str'])){
+            $flg=false;
+        }
+       
+        if(!isset($query['sign']) || empty($query['sign'])){
+            $flg=false;
+        }
+
+        $Common=new Common();
+        if(!$flg){
+            $arr=$Common->return_data(2,'参数错误');
+            $this->responseJson($context, $arr);
+            return;
+        }
+        $partnerId=$query['partnerId'];
+        $username=$query['username'];
+        $nonce_str=$query['nonce_str'];
+       
+        $sign=$query['sign'];
+        $param=array('username'=>$username,'partnerId'=>$partnerId,'nonce_str'=>$nonce_str);
+        $new_sign=$Common->MakeSign($param);
+
+        if(strcmp($new_sign,$sign)!==0){
+            $arr=$Common->return_data(108,'签名错误');
+            $this->responseJson($context, $arr);
+            return;
+        }
+
+        //查询余额
+        $mysql = $config->data_user;
+        $sql='select user_id from user_fungaming where fg_member_code=:fg_member_code';
+        $params=[':fg_member_code' => $username];
+        $user_id=0;
+        foreach ($mysql->query($sql, $params) as $row) {
+            $user_id = $row['user_id'];
+        }
+
+        if(empty($user_id)){
+            $arr=$Common->return_data(2,'玩家不存在');
+            $this->responseJson($context, $arr);
+            return;
+        }
+        $sql = 'SELECT deal_key FROM user_info WHERE user_id=:user_id';
+        $param = [':user_id' => $user_id];
+        $dealKey = '';
+        foreach ($mysql->query($sql, $param) as $row) {
+            $dealKey = $row['deal_key'];
+        }
+        $mysql = $config->__get('data_' . $dealKey);
+        $sql = 'SELECT money FROM account WHERE user_id=:user_id';
+        $money=0;
+        foreach ($mysql->query($sql, $param) as $row) {
+            $money = $row['money']*100;
+        }
+        $walletTime=$Common->utc_time();
+
+         $data=[
+             'username'=>$username,
+             "balance"=>$money,
+             'walletTime'=>$walletTime
+         ];
+
+        $arr=$Common->return_data(0,'ok',$data);
+        $this->responseJson($context, $arr);
+
+    }
+}

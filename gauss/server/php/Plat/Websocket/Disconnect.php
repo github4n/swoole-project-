@@ -1,0 +1,20 @@
+<?php
+namespace Plat\Websocket;
+
+use Lib\Websocket\IHandler;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+class Disconnect implements IHandler{
+    public function onReceive(Context $context, Config $config)
+    {
+        //用户掉线更新掉线时间
+        $mysql = $config->data_admin;
+        $sql = "CALL admin_session_lose(:client_id)";
+        $param = [":client_id"=>$context->clientId()];
+        $mysql->execute($sql,$param);
+        //删除掉线十分钟之前的用户缓存信息
+        $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+        $taskAdapter->plan('RemoveSession', ['id' => $context->clientId()],time()+600,9);
+    }
+}

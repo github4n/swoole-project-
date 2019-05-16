@@ -1,0 +1,33 @@
+<?php
+namespace Plat\Task;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class ListenSite implements IHandler
+{
+    private static $whitelist = [
+        'Analysis/Site',
+        'Ip/Gather',
+        'ExternalGame/fg'
+    ];
+    public function onTask(Context $context, Config $config)
+    {
+        ['site_key' => $site_key] = $context->getData();
+        $adapter = $context->getAdapter();
+
+        $cache = $config->__get('cache_' . $site_key);
+        while (false !== ($message = $cache->rpop('NotifyPlat'))) {
+            list($path, $json) = explode(' ', $message, 2);
+            if (!in_array($path, self::$whitelist)) {
+                continue;
+            }
+            $data = json_decode($json, true);
+            $data['site_key'] = $site_key;
+            $adapter->plan($path, $data, time(), 7);
+        }
+
+        $context->repeat(time() + 60, 7);
+    }
+}

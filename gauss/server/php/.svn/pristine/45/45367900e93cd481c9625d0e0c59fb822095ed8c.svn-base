@@ -1,0 +1,98 @@
+<?php
+
+namespace Site\Websocket;
+
+use Lib\Websocket\IHandler;
+use Lib\Websocket\Context;
+use Lib\Config;
+
+abstract class CheckLogin implements IHandler
+{
+    abstract public function onReceiveLogined(Context $context, Config $config);
+
+    public function onReceive(Context $context, Config $config)
+    {
+        $mysqlStaff = $config->data_staff;
+        $sql = "select int_value from site_setting where setting_key = 'site_status'";
+        foreach ($mysqlStaff->query($sql) as $row) {
+            $status = $row['int_value'];
+        }
+        if ($status == 3) {
+            $context->reply(['status' => 500, 'msg' => '维护中']);
+
+            return;
+        }
+        // check login
+        if (empty($context->getInfo('StaffId'))) {
+            $context->reply(['status' => 201, 'msg' => '你还没有登录请登录']);
+
+            return;
+        }
+        $this->onReceiveLogined($context, $config);
+    }
+
+    //当前登录用户管理的权限
+    public function LayerManage(Context $context, Config $config)
+    {
+        if ($context->getInfo('MasterId') == 0) {
+            $cache = $config->cache_site;
+            $layer_list = json_decode($cache->hget('LayerList', 'allLayer'));
+        } else {
+            $mysql = $config->data_staff;
+            $sql = 'SELECT layer_id FROM staff_layer WHERE staff_id=:staff_id';
+            $param = [':staff_id' => $context->getInfo('StaffId')];
+            $layer_list = [];
+            foreach ($mysql->query($sql, $param) as $row) {
+                $layer = [];
+                $layer['layer_id'] = $row['layer_id'];
+                $layer['layer_name'] = empty($context->getInfo($row['layer_id'])) ? '该层级被删除' : $context->getInfo($row['layer_id']);
+                $layer_list[] = $layer;
+            }
+        }
+
+        return  $layer_list;
+    }
+
+    //删除支付通道检测是否有未处理的订单
+    public function checkOrder($passage_id, Config $config)
+    {
+        $deal_list = $config->deal_list;
+        $num = 0;
+        foreach ($deal_list as $deal_key) {
+            $mysql = $config->__get('data_'.$deal_key);
+            $sql = 'select passage_id from deposit_intact where passage_id=:passage_id and (cancel_time is null or finish_time is null )';
+            $num += $mysql->execute($sql, [':passage_id' => $passage_id]);
+        }
+
+        return $num;
+    }
+
+    //检测是否有未处理的订单
+    public function checkRoute($route_id, Config $config)
+    {
+        $deal_list = $config->deal_list;
+        $num = 0;
+        foreach ($deal_list as $deal_key) {
+            $mysql = $config->__get('data_'.$deal_key);
+            $sql = 'select route_id from deposit_intact where route_id=:route_id and (cancel_time is null or finish_time is null )';
+            $num += $mysql->execute($sql, [':route_id' => $route_id]);
+        }
+
+        return $num;
+    }
+
+    //截取小数点位数
+    public function intercept_num($num)
+    {
+        if (!is_numeric($num)) {
+            return 0;
+        }
+        if ('string' != gettype($num)) {
+            $num = ''.$num;
+        }
+
+        $length = strpos($num, '.') ? strpos($num, '.') + 3 : strlen($num);
+
+        return sprintf('%.2f', substr($num, 0, $length));
+    }
+}

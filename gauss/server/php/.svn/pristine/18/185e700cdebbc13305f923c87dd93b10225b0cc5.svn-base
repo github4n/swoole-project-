@@ -1,0 +1,17 @@
+<?php
+
+
+namespace App\Websocket\ExternalGame\FG;
+namespace App\Websocket\ExternalGame;
+use Lib\Config;
+use Lib\Websocket\Context;
+use App\Websocket\CheckLogin;
+use App\Websocket\ExternalGame\FG\FgApi;
+
+class FgGameStart extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        // TODO: 启动游戏
+    }
+}

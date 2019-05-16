@@ -1,0 +1,87 @@
+<?php
+namespace Plat\Websocket\Staff;
+
+use Plat\Websocket\CheckLogin;
+use Lib\Websocket\Context;
+use Lib\Config;
+/*
+ * 参数：admin_id:要删除的用户的id,格式：["1","2","3","4"],type:(1为单个删除，2为批量删除)
+ * 
+ * 状态码：
+ * 200：删除成功
+ * 201：要删除的用户的id不能为空
+ * 202：要删除的用户的类型不正确
+ * 203：该用户还在登录的状态不能删除
+ * 205：不能删除当前登录的用户
+ * 400：删除失败
+ *
+ * */
+
+class StaffDelete extends CheckLogin
+{
+    function onReceiveLogined(Context $context, Config $config)
+    {
+        //验证是否有操作权限
+        $auth = json_decode($context->getInfo('adminAuth'));
+        if (!in_array("account_admin_delete", $auth)) {
+            $context->reply(["status" => 202, "msg" => "你还没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_admin;
+        $admin_id = $data['admin_id'];
+        if (!is_array($admin_id)) {
+            $context->reply(["status" => 209, "msg" => "参数格式不正确"]);
+            return;
+        }
+        //检测id类型是否正确
+        foreach ($admin_id as $v) {
+            if (empty($v)) {
+                $context->reply(['status' => 203, 'msg' => '要删除的用户的id不能为空']);
+                return;
+            }
+            if (!is_numeric($v)) {
+                $context->reply(['status' => 204, 'msg' => '要删除的用户的类型不正确']);
+                return;
+            }
+            //不能删除正在登录的用户
+            $sql = "SELECT * FROM admin_session WHERE admin_id=:admin_id";
+            $param = [":admin_id" => $v];
+
+            $result = $mysql->execute($sql, $param);
+            if ($result > 0) {
+                $context->reply(["status" => 205, "msg" => "该用户正在登录请勿删除"]);
+                return;
+            }
+            //用户不能删除自己
+            if ($data['admin_id'] == $context->getInfo('adminId')) {
+                $context->reply(['status' => 206, "msg" => '不能删除当前登录的用户']);
+                return;
+            }
+            try {
+                $sql = "DELETE FROM admin_auth WHERE admin_id=:admin_id";
+                $params = [
+                    ':admin_id' => $v
+                ];
+                $res = $mysql->execute($sql, $params);
+                if ($res > 0) {
+                    //添加日志
+                    $sql = 'INSERT INTO operate_log SET admin_id = :admin_id, operate_key = :operate_key, detail = :detail';
+                    $param = [
+                        ':admin_id' => $context->getInfo('adminId'),
+                        ':operate_key' => "account_admin_delete",
+                        ':detail' => "删除编号为" . $v . "的员工"
+                    ];
+                    $mysql->execute($sql, $param);
+                }
+            } catch (\PDOException $e) {
+                $context->reply(['status' => 400, 'msg' => '删除失败']);
+                throw new \PDOException( $e);
+            }
+            //删除用户权限
+            $sql = "delete from admin_appoint where admin_id =$v";
+            $mysql->execute($sql);
+        }
+        $context->reply(['status' => 200, 'msg' => '删除成功']);
+    }
+}

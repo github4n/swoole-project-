@@ -1,0 +1,60 @@
+<?php
+namespace Site\Task\Layer;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+/*
+ * 自动升级
+ */
+class LayerUserAuto implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['time' => $time] = $context->getData();
+        $mysqlReport = $config->data_report;
+        $mysqlUser = $config->data_user;
+        $daily = date('Ymd',$time-86400);
+
+        $sql = "select group_concat(layer_id) as layer_list  from layer_info where layer_type=2";
+        $layerList = "";
+        foreach ($mysqlUser->query($sql) as $row){
+            $layerList = $row["layer_list"];
+        }
+        $sql = "select user_id,layer_id from user_info_intact where layer_id in ($layerList)";
+        $user_list = iterator_to_array($mysqlUser->query($sql));
+        if(!empty($user_list)){
+            foreach ($user_list as $key=>$val){
+                $data_sql = "select sum(deposit_amount) as deposit_amount,sum(wager_amount) as wager_amount from daily_user where user_id = :user_id and daily <= '$daily' ";
+                $userData = [];
+                foreach ($mysqlReport->query($data_sql,[":user_id"=>$val["user_id"]]) as $user){
+                    $userData = $user;
+                }
+                $layer_sql = "select layer_id,layer_name from layer_info where layer_type = 2 and min_deposit_amount <= :deposit_amount and min_bet_amount <= :bet_amount order by min_deposit_amount desc limit 1";
+                $layerInfo = [];
+                foreach ($mysqlUser->query($layer_sql,[":deposit_amount"=>empty($userData["deposit_amount"]) ? 0 : $userData["deposit_amount"],":bet_amount"=>empty($userData["wager_amount"]) ? 0 : $userData["wager_amount"]]) as $layer) {
+                    $layerInfo = $layer;
+                }
+                if(!empty($layerInfo)){
+                    if($layerInfo["layer_id"] != $val["layer_id"]){
+                        $param = [
+                            'layer_id' => $layerInfo['layer_id'],
+                            'user_id' => $val['user_id']
+                        ];
+                        $update_user_sql = 'update user_info set layer_id = :layer_id where user_id = :user_id';
+                        $mysqlUser->execute($update_user_sql,$param);
+                        $params = [
+                            'layer_id' => $layerInfo['layer_id'],
+                            'layer_name' => $layerInfo['layer_name'],
+                            'user_id' => $val['user_id']
+                        ];
+                        $update_event_sql = 'update user_event set layer_id = :layer_id,layer_name = :layer_name where user_id = :user_id';
+                        $mysqlReport->execute($update_event_sql,$params);
+                        $update_cumulate_sql = 'update user_cumulate set layer_id = :layer_id,layer_name = :layer_name where user_id = :user_id';
+                        $mysqlReport->execute($update_cumulate_sql,$params);
+                    }
+                }
+            }
+        }
+    }
+}

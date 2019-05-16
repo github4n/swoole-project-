@@ -1,0 +1,52 @@
+<?php
+namespace Site\Websocket\Website\Index;
+
+use Lib\Websocket\Context;
+use Lib\Config;
+use Site\Websocket\CheckLogin;
+/*
+ * 网站管理--编辑首页消息
+ * Website/Index/MessageEdit {"announcement_id":1}
+ * */
+
+class MessageEdit extends CheckLogin
+{
+    public function onReceiveLogined(Context $context, Config $config)
+    {
+        $StaffGrade = $context->getInfo("StaffGrade");
+        if($StaffGrade != 0){
+            $context->reply(["status"=>203,"当前账号没有操作权限"]);
+            return;
+        }
+        $data = $context->getData();
+        $mysql = $config->data_staff;
+        $announcement_id = $data["announcement_id"];
+        if(!is_numeric($announcement_id)){
+            $context->reply(["status"=>205,"msg"=>"参数错误"]);
+            return;
+        }
+        $sql = "SELECT * FROM announcement WHERE announcement_id=:announcement_id";
+        $param = [":announcement_id"=>$announcement_id];
+        $list = array();
+        try{
+            foreach ($mysql->query($sql,$param) as $row){
+                $list = $row;
+            }
+        }catch (\PDOException $e){
+            $context->reply(["status"=>400,"msg"=>"获取失败"]);
+            throw new \PDOException($e);
+        }
+        if(empty($list)){
+            $context->reply(["status"=>206,"msg"=>"获取信息有误，检查参数"]);
+            return;
+        }
+        $lists = [
+            "announcement_id" => $list["announcement_id"] ,
+            "content" => $list["content"] ,
+            "publish" => $list["publish"] ,
+            "start_time" => date("Y-m-d H:i:s",$list["start_time"]) ,
+            "stop_time" =>date("Y-m-d H:i:s",$list["stop_time"]) ,
+        ] ;
+        $context->reply(["status"=>200,"msg"=>"获取成功","info"=>$lists]);
+    }
+}

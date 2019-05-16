@@ -1,0 +1,122 @@
+<?php
+namespace App\Websocket\Login;
+
+use Lib\Config;
+use Lib\Websocket\Context;
+use Lib\Websocket\IHandler;
+
+/*
+ * 恢复登录
+ *  Login/ResumeLogin {"resume_key":"9581fc4d099fe4b18812c4c371790594de4da537","login_device":0}
+ * */
+
+class ResumeLogin implements IHandler
+{
+    public function onReceive(Context $context, Config $config)
+    {
+        $data = $context->getData();
+        $mysqlPublic = $config->data_public;
+        $resume_key = $data['resume_key'];
+        $login_device = $data["login_device"];
+        if(empty($resume_key)){
+            $context->reply(["status"=>202,"msg"=>"恢复的key不能为空"]);
+            return;
+        }
+        $client_ip = ip2long($context->getClientAddr());
+        $user_agent = sha1($context->getInfo("User-Agent"));
+        $sql = "SELECT * FROM user_session WHERE resume_key=:resume_key AND client_ip=:client_ip AND user_agent=:user_agent and lose_time > :lose_time";
+        $params = [
+            ":resume_key"=>$resume_key,
+            ":client_ip"=>$client_ip,
+            ":user_agent"=>$user_agent,
+            ":lose_time"=>time()-600
+        ];
+        $mysql = $config->data_user;
+        $info = array();
+        foreach ($mysql->query($sql,$params) as $row){
+            $info = $row;
+        }
+        if(empty($info)){
+            $context->reply(["status"=>400,"msg"=>"恢复登录失败"]);
+            return;
+        }else{
+            $userId = $info["user_id"];
+            //更新缓存信息
+            try{
+                //用户掉线10分钟内 重新上线更新用户的信息
+                $sql = "UPDATE user_session SET client_id=:client_id,lose_time=:lose_time WHERE resume_key = :resume_key";
+                $param = [':client_id'=>$context->clientId(),':lose_time'=>0,':resume_key'=>$resume_key];
+                $mysql->execute($sql,$param);
+            } catch (\PDOException $e) {
+                $context->reply(['status' => 400, 'msg' => '恢复失败请重新登录']);
+                throw new \PDOException($e);
+            }
+            //获取用户基本信息
+            $sql = "SELECT * FROM user_info_intact WHERE user_id=:user_id";
+            $param = [":user_id"=>$userId];
+            $user_info = array();
+            foreach ($mysql->query($sql,$param) as $rows){
+                $user_info = $rows;
+            }
+            if(empty($user_info)){
+                $context->reply(["status"=>204,"msg"=>"登录失败"]);
+                return;
+            }
+
+            //记录恢复日志
+            $serverHost = $context->getServerHost();
+            $clientAddr = $context->getClientAddr();
+            $userAgent = $context->getInfo("User-Agent");
+            $sql = 'INSERT INTO operate_log SET user_id=:user_id, operate_key=:operate_key, detail=:detail';
+            $params = [
+                ':user_id' => $user_info['user_id'],
+                ':operate_key' => 'self_login',
+                ':detail' => '服务器' . $serverHost . ';恢复登录' . 'ip' . $clientAddr . ",User-Agent:" . $userAgent,
+            ];
+            $invite_code = empty($user_info["invite_code"])?"0":$user_info["invite_code"];
+            $mysql->execute($sql, $params);
+            $context->reply(['status' => 200, 'msg' => '恢复登录成功','resume_key'=>$resume_key,"invite_code"=>$invite_code]);
+            //存redis
+            $deal_key = $user_info["deal_key"];
+
+            $account_name =  empty($user_info["account_name"])?" ":$user_info["account_name"];
+            $context->setInfo("UserId",$userId);
+            $context->setInfo("LoginDevice",$login_device);
+            $context->setInfo("LayerId",$user_info["layer_id"]);
+            $context->setInfo("DealKey",$deal_key);
+            $context->setInfo("InviteCode",$invite_code);
+            $context->setInfo("AccountName",$account_name);
+            $context->setInfo("UserKey",$user_info["user_key"]);
+            $context->setInfo("LoginDevice",intval($login_device));
+            //记录登录ip
+            $ip = $context->getClientAddr();
+            //数据库获取用户ip地址
+            $ip_info = [];
+            $sql = "select country,area,region,city,county,isp from ip_address where ip_net=:ip";
+            foreach ($mysqlPublic->query($sql,[":ip"=>ip2long($ip)>>8]) as $row){
+                $ip_info = $row;
+            }
+            $ip_sql = "insert into user_ip_history set user_id=:user_id,client_ip=:client_ip,country=:country,area=:area,region=:region,city=:city,county=:county,isp=:isp,login_time=:login_time ";
+            $ip_param = [
+                ":user_id" => $userId,
+                ":client_ip" => ip2long($ip),
+                ":country" => $ip_info["country"],
+                ":area" => $ip_info["area"],
+                ":county" => $ip_info["county"],
+                ":region" => $ip_info["region"],
+                ":city" => $ip_info["city"],
+                ":isp" => $ip_info["isp"],
+                ":login_time" => time(),
+            ];
+            $mysql->execute($ip_sql,$ip_param);
+            
+            //会员私信
+            $id = $context->clientId();
+            $taskAdapter = new \Lib\Task\Adapter($config->cache_daemon);
+            $taskAdapter->plan('User/UserInfo', ['user_id' => $userId,'id'=>$id]);
+            $taskAdapter->plan('Message/UserMessage', ['user_id' => $userId,'id'=>$id]);
+            $taskAdapter->plan('Message/LayerMessage', ['layer_id' => $user_info["layer_id"],'id'=>$id]);
+            $taskAdapter->plan('User/Balance', ['user_id' => $userId,'deal_key'=>$deal_key,'id'=>$id]);
+        }
+    }
+}

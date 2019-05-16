@@ -1,0 +1,56 @@
+<?php
+namespace Plat\Task\Analysis;
+
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Tax implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['site_key' => $site_key, 'time' => $time] = $context->getData();
+
+        $mysql = $config->data_admin;
+        $site_name = $site_key;
+        $sql = 'select site_name from site where site_key=:site_key';
+        foreach ($mysql->query($sql, ['site_key' => $site_key]) as $row) {
+            $site_name = $row['site_name'];
+        }
+        $sql = "select month_rent from site_rent_config where site_key=:site_key";
+        $tax_rent = '';
+        foreach ($mysql->query($sql, ['site_key' => $site_key]) as $row) {
+            $tax_rent = $row['month_rent'];
+        }
+        $tax_total = $tax_rent;
+        $siteReport = $config->__get('data_' . $site_key . '_report');
+        $analysis = $config->data_analysis;
+        $monthly = intval(date('Ym', $time));
+        $sql = 'select count(profit_lottery) as profit_lottery,count(profit_video) as profit_video,' .
+            'count(profit_game) as profit_game,count(profit_sports) as profit_sports,count(profit_cards) as profit_cards '.
+            'from monthly_site where monthly=:monthly and site_key=:site_key';
+        $generator = $siteReport->query($sql, ['monthly' => $monthly,':site_key'=>$site_key]);
+
+        //获取外接口的提成及比例
+        $lottery = [];
+        foreach (['lottery','video', 'game', 'sports', 'cards'] as $category) {
+            $sql = "select  min(tax_rate) as tax"." from site_tax_config where  range_max<=:profit_lottery and category=:category and site_key=:site_key";
+             foreach($mysql->query($sql,[":site_key"=>$site_key,":profit_lottery"=>$generator["profit_lottery"],":category"=>$category]) as $lotteryRow){
+                 $lottery =  $lotteryRow;
+            };
+            $generator["setting_".$category] = $setting = $lottery["tax_".$category];
+            $generator["tax_".$category] = (($generator["profit_".$category]>0 ? $generator["profit_".$category] : 0) * $setting)/100;
+            $tax_total += $generator["tax_".$category];
+        }
+        $generator["tax_total"] = $tax_total;
+        if (!empty($generator)) {
+            $analysis->monthly_tax->import($generator, [
+                'monthly' => $monthly, 'site_key' => $site_key, 'site_name' => $site_name, 'tax_rent'=>$tax_rent
+            ], 'replace');
+            $siteReport->monthly_tax->import($generator, [
+                'monthly' => $monthly,  'tax_rent'=>$tax_rent
+            ], 'replace');
+        }
+        
+    }
+}

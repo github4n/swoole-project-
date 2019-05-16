@@ -1,0 +1,69 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: nathan
+ * Date: 19-2-21
+ * Time: 下午4:19
+ */
+
+namespace Site\Task\Report;
+use Lib\Config;
+use Lib\Task\Context;
+use Lib\Task\IHandler;
+
+class Layer_brokerage implements IHandler
+{
+    public function onTask(Context $context, Config $config)
+    {
+        ['time' => $time] = $context->getData();
+        $daily = intval(date('Ymd', $time));
+        $mysqlReport = $config->data_report;
+        $adapter = $context->getAdapter();
+
+        //检测数据是否锁定
+        $dailyInfo = [];
+        $sql = "select daily from daily_status where daily=:daily and frozen=1";
+        foreach ($mysqlReport->query($sql,[":daily"=>$daily]) as $row){
+            $dailyInfo = $row;
+        }
+        if(!empty($dailyInfo)){
+            $adapter->plan('Report/Layer_brokerage', ['time' => $time + 86400], time() + 600, 9);
+            return;
+        }
+        
+        $sql = "select daily,layer_id,count(user_id) as user_count,sum(brokerage) as brokerage_amount from daily_user_brokerage where daily = '$daily' group by daily,layer_id";
+        $data = [];
+        foreach ($mysqlReport->query($sql) as $k=>$v) {
+            $layer_id = $v['layer_id'];
+            $layer_name_sql = "select layer_name from user_cumulate where layer_id = '$layer_id'";
+            $layer_name = '';
+            foreach ($mysqlReport->query($layer_name_sql) as $val) {
+                $layer_name = $val['layer_name'];
+            }
+            $brokerage_count = 0;
+            $brokerageSql = "select count(user_id) as brokerage_count from daily_user where brokerage>0 and daily=$daily and layer_id = :layer_id";
+            foreach ($mysqlReport->query($brokerageSql,[":layer_id"=>$v["layer_id"]]) as $row){
+                $brokerage_count = $row["brokerage_count"] ;
+            }
+            $param = [
+                'layer_name' => $layer_name,
+                'auto_deliver' => 0,
+                'deliver_staff_id' => 0,
+                'deliver_staff_name' => '',
+                'deliver_launch_time' => 0,
+                'deliver_finish_time' => 0,
+                'brokerage_count'=>$brokerage_count,
+            ];
+            $tag = array_merge($v,$param);
+            $data[] = $tag;
+        }
+
+        $mysqlReport->daily_layer_brokerage->load($data, [], 'replace');
+        if (time() > $time + 86400) {
+            $adapter->plan('Report/Layer_brokerage', ['time' => $time + 86400], time(), 9);
+        }
+        if (time() < $time + 86400 + 3600) {
+            $adapter->plan('Report/Layer_brokerage', ['time' => $time], time() + 600, 9);
+        }
+    }
+}
